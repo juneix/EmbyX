@@ -2,23 +2,20 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <!-- PWA & iOS Safari 兼容配置 -->
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     
-    <!-- 新增：PWA Manifest 配置文件 -->
     <link rel="manifest" href="manifest.json">
     
-    <!-- 新增：图标设置 (请确保目录下有 icon.png 文件) -->
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
     <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
-    <script>
+    <script data-cfasync="false">
         tailwind.config = {
             theme: {
                 extend: {
@@ -43,8 +40,9 @@
             }
             
             /* 滑动容器 */
+            /* 优化 2: h-screen 改为 h-[100dvh] 适配移动端动态高度 */
             .slide-container {
-                @apply relative w-screen h-screen overflow-hidden bg-black;
+                @apply relative w-screen h-[100dvh] overflow-hidden bg-black;
             }
             
             /* 单个视频卡片 */
@@ -90,16 +88,12 @@
         }
     </style>
 </head>
-<body class="bg-black text-white overflow-hidden font-sans select-none">
-    <!-- 主应用容器 -->
+<body class="bg-black text-white overflow-hidden font-sans select-none overscroll-none">
     <div id="app" class="slide-container">
         
-        <!-- 1. 视频容器层 -->
         <div id="videoContainer" class="relative w-full h-full">
-            <!-- 视频卡片由 JS 动态生成 -->
-        </div>
+            </div>
 
-        <!-- 2. 点击播放引导层 (首次进入显示) -->
         <div id="clickToPlayOverlay" class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer">
             <div class="text-center">
                 <div class="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center animate-pulse mx-auto">
@@ -109,9 +103,7 @@
             </div>
         </div>
 
-        <!-- 3. 右侧互动工具栏 -->
         <div class="right-toolbar absolute right-4 bottom-32 flex flex-col items-center space-y-6 z-30 transition-opacity duration-300">
-            <!-- 收藏 -->
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="favoriteBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
                     <i class="fa fa-heart text-white text-4xl drop-shadow-md"></i>
@@ -119,8 +111,6 @@
                 <span class="text-xs mt-1 font-medium drop-shadow">收藏</span>
             </div>
 
-            <!-- 清屏 -->
-            <!-- 修复：添加 transition-opacity duration-300 以支持自动隐藏的淡出效果 -->
             <div class="flex flex-col items-center clear-screen-wrapper cursor-pointer active:scale-90 transition-transform transition-opacity duration-300" id="clearScreenBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
                     <i class="fa fa-eye-slash text-white text-4xl drop-shadow-md"></i>
@@ -128,16 +118,13 @@
                 <span class="text-xs mt-1 font-medium drop-shadow">清屏</span>
             </div>
 
-            <!-- 全屏 -->
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="fullscreenBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
-                    <!-- 修复：默认全屏图标 -->
                     <i class="fa fa-expand text-white text-4xl drop-shadow-md"></i>
                 </div>
                 <span class="text-xs mt-1 font-medium drop-shadow">全屏</span>
             </div>
 
-            <!-- 静音 -->
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="muteBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
                     <i class="fa fa-volume-up text-white text-4xl drop-shadow-md"></i>
@@ -146,27 +133,22 @@
             </div>
         </div>
 
-        <!-- 4. 底部信息展示栏 -->
         <div class="bottom-info absolute bottom-16 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
-            <!-- 标题与简介 -->
             <div class="mb-3 pointer-events-auto">
                 <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate">正在初始化...</h3>
                 <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90">请点击右下角“我的”进行服务器配置</p>
             </div>
 
-            <!-- 进度条 -->
             <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1" id="progressBarContainer">
                 <div id="progressLine" class="progress-line w-0"></div>
             </div>
             
-            <!-- 时间信息 -->
             <div class="flex justify-between text-xs text-gray-300 drop-shadow">
                 <span id="currentTime">00:00</span>
                 <span id="totalTime">00:00</span>
             </div>
         </div>
 
-        <!-- 5. 底部主导航栏 -->
         <div class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm z-30 transition-opacity duration-300 pb-[env(safe-area-inset-bottom)]">
             <div class="flex justify-around items-center h-16">
                 <div id="playModeBtn" class="flex flex-col items-center justify-center w-1/4 text-primary cursor-pointer">
@@ -188,9 +170,7 @@
             </div>
         </div>
 
-        <!-- 6. “我的”个人中心页面 -->
         <div id="profilePage" class="profile-layer text-white">
-            <!-- 顶部栏 -->
             <div class="flex items-center h-14 px-4 border-b border-gray-800 bg-dark sticky top-0 z-10">
                 <button id="closeProfileBtn" class="w-10 h-10 flex items-center justify-center -ml-2 active:text-gray-300">
                     <i class="fa fa-chevron-down text-gray-400"></i>
@@ -199,7 +179,6 @@
             </div>
 
             <div class="p-4">
-                <!-- 服务器配置区域 -->
                 <div class="mb-6">
                     <h2 class="text-primary font-bold text-sm mb-4 flex items-center">
                         <i class="fa fa-server mr-2"></i>服务器配置
@@ -228,29 +207,24 @@
 
                 <div class="h-px bg-gray-800 w-full my-6"></div>
 
-                <!-- 项目介绍区域 -->
                 <div>
                     <h2 class="text-primary font-bold text-sm mb-4 flex items-center">
                         <i class="fa fa-info-circle mr-2"></i>关于项目
                     </h2>
                     <div class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
-                        <!-- 标题区域 -->
                         <div class="flex items-center">
                             <h3 class="text-white font-bold text-2xl tracking-tight">📱 EmbyX</h3>
                             <span class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v1.0</span>
                         </div>
                         
-                        <!-- 简介 -->
                         <div>
                             <p class="text-gray-300">💡 简介：这是一个技术小白借助 AI 代码工具和 Emby 官方 API 制作的 Web 应用，仿抖音风格浏览下载的短视频。目前功能还很简陋，就当抛砖引玉了，欢迎技术大佬指点或直接二改。</p>
                         </div>
                         
-                        <!-- 警告 -->
                         <div class="text-yellow-500/90 text-xs bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
                             <i class="fa fa-exclamation-triangle mr-1"></i> 提醒：本演示站点的数据仅本地保存，为保障稳定和隐私，建议私有化部署。 
                         </div>
 
-                        <!-- 用法 -->
                         <div>
                             <h4 class="text-gray-300">🧩 用法</h4>
                             <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs">
@@ -261,7 +235,6 @@
                             </ul>
                         </div>
 
-                        <!-- 作者信息 -->
                         <div class="pt-4 border-t border-gray-700/50 text-xs text-gray-500 flex flex-col space-y-1">
                             <p>👨🏻‍💻 数字名片：<a href="https://juneix.github.io" target="_blank" class="text-primary hover:underline">@谢週五</a></p>
                             <p>🏠 更多内容：<a href="https://5nav.eu.org" target="_blank" class="text-primary hover:underline">谢週五の藏经阁</a></p>
@@ -271,7 +244,6 @@
             </div>
         </div>
 
-        <!-- 7. 媒体库选择弹窗 -->
         <div id="libraryModal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden">
             <div class="bg-gray-900 rounded-xl p-5 w-72 max-h-[70vh] overflow-y-auto border border-gray-800 shadow-2xl">
                 <h3 class="text-white text-lg font-bold mb-4 text-center">选择媒体库</h3>
@@ -280,7 +252,6 @@
             </div>
         </div>
 
-        <!-- 8. 全局提示组件 (Toast & Loading) -->
         <div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 bg-black/80 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] whitespace-nowrap border border-white/10 backdrop-blur-sm">
             提示信息
         </div>
@@ -447,7 +418,6 @@
                         <div class="w-full h-full relative bg-black">
                             <div class="absolute inset-0 bg-cover bg-center opacity-60" style="background-image: url('${posterSrc}')"></div>
                             <video id="video-${index}" class="video-fullscreen hidden" playsinline webkit-playsinline loop></video>
-                            <!-- 播放按钮 (暂停时显示) -->
                             <div id="playBtn-${index}" class="play-pause-btn">
                                 <i class="fa fa-play"></i>
                             </div>
@@ -469,7 +439,10 @@
                         if (v) {
                             v.pause();
                             v.classList.add('hidden');
-                            v.src = ''; // 释放资源
+                            v.src = ''; 
+                            // 优化 4: 强制清理资源
+                            v.removeAttribute('src');
+                            v.load();
                         }
                     }
                 });
@@ -589,7 +562,8 @@
 
             getImageSrc(id) {
                 const { server, apiKey } = this.config;
-                return `${server}/emby/Items/${id}/Images/Primary?api_key=${apiKey}&MaxHeight=800`;
+                // 优化 5: 减小图片体积 MaxHeight=400
+                return `${server}/emby/Items/${id}/Images/Primary?api_key=${apiKey}&MaxHeight=400&Quality=90`;
             }
 
             async showLibraries() {
