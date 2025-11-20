@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- PWA & iOS Safari 兼容配置 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#000000">
+    
+    <!-- 新增：PWA Manifest 配置文件 -->
+    <link rel="manifest" href="manifest.json">
+    
+    <!-- 新增：图标设置 (请确保目录下有 icon.png 文件) -->
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+
+    <title>EmbyX</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#fe2c55', // 抖音红
+                        secondary: '#25f4ee', // 抖音蓝
+                        dark: '#161823',
+                        light: '#f8f9fa'
+                    },
+                    fontFamily: {
+                        sans: ['PingFang SC', 'Helvetica Neue', 'Arial', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            /* 视频全屏样式 - 修复：移除 hidden，确保 display 正常，修正 z-index */
+            .video-fullscreen {
+                @apply w-full h-full object-cover absolute inset-0 z-10;
+            }
+            
+            /* 滑动容器 */
+            .slide-container {
+                @apply relative w-screen h-screen overflow-hidden bg-black;
+            }
+            
+            /* 单个视频卡片 */
+            .slide-item {
+                @apply absolute top-0 left-0 w-full h-full transition-transform duration-300 ease-out z-10;
+            }
+            
+            /* 播放/暂停按钮动画 - 修复：提高 z-index 确保在视频之上 */
+            .play-pause-btn {
+                @apply absolute top-1/2 left-1/2 w-16 h-16 rounded-full flex items-center justify-center z-20 opacity-0 pointer-events-none transition-all duration-200 ease-out bg-black/30;
+                transform: translate(-50%, -50%) scale(1.5);
+            }
+            .play-pause-btn.paused {
+                @apply opacity-100;
+                transform: translate(-50%, -50%) scale(1.5);
+            }
+            .play-pause-btn i {
+                @apply text-2xl text-white;
+            }
+
+            /* 清屏模式逻辑 */
+            .interface-hidden .bottom-info,
+            .interface-hidden .bottom-nav {
+                @apply opacity-0 pointer-events-none transition-opacity duration-300;
+            }
+            /* 隐藏右侧栏除清屏按钮外的元素 */
+            .interface-hidden .right-toolbar > div:not(.clear-screen-wrapper) {
+                @apply opacity-0 pointer-events-none;
+            }
+            
+            /* “我的”页面层级过渡 */
+            .profile-layer {
+                @apply fixed top-0 left-0 w-full h-full bg-[#161823] z-[60] translate-y-full transition-transform duration-300 ease-in-out overflow-y-auto pb-[env(safe-area-inset-bottom)];
+            }
+            .profile-layer.active {
+                @apply translate-y-0;
+            }
+
+            /* 进度条 */
+            .progress-line {
+                @apply h-full bg-white transition-[width] duration-100 ease-linear;
+            }
+        }
+    </style>
+</head>
+<body class="bg-black text-white overflow-hidden font-sans select-none">
+    <!-- 主应用容器 -->
+    <div id="app" class="slide-container">
+        
+        <!-- 1. 视频容器层 -->
+        <div id="videoContainer" class="relative w-full h-full">
+            <!-- 视频卡片由 JS 动态生成 -->
+        </div>
+
+        <!-- 2. 点击播放引导层 (首次进入显示) -->
+        <div id="clickToPlayOverlay" class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer">
+            <div class="text-center">
+                <div class="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center animate-pulse mx-auto">
+                    <i class="fa fa-play text-white text-3xl ml-1"></i>
+                </div>
+                <p class="text-white text-lg mt-4 font-medium">点击开始播放</p>
+            </div>
+        </div>
+
+        <!-- 3. 右侧互动工具栏 -->
+        <div class="right-toolbar absolute right-4 bottom-32 flex flex-col items-center space-y-6 z-30 transition-opacity duration-300">
+            <!-- 收藏 -->
+            <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="favoriteBtn">
+                <div class="w-12 h-12 flex items-center justify-center">
+                    <i class="fa fa-heart text-white text-4xl drop-shadow-md"></i>
+                </div>
+                <span class="text-xs mt-1 font-medium drop-shadow">收藏</span>
+            </div>
+
+            <!-- 清屏 -->
+            <!-- 修复：添加 transition-opacity duration-300 以支持自动隐藏的淡出效果 -->
+            <div class="flex flex-col items-center clear-screen-wrapper cursor-pointer active:scale-90 transition-transform transition-opacity duration-300" id="clearScreenBtn">
+                <div class="w-12 h-12 flex items-center justify-center">
+                    <i class="fa fa-eye-slash text-white text-4xl drop-shadow-md"></i>
+                </div>
+                <span class="text-xs mt-1 font-medium drop-shadow">清屏</span>
+            </div>
+
+            <!-- 全屏 -->
+            <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="fullscreenBtn">
+                <div class="w-12 h-12 flex items-center justify-center">
+                    <!-- 修复：默认全屏图标 -->
+                    <i class="fa fa-expand text-white text-4xl drop-shadow-md"></i>
+                </div>
+                <span class="text-xs mt-1 font-medium drop-shadow">全屏</span>
+            </div>
+
+            <!-- 静音 -->
+            <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="muteBtn">
+                <div class="w-12 h-12 flex items-center justify-center">
+                    <i class="fa fa-volume-up text-white text-4xl drop-shadow-md"></i>
+                </div>
+                <span class="text-xs mt-1 font-medium drop-shadow">静音</span>
+            </div>
+        </div>
+
+        <!-- 4. 底部信息展示栏 -->
+        <div class="bottom-info absolute bottom-16 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
+            <!-- 标题与简介 -->
+            <div class="mb-3 pointer-events-auto">
+                <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate">正在初始化...</h3>
+                <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90">请点击右下角“我的”进行服务器配置</p>
+            </div>
+
+            <!-- 进度条 -->
+            <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1" id="progressBarContainer">
+                <div id="progressLine" class="progress-line w-0"></div>
+            </div>
+            
+            <!-- 时间信息 -->
+            <div class="flex justify-between text-xs text-gray-300 drop-shadow">
+                <span id="currentTime">00:00</span>
+                <span id="totalTime">00:00</span>
+            </div>
+        </div>
+
+        <!-- 5. 底部主导航栏 -->
+        <div class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/50 backdrop-blur-sm z-30 transition-opacity duration-300 pb-[env(safe-area-inset-bottom)]">
+            <div class="flex justify-around items-center h-16">
+                <div id="playModeBtn" class="flex flex-col items-center justify-center w-1/4 text-primary cursor-pointer">
+                    <i class="fa fa-repeat text-lg"></i>
+                    <span class="text-xs mt-1">顺序播放</span>
+                </div>
+                <div id="libraryBtn" class="flex flex-col items-center justify-center w-1/4 text-gray-400 cursor-pointer">
+                    <i class="fa fa-film text-lg"></i>
+                    <span class="text-xs mt-1">媒体库</span>
+                </div>
+                <div id="favoritesBtn" class="flex flex-col items-center justify-center w-1/4 text-gray-400 cursor-pointer">
+                    <i class="fa fa-heart text-lg"></i>
+                    <span class="text-xs mt-1">已收藏</span>
+                </div>
+                <div id="myBtn" class="flex flex-col items-center justify-center w-1/4 text-gray-400 cursor-pointer">
+                    <i class="fa fa-user text-lg"></i>
+                    <span class="text-xs mt-1">我的</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 6. “我的”个人中心页面 -->
+        <div id="profilePage" class="profile-layer text-white">
+            <!-- 顶部栏 -->
+            <div class="flex items-center h-14 px-4 border-b border-gray-800 bg-dark sticky top-0 z-10">
+                <button id="closeProfileBtn" class="w-10 h-10 flex items-center justify-center -ml-2 active:text-gray-300">
+                    <i class="fa fa-chevron-down text-gray-400"></i>
+                </button>
+                <span class="font-bold text-lg ml-2">个人中心</span>
+            </div>
+
+            <div class="p-4">
+                <!-- 服务器配置区域 -->
+                <div class="mb-6">
+                    <h2 class="text-primary font-bold text-sm mb-4 flex items-center">
+                        <i class="fa fa-server mr-2"></i>服务器配置
+                    </h2>
+                    <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
+                        <div>
+                            <label class="text-gray-400 text-xs block mb-1.5">服务器地址</label>
+                            <input type="text" id="configServer" placeholder="例如 http://10.1.1.3:8096" 
+                                class="w-full bg-gray-900 text-white text-sm rounded px-3 py-2.5 outline-none border border-gray-700 focus:border-primary transition-colors">
+                        </div>
+                        <div>
+                            <label class="text-gray-400 text-xs block mb-1.5">API 密钥</label>
+                            <input type="text" id="configKey" placeholder="控制台-高级-新建 API 密钥" 
+                                class="w-full bg-gray-900 text-white text-sm rounded px-3 py-2.5 outline-none border border-gray-700 focus:border-primary transition-colors">
+                        </div>
+                        <div class="flex items-center space-x-2 py-1">
+                            <input type="checkbox" id="configStatic" class="rounded text-primary focus:ring-0 bg-gray-700 border-none" checked>
+                            <label for="configStatic" class="text-gray-400 text-xs">使用 Static 模式 (提高兼容性)</label>
+                        </div>
+                        <div class="flex space-x-3 pt-2">
+                            <button id="resetConfigBtn" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white text-sm py-3 rounded-lg active:scale-95 transition-transform">重置</button>
+                            <button id="saveConfigBtn" class="flex-1 bg-primary hover:bg-primary/90 text-white text-sm py-3 rounded-lg font-bold active:opacity-80 shadow-lg shadow-primary/20">保存并连接</button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="h-px bg-gray-800 w-full my-6"></div>
+
+                <!-- 项目介绍区域 -->
+                <div>
+                    <h2 class="text-primary font-bold text-sm mb-4 flex items-center">
+                        <i class="fa fa-info-circle mr-2"></i>关于项目
+                    </h2>
+                    <div class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
+                        <!-- 标题区域 -->
+                        <div class="flex items-center">
+                            <h3 class="text-white font-bold text-2xl tracking-tight">📱 EmbyX</h3>
+                            <span class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v1.0</span>
+                        </div>
+                        
+                        <!-- 简介 -->
+                        <div>
+                            <p class="text-gray-300">💡 简介：这是一个技术小白借助 AI 代码工具和 Emby 官方 API 制作的 Web 应用，仿抖音风格浏览下载的短视频。目前功能还很简陋，就当抛砖引玉了，欢迎技术大佬指点或直接二改。</p>
+                        </div>
+                        
+                        <!-- 警告 -->
+                        <div class="text-yellow-500/90 text-xs bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
+                            <i class="fa fa-exclamation-triangle mr-1"></i> 提醒：本演示站点的数据仅本地保存，为保障稳定和隐私，建议私有化部署。 
+                        </div>
+
+                        <!-- 用法 -->
+                        <div>
+                            <h4 class="text-gray-300">🧩 用法</h4>
+                            <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs">
+                                <li>苹果 Safari 浏览器【分享-添加到主屏幕】，即可实现 PWA 全屏应用。</li>
+                                <li>安卓 Chrome/Edge 浏览器，请直接使用全屏按钮。</li>
+                                <li>如需自动化、批量下载视频，推荐搭配 <code class="bg-gray-700 px-1 rounded text-xs text-gray-200">yt-dlp</code>、<code class="bg-gray-700 px-1 rounded text-xs text-gray-200">gallery-dl</code>、<code class="bg-gray-700 px-1 rounded text-xs text-gray-200">Douyin_TikTok_Download_API</code> 等开源项目。</li>
+                                <li>本人另有独家适配的苹果、安卓快捷指令，可一键下载视频到 NAS，然后实现 Emby 自动入库。</li>
+                            </ul>
+                        </div>
+
+                        <!-- 作者信息 -->
+                        <div class="pt-4 border-t border-gray-700/50 text-xs text-gray-500 flex flex-col space-y-1">
+                            <p>👨🏻‍💻 数字名片：<a href="https://juneix.github.io" target="_blank" class="text-primary hover:underline">@谢週五</a></p>
+                            <p>🏠 更多内容：<a href="https://5nav.eu.org" target="_blank" class="text-primary hover:underline">谢週五の藏经阁</a></p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 7. 媒体库选择弹窗 -->
+        <div id="libraryModal" class="fixed inset-0 bg-black/80 z-50 flex items-center justify-center hidden">
+            <div class="bg-gray-900 rounded-xl p-5 w-72 max-h-[70vh] overflow-y-auto border border-gray-800 shadow-2xl">
+                <h3 class="text-white text-lg font-bold mb-4 text-center">选择媒体库</h3>
+                <div id="librariesList" class="space-y-2"></div>
+                <button id="closeLibraryBtn" class="w-full mt-4 bg-gray-800 text-gray-300 py-2 rounded text-sm hover:bg-gray-700">关闭</button>
+            </div>
+        </div>
+
+        <!-- 8. 全局提示组件 (Toast & Loading) -->
+        <div id="toast" class="fixed top-16 left-1/2 -translate-x-1/2 bg-black/80 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] whitespace-nowrap border border-white/10 backdrop-blur-sm">
+            提示信息
+        </div>
+        <div id="loading" class="fixed inset-0 z-40 flex items-center justify-center bg-transparent pointer-events-none hidden">
+            <div class="w-10 h-10 border-4 border-gray-600 border-t-primary rounded-full animate-spin"></div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * EmbyX Core Logic
+         * 包含配置管理、播放器核心、UI 交互、手势控制
+         */
+        class EmbyApp {
+            constructor() {
+                // 应用状态
+                this.state = {
+                    videos: [],
+                    currentIndex: 0,
+                    isPlaying: false,
+                    favorites: new Set(),
+                    playMode: 'sequence', // sequence | random
+                    isClearScreen: false,
+                    currentTab: 'home', // home | favorites | my
+                    currentLibraryId: null
+                };
+
+                // 配置信息
+                this.config = { server: '', apiKey: '', useStatic: true };
+
+                // 触摸状态缓存
+                this.touch = { startY: 0, startTime: 0 };
+
+                // 计时器引用
+                this.csTimer = null;
+
+                this.dom = {}; // DOM 元素缓存
+                this.init();
+            }
+
+            // --- 初始化 ---
+            init() {
+                this.cacheDOM();
+                this.loadConfig();
+                this.loadFavorites();
+                this.bindEvents();
+
+                // 检查配置并启动
+                if (this.config.server && this.config.apiKey) {
+                    this.fetchVideos();
+                } else {
+                    setTimeout(() => this.toggleModal('profilePage', true), 500);
+                }
+            }
+
+            cacheDOM() {
+                const ids = [
+                    'videoContainer', 'clickToPlayOverlay', 'loading', 'toast',
+                    'videoTitle', 'videoDescription', 'progressLine', 'currentTime', 'totalTime',
+                    'playModeBtn', 'libraryBtn', 'favoritesBtn', 'myBtn',
+                    'favoriteBtn', 'clearScreenBtn', 'fullscreenBtn', 'muteBtn',
+                    'configServer', 'configKey', 'configStatic'
+                ];
+                ids.forEach(id => this.dom[id] = document.getElementById(id));
+            }
+
+            // --- 配置与数据管理 ---
+            loadConfig() {
+                this.config.server = localStorage.getItem('emby_server') || '';
+                this.config.apiKey = localStorage.getItem('emby_key') || '';
+                this.config.useStatic = localStorage.getItem('emby_static') !== 'false';
+
+                // 填充 UI
+                this.dom.configServer.value = this.config.server;
+                this.dom.configKey.value = this.config.apiKey;
+                this.dom.configStatic.checked = this.config.useStatic;
+            }
+
+            saveConfig() {
+                const server = this.dom.configServer.value.trim();
+                const key = this.dom.configKey.value.trim();
+                const isStatic = this.dom.configStatic.checked;
+
+                if (!server || !key) return this.showToast('请填写完整信息');
+
+                localStorage.setItem('emby_server', server);
+                localStorage.setItem('emby_key', key);
+                localStorage.setItem('emby_static', isStatic);
+
+                this.config = { server, apiKey: key, useStatic: isStatic };
+                this.showToast('配置已保存');
+                this.toggleModal('profilePage', false);
+                this.fetchVideos(); // 重新加载
+            }
+
+            resetConfig() {
+                if (confirm('确定要重置所有配置吗？')) {
+                    localStorage.clear();
+                    location.reload();
+                }
+            }
+
+            loadFavorites() {
+                const saved = localStorage.getItem('emby_favorites');
+                if (saved) this.state.favorites = new Set(JSON.parse(saved));
+            }
+
+            // --- 核心播放逻辑 ---
+            
+            /**
+             * 获取视频列表
+             * @param {string} parentId - 媒体库 ID (可选)
+             * @param {string} ids - 指定视频 ID 列表 (用于收藏夹模式)
+             */
+            async fetchVideos(parentId = null, ids = null) {
+                this.toggleLoading(true);
+                try {
+                    const { server, apiKey } = this.config;
+                    let url = `${server}/emby/Items?api_key=${apiKey}&Recursive=true&IncludeItemTypes=Video&Limit=100&Fields=Overview,Path,RunTimeTicks`;
+
+                    if (ids) {
+                        url += `&Ids=${ids}`;
+                    } else {
+                        url += `&SortBy=DateCreated&SortOrder=Descending`;
+                        if (parentId) url += `&ParentId=${parentId}`;
+                    }
+
+                    const res = await fetch(url);
+                    const data = await res.json();
+
+                    if (data && data.Items && data.Items.length > 0) {
+                        this.state.videos = data.Items;
+                        this.state.currentIndex = 0;
+                        this.renderSlides();
+                        this.loadVideo(0);
+                    } else {
+                        this.showToast('没有找到视频');
+                        this.dom.videoContainer.innerHTML = '';
+                    }
+                } catch (e) {
+                    console.error(e);
+                    this.showToast('无法连接服务器');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
+            /**
+             * 渲染视频卡片结构 (DOM)
+             */
+            renderSlides() {
+                this.dom.videoContainer.innerHTML = '';
+                this.state.videos.forEach((video, index) => {
+                    const el = document.createElement('div');
+                    el.className = 'slide-item';
+                    el.id = `slide-${index}`;
+                    // 初始位置：第一个在视野内，其他在下方
+                    el.style.transform = index === 0 ? 'translateY(0)' : 'translateY(100%)';
+
+                    const posterSrc = this.getImageSrc(video.Id);
+                    
+                    // 修复：在模板中显式添加 hidden 类，与 JS 的 remove('hidden') 配合
+                    el.innerHTML = `
+                        <div class="w-full h-full relative bg-black">
+                            <div class="absolute inset-0 bg-cover bg-center opacity-60" style="background-image: url('${posterSrc}')"></div>
+                            <video id="video-${index}" class="video-fullscreen hidden" playsinline webkit-playsinline loop></video>
+                            <!-- 播放按钮 (暂停时显示) -->
+                            <div id="playBtn-${index}" class="play-pause-btn">
+                                <i class="fa fa-play"></i>
+                            </div>
+                        </div>
+                    `;
+                    this.dom.videoContainer.appendChild(el);
+                });
+                this.updateUI();
+            }
+
+            /**
+             * 加载并准备播放指定索引的视频
+             */
+            loadVideo(index) {
+                // 1. 清理旧视频 (暂停并隐藏)
+                this.state.videos.forEach((_, i) => {
+                    if (i !== index) {
+                        const v = document.getElementById(`video-${i}`);
+                        if (v) {
+                            v.pause();
+                            v.classList.add('hidden');
+                            v.src = ''; // 释放资源
+                        }
+                    }
+                });
+
+                // 2. 加载新视频
+                const item = this.state.videos[index];
+                if (!item) return;
+
+                const videoEl = document.getElementById(`video-${index}`);
+                videoEl.src = this.getVideoSrc(item.Id);
+                
+                // 显式移除 hidden 类，使 display: none 失效
+                videoEl.classList.remove('hidden');
+
+                // 3. 绑定时间更新事件 (进度条)
+                videoEl.ontimeupdate = () => {
+                    if (videoEl.duration) {
+                        const pct = (videoEl.currentTime / videoEl.duration) * 100;
+                        this.dom.progressLine.style.width = `${pct}%`;
+                        this.dom.currentTime.textContent = this.formatTime(videoEl.currentTime);
+                        this.dom.totalTime.textContent = this.formatTime(videoEl.duration);
+                    }
+                };
+
+                this.updateUI();
+            }
+
+            playVideo(index) {
+                const v = document.getElementById(`video-${index}`);
+                const btn = document.getElementById(`playBtn-${index}`);
+                if (v) {
+                    v.play().then(() => {
+                        this.state.isPlaying = true;
+                        btn.classList.remove('paused');
+                    }).catch(() => {
+                        this.state.isPlaying = false;
+                        btn.classList.add('paused');
+                    });
+                }
+            }
+
+            togglePlay() {
+                const idx = this.state.currentIndex;
+                const v = document.getElementById(`video-${idx}`);
+                const btn = document.getElementById(`playBtn-${idx}`);
+                if (!v) return;
+
+                if (v.paused) {
+                    v.play();
+                    this.state.isPlaying = true;
+                    btn.classList.remove('paused');
+                } else {
+                    v.pause();
+                    this.state.isPlaying = false;
+                    btn.classList.add('paused');
+                }
+            }
+
+            // --- 导航与手势 ---
+            
+            nextVideo() {
+                let nextIndex;
+                if (this.state.playMode === 'random') {
+                    nextIndex = Math.floor(Math.random() * this.state.videos.length);
+                } else {
+                    nextIndex = this.state.currentIndex + 1;
+                }
+
+                if (nextIndex >= this.state.videos.length) {
+                    this.showToast('已经是最后一个视频了');
+                    this.resetSlidePosition();
+                    return;
+                }
+                this.switchSlide(nextIndex, 'up');
+            }
+
+            prevVideo() {
+                if (this.state.currentIndex === 0) {
+                    this.resetSlidePosition();
+                    return;
+                }
+                this.switchSlide(this.state.currentIndex - 1, 'down');
+            }
+
+            switchSlide(newIndex, direction) {
+                const currentEl = document.getElementById(`slide-${this.state.currentIndex}`);
+                const nextEl = document.getElementById(`slide-${newIndex}`);
+
+                // 简单的上下切换动画
+                if (direction === 'up') {
+                    currentEl.style.transform = 'translateY(-100%)';
+                    nextEl.style.transform = 'translateY(0)';
+                } else {
+                    currentEl.style.transform = 'translateY(100%)';
+                    nextEl.style.transform = 'translateY(0)';
+                }
+
+                this.state.currentIndex = newIndex;
+                this.loadVideo(newIndex);
+                this.playVideo(newIndex);
+            }
+
+            resetSlidePosition() {
+                // 回弹效果
+                const el = document.getElementById(`slide-${this.state.currentIndex}`);
+                el.style.transform = 'translateY(0)';
+            }
+
+            // --- 辅助功能 ---
+
+            getVideoSrc(id) {
+                const { server, apiKey, useStatic } = this.config;
+                return useStatic 
+                    ? `${server}/emby/Videos/${id}/stream?api_key=${apiKey}&Static=true`
+                    : `${server}/emby/Videos/${id}/stream?api_key=${apiKey}&Container=mp4`;
+            }
+
+            getImageSrc(id) {
+                const { server, apiKey } = this.config;
+                return `${server}/emby/Items/${id}/Images/Primary?api_key=${apiKey}&MaxHeight=800`;
+            }
+
+            async showLibraries() {
+                this.toggleLoading(true);
+                try {
+                    const res = await fetch(`${this.config.server}/emby/Library/VirtualFolders?api_key=${this.config.apiKey}`);
+                    const data = await res.json();
+                    const list = document.getElementById('librariesList');
+                    list.innerHTML = '';
+
+                    data.forEach(lib => {
+                        const div = document.createElement('div');
+                        const isSelected = lib.Id === this.state.currentLibraryId;
+                        
+                        div.className = `p-3 rounded mb-2 cursor-pointer text-sm flex justify-between items-center transition-colors ${
+                            isSelected ? 'bg-gray-700 text-primary font-bold border border-primary/30' : 'bg-gray-800 text-white hover:bg-gray-700'
+                        }`;
+                        
+                        div.innerHTML = `<span>${lib.Name}</span>${isSelected ? '<i class="fa fa-check text-primary"></i>' : ''}`;
+                        
+                        div.onclick = () => {
+                            this.state.currentLibraryId = lib.Id;
+                            this.state.currentTab = 'home';
+                            this.updateTabHighlight();
+                            this.fetchVideos(lib.Id);
+                            this.toggleModal('libraryModal', false);
+                        };
+                        list.appendChild(div);
+                    });
+                    this.toggleModal('libraryModal', true);
+                } catch(e) {
+                    this.showToast('获取媒体库失败');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
+            toggleFavorite() {
+                const item = this.state.videos[this.state.currentIndex];
+                if (!item) return;
+                const id = String(item.Id);
+
+                if (this.state.favorites.has(id)) {
+                    this.state.favorites.delete(id);
+                    this.showToast('已取消收藏');
+                } else {
+                    this.state.favorites.add(id);
+                    this.showToast('收藏成功');
+                }
+                localStorage.setItem('emby_favorites', JSON.stringify([...this.state.favorites]));
+                this.updateUI();
+            }
+
+            // --- UI 更新与交互 ---
+
+            updateUI() {
+                const item = this.state.videos[this.state.currentIndex];
+                if (item) {
+                    // 1. 更新文本信息
+                    this.dom.videoTitle.textContent = item.Name;
+                    this.dom.videoDescription.textContent = item.Overview || '暂无简介';
+                    
+                    // 2. 更新收藏图标
+                    const icon = this.dom.favoriteBtn.querySelector('i');
+                    if (this.state.favorites.has(String(item.Id))) {
+                        icon.className = 'fa fa-heart text-primary text-4xl drop-shadow-md';
+                    } else {
+                        icon.className = 'fa fa-heart text-white text-4xl drop-shadow-md';
+                    }
+                }
+            }
+
+            updateTabHighlight() {
+                // 重置底部导航颜色
+                this.dom.favoritesBtn.className = 'flex flex-col items-center justify-center w-1/4 text-gray-400 cursor-pointer';
+                this.dom.myBtn.className = 'flex flex-col items-center justify-center w-1/4 text-gray-400 cursor-pointer';
+                
+                // 高亮当前
+                if (this.state.currentTab === 'favorites') {
+                    this.dom.favoritesBtn.className = 'flex flex-col items-center justify-center w-1/4 text-white cursor-pointer';
+                } else if (this.state.currentTab === 'my') {
+                    this.dom.myBtn.className = 'flex flex-col items-center justify-center w-1/4 text-white cursor-pointer';
+                }
+            }
+
+            // 修复：清屏模式自动隐藏逻辑
+            toggleClearScreen() {
+                this.state.isClearScreen = !this.state.isClearScreen;
+                const app = document.getElementById('app');
+                const icon = this.dom.clearScreenBtn.querySelector('i');
+                const text = this.dom.clearScreenBtn.querySelector('span');
+
+                if (this.state.isClearScreen) {
+                    app.classList.add('interface-hidden');
+                    icon.className = 'fa fa-eye text-white text-4xl drop-shadow-md';
+                    text.textContent = '退出';
+                    this.showToast('已清屏 (5秒后自动隐藏)');
+                    
+                    // 进入清屏模式，启动计时
+                    this.resetClearScreenTimer();
+                } else {
+                    app.classList.remove('interface-hidden');
+                    icon.className = 'fa fa-eye-slash text-white text-4xl drop-shadow-md';
+                    text.textContent = '清屏';
+                    
+                    // 退出清屏模式，清除计时器，确保按钮可见
+                    if (this.csTimer) clearTimeout(this.csTimer);
+                    this.dom.clearScreenBtn.classList.remove('opacity-0', 'pointer-events-none');
+                }
+            }
+            
+            resetClearScreenTimer() {
+                // 仅在清屏模式下生效
+                if (!this.state.isClearScreen) return;
+
+                // 1. 显示按钮
+                this.dom.clearScreenBtn.classList.remove('opacity-0', 'pointer-events-none');
+                
+                // 2. 清除旧计时器
+                if (this.csTimer) clearTimeout(this.csTimer);
+                
+                // 3. 启动新计时器 (5秒后隐藏)
+                this.csTimer = setTimeout(() => {
+                    this.dom.clearScreenBtn.classList.add('opacity-0', 'pointer-events-none');
+                }, 5000);
+            }
+
+            togglePlayMode() {
+                const isSeq = this.state.playMode === 'sequence';
+                this.state.playMode = isSeq ? 'random' : 'sequence';
+                
+                const btn = this.dom.playModeBtn;
+                btn.querySelector('span').textContent = isSeq ? '随机播放' : '顺序播放';
+                btn.querySelector('i').className = isSeq ? 'fa fa-random text-lg' : 'fa fa-repeat text-lg';
+                
+                this.showToast(isSeq ? '已切换随机播放' : '已切换顺序播放');
+            }
+
+            // --- 事件绑定 ---
+            bindEvents() {
+                // 1. 播放控制
+                this.dom.clickToPlayOverlay.onclick = () => {
+                    this.dom.clickToPlayOverlay.style.display = 'none';
+                    this.playVideo(this.state.currentIndex);
+                };
+                
+                // 2. 右侧工具栏
+                this.dom.favoriteBtn.onclick = (e) => { e.stopPropagation(); this.toggleFavorite(); };
+                this.dom.clearScreenBtn.onclick = (e) => { 
+                    e.stopPropagation(); 
+                    this.toggleClearScreen(); 
+                };
+                this.dom.muteBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    const v = document.getElementById(`video-${this.state.currentIndex}`);
+                    if (v) {
+                        v.muted = !v.muted;
+                        this.dom.muteBtn.querySelector('i').className = v.muted ? 'fa fa-volume-off text-white text-4xl drop-shadow-md' : 'fa fa-volume-up text-white text-4xl drop-shadow-md';
+                        this.showToast(v.muted ? '已静音' : '已开启声音');
+                    }
+                };
+                
+                // 修复：全屏按钮图标逻辑
+                this.dom.fullscreenBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (!document.fullscreenElement) {
+                        document.documentElement.requestFullscreen().catch(()=>{});
+                    } else {
+                        document.exitFullscreen();
+                    }
+                };
+                // 监听全屏变化事件
+                document.addEventListener('fullscreenchange', () => {
+                     const icon = this.dom.fullscreenBtn.querySelector('i');
+                     if(document.fullscreenElement) {
+                         icon.className = 'fa fa-compress text-white text-4xl drop-shadow-md';
+                     } else {
+                         icon.className = 'fa fa-expand text-white text-4xl drop-shadow-md';
+                     }
+                });
+
+                // 3. 底部导航
+                this.dom.playModeBtn.onclick = () => this.togglePlayMode();
+                this.dom.libraryBtn.onclick = () => this.showLibraries();
+                this.dom.favoritesBtn.onclick = () => {
+                    if (this.state.favorites.size === 0) return this.showToast('暂无收藏');
+                    this.state.currentTab = 'favorites';
+                    this.state.currentLibraryId = null;
+                    this.updateTabHighlight();
+                    this.fetchVideos(null, [...this.state.favorites].join(','));
+                };
+                this.dom.myBtn.onclick = () => this.toggleModal('profilePage', true);
+
+                // 4. 弹窗操作
+                document.getElementById('closeLibraryBtn').onclick = () => this.toggleModal('libraryModal', false);
+                document.getElementById('closeProfileBtn').onclick = () => this.toggleModal('profilePage', false);
+                document.getElementById('saveConfigBtn').onclick = () => this.saveConfig();
+                document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
+
+                // 5. 进度条点击
+                document.getElementById('progressBarContainer').onclick = (e) => {
+                    e.stopPropagation();
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    const v = document.getElementById(`video-${this.state.currentIndex}`);
+                    if (v && v.duration) v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration;
+                };
+
+                // 6. 触摸手势逻辑
+                const container = this.dom.videoContainer;
+                container.addEventListener('touchstart', (e) => {
+                    this.touch.startY = e.touches[0].clientY;
+                    this.touch.startTime = Date.now();
+                }, { passive: true });
+
+                container.addEventListener('touchend', (e) => {
+                    const deltaY = e.changedTouches[0].clientY - this.touch.startY;
+                    const time = Date.now() - this.touch.startTime;
+
+                    if (Math.abs(deltaY) < 10 && time < 200) {
+                        if (e.target.closest('.slide-item')) {
+                            this.togglePlay();
+                            // 如果在清屏模式，点击屏幕唤醒按钮
+                            if(this.state.isClearScreen) this.resetClearScreenTimer();
+                        }
+                    } else if (Math.abs(deltaY) > 50) {
+                        deltaY < 0 ? this.nextVideo() : this.prevVideo();
+                    }
+                });
+                
+                // PC 点击兼容
+                container.addEventListener('click', (e) => {
+                    if (!('ontouchstart' in window) && e.target.closest('.slide-item')) {
+                        this.togglePlay();
+                        if(this.state.isClearScreen) this.resetClearScreenTimer();
+                    }
+                });
+            }
+
+            // --- 通用辅助 ---
+            toggleModal(id, show) {
+                const el = document.getElementById(id);
+                if (id === 'profilePage') {
+                    if (show) { el.classList.add('active'); this.state.currentTab = 'my'; }
+                    else { el.classList.remove('active'); } // 关闭时 tab 状态不立即恢复，由用户操作决定
+                    if(show) this.updateTabHighlight();
+                } else {
+                    // 普通弹窗 (libraryModal)
+                    if (show) el.classList.remove('hidden'); else el.classList.add('hidden');
+                }
+            }
+
+            toggleLoading(show) {
+                const el = this.dom.loading;
+                if (show) el.classList.remove('hidden'); else el.classList.add('hidden');
+            }
+
+            showToast(msg) {
+                const t = this.dom.toast;
+                t.textContent = msg;
+                t.classList.remove('opacity-0');
+                setTimeout(() => t.classList.add('opacity-0'), 2000);
+            }
+
+            formatTime(s) {
+                if (!s) return '00:00';
+                const m = Math.floor(s / 60);
+                const sec = Math.floor(s % 60);
+                return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            }
+        }
+
+        // 启动应用
+        window.onload = () => { window.app = new EmbyApp(); };
+    </script>
+</body>
+</html>
