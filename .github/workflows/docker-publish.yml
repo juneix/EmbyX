@@ -34,6 +34,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Login to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
       - name: Lowercase the repo name
         run: echo "REPO_LOWER=${GITHUB_REPOSITORY_OWNER,,}" >> ${GITHUB_ENV}
 
@@ -45,5 +51,6 @@ jobs:
           push: true
           tags: |
             ghcr.io/${{ env.REPO_LOWER }}/embyx:latest
+            ${{ secrets.DOCKER_USER }}/embyx:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
