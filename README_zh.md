@@ -86,23 +86,25 @@ EmbyX 即将上架飞牛商店（审核中），加入交流群可下载 fpk 文
 
 ### 方式三：Docker 部署
 
-如果你不想折腾 Web 环境，可以使用 Docker 快速部署。
+不想折腾 Web 环境？那就直接 Docker 搞定。推荐使用 GHCR 获取更新；NAS 用户可使用 Docker Hub。
 
-#### 使用 Docker: 
+#### 使用 Docker CLI: 
 ```bash
 docker run -d \
   --name embyx \
   --network host \
   -e APP_LANG=zh \
   -e APP_PORT=8090 \
-  ghcr.io/juneix/embyx:latest
+  ghcr.io/juneix/embyx
+  # docker.1ms.run/juneix/embyx # 毫秒镜像加速
 ```
 
 #### 使用 Docker Compose:
 ```yaml
 services:
   embyx:
-    image: ghcr.io/juneix/embyx:latest
+    image: ghcr.io/juneix/embyx 
+    # image: docker.1ms.run/juneix/embyx  # 毫秒镜像加速
     container_name: embyx
     restart: unless-stopped
     network_mode: host

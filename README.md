@@ -81,22 +81,27 @@ Simply put all files from `en/` folder into your web server (Nginx, Apache, etc.
 
 ### Option 2: Docker Deployment
 
-If you don't want to mess with the web environment, you can use docker to deploy quickly.
+Don't want to mess with the environment? Just use Docker. Recommended GHCR for updates, Docker Hub for NAS.
 
-#### Docker: 
+- GHCR: `ghcr.io/juneix/embyx`
+- Docker Hub: `juneix/embyx`
+
+#### Docker CLI: 
+
 ```bash
 docker run -d \
   --name embyx \
   --network host \
   -e APP_LANG=en \
   -e APP_PORT=8090 \
-  ghcr.io/juneix/embyx:latest
+  ghcr.io/juneix/embyx
 ```
 #### Docker Compose:
 ```yaml
 services:
   embyx:
-    image: ghcr.io/juneix/embyx:latest
+    image: ghcr.io/juneix/embyx
+    # image: juneix/embyx # Docker Hub Mirror 
     container_name: embyx
     restart: unless-stopped
     network_mode: host
