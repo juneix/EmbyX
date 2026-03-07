@@ -120,7 +120,7 @@ services:
 <div align="center">
   <div style="display: inline-block; margin: 10px;">
     <img src="./zh/wechat.webp" width="128" />
-    <br/><sub>微信</sub>
+    <br/><sub>微信支付</sub>
   </div>
   <div style="display: inline-block; margin: 10px;">
     <img src="./zh/alipay.webp" width="128" />
