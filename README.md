@@ -116,8 +116,8 @@ If you find EmbyX useful, consider supporting its development or joining our com
 
 | Support | Community |
 | :--- | :--- |
-| [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/juneixtse) | [![Telegram Channel](https://img.shields.io/badge/Telegram-Join%20Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/juneix_en) |
-| [![Buy Me a Coffee](https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/juneixtse) | [![X (Twitter)](https://img.shields.io/badge/X-Follow%20Me-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/juneix_tse) |
+| [![Buy Me a Coffee](https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/juneixtse) | [![Telegram Channel](https://img.shields.io/badge/Telegram-Join%20Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/juneix_en) |
+| [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/juneixtse) | [![X (Twitter)](https://img.shields.io/badge/X-Follow%20Me-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/juneix_tse) |
 
 
 
