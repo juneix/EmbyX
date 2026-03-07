@@ -118,14 +118,18 @@ services:
 - 更多内容：访问 ➡️ [谢週五の藏经阁](https://5nav.eu.org)
 
 <div align="center">
-  <div style="display: inline-block; margin: 10px;">
-    <img src="./zh/wechat.webp" width="128" />
-    <br/><sub>微信</sub>
-  </div>
-  <div style="display: inline-block; margin: 10px;">
-    <img src="./zh/alipay.webp" width="128" />
-    <br/><sub>支付宝</sub>
-  </div>
+  <table>
+    <tr>
+      <td align="center">
+        <img src="./zh/wechat.webp" width="128" /><br/>
+        <sub>微信</sub>
+      </td>
+      <td align="center">
+        <img src="./zh/alipay.webp" width="128" /><br/>
+        <sub>支付宝</sub>
+      </td>
+    </tr>
+  </table>
 </div>
 
 ## 📝 开源协议
