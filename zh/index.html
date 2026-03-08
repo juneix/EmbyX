@@ -2212,9 +2212,9 @@
                                     '#videoContainer .focusable-item'
                         ));
                         let currentIndex = items.indexOf(document.activeElement);
-                        if (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' ||
+                        if (!isInput && (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' ||
                             lowKey === 'w' || lowKey === 'a' || lowKey === 's' || lowKey === 'd' ||
-                            [38, 40, 37, 39].includes(keyCode)) {
+                            [38, 40, 37, 39].includes(keyCode))) {
                             e.preventDefault();
                             if (currentIndex === -1) {
                                 let startItem = items[0];
