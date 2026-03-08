@@ -4,6 +4,8 @@
 
 A TikTok-style web player for Emby / Jellyfin. Experience your private media library in a whole new, immersive way.
 
+![EmbyX](/poster-en.webp)
+
 ## ✨ Features
 
 - **Fluid Playback**: TikTok-style vertical scrolling for an **immersive** experience.

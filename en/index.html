@@ -4,7 +4,7 @@
   © 2026 All Rights Reserved
 -->
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="en">
 
 <head>
     <meta charset="UTF-8">
@@ -282,7 +282,8 @@
                         <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
                             <div>
                                 <label class="text-gray-400 text-xs block mb-1.5">Server URL</label>
-                                <input type="text" id="configServer" placeholder="Use HTTPS for remote connections"
+                                <input type="text" id="configServer"
+                                    placeholder="Reverse proxy or Self-host EmbyX for HTTP"
                                     class="w-full bg-gray-900 text-white text-sm rounded px-3 py-2.5 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                             </div>
                             <div class="grid grid-cols-2 gap-2">
@@ -365,7 +366,7 @@
 
                             <div>
                                 <h4 class="text-gray-300">🔮 Playback</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs">
+                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
                                     <li>Native HTML5 player, best on modern devices.</li>
                                     <li>Older devices can use server transcoding.</li>
                                 </ul>
@@ -409,10 +410,9 @@
 
                             <div>
                                 <h4 class="text-gray-300">🧩 Tips & Tricks</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs">
-                                    <li>Setup: Use a dedicated account; < 1,000 videos per library.</li>
-                                    <li>PWA: 📲 Add to Home Screen or Install as App.</li>
-                                    <li>Controls: Full Mouse, Keyboard support for PC & TV.</li>
+                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
+                                    <li>Best Practice: < 1,000 items per library</li>
+                                    <li>PWA: 📲 Add to Home Screen or Install as App</li>
                                 </ul>
                             </div>
 
@@ -500,16 +500,16 @@
                                     <a href="https://x.com/juneix_tse" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap">
                                         <i data-lucide="twitter"
-                                            class="w-3.5 h-3.5 mr-1.5 grayscale brightness-200"></i> X / Twitter</a>
+                                            class="w-3.5 h-3.5 mr-1.5 grayscale brightness-200"></i> X • Follow</a>
                                     <a href="https://t.me/juneix_en" target="_blank"
                                         class="flex items-center justify-center text-[#26A5E4] bg-[#26A5E4]/10 hover:bg-[#26A5E4]/20 px-3 py-1.5 rounded-full transition-colors border border-[#26A5E4]/20 text-[10px] whitespace-nowrap">
-                                        <i data-lucide="send" class="w-3.5 h-3.5 mr-1.5"></i> Telegram</a>
+                                        <i data-lucide="send" class="w-3.5 h-3.5 mr-1.5"></i> Telegram • Channel</a>
                                     <a href="https://ko-fi.com/juneixtse" target="_blank"
                                         class="flex items-center justify-center text-[#FF5E5B] bg-[#FF5E5B]/10 hover:bg-[#FF5E5B]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FF5E5B]/20 text-[10px] whitespace-nowrap">
-                                        <i data-lucide="coffee" class="w-3.5 h-3.5 mr-1.5"></i> Ko-fi</a>
-                                    <a href="https://paypal.me/juneixtse" target="_blank"
-                                        class="flex items-center justify-center text-[#ffc439] bg-[#ffc439]/10 hover:bg-[#ffc439]/20 px-3 py-1.5 rounded-full transition-colors border border-[#ffc439]/20 text-[10px] whitespace-nowrap">
-                                        <i data-lucide="credit-card" class="w-3.5 h-3.5 mr-1.5"></i> PayPal</a>
+                                        <i data-lucide="coffee" class="w-3.5 h-3.5 mr-1.5"></i> Ko-fi • Support</a>
+                                    <a href="https://github.com/juneix/embyx" target="_blank"
+                                        class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <i data-lucide="github" class="w-3.5 h-3.5 mr-1.5"></i> GitHub • Source</a>
                                 </div>
                             </div>
 
@@ -688,13 +688,13 @@
                         body: JSON.stringify({ Username: user, Pw: pwd })
                     });
                     if (res.status === 401) {
-                        this.showToast('Auth failed: Invalid Username or Password');
+                        this.showToast('❌ Auth failed: Invalid Username or Password');
                         return;
                     } else if (res.status === 404) {
-                        this.showToast('Connection Failed: Check port');
+                        this.showToast('❌ Connection Failed: Check port');
                         return;
                     } else if (!res.ok) {
-                        this.showToast(`Connection Failed ${res.status}. Check Emby logs.`);
+                        this.showToast('❌ Connection Failed ' + res.status + '. Check Emby logs.');
                         return;
                     }
 
@@ -724,7 +724,7 @@
                         this.toggleModal('profilePage', false);
                         this.fetchVideos();
                     } else {
-                        this.showToast('Auth failed: Invalid Username or Password');
+                        this.showToast('❌ Auth failed: Invalid Username or Password');
                     }
                 } catch (e) {
                     console.error('saveConfig error:', e);
@@ -732,11 +732,11 @@
                     const isHttps = location.protocol === 'https:';
                     const targetHttp = server.startsWith('http:');
                     if (isHttps && targetHttp) {
-                        this.showToast('Blocked: HTTP Emby not allowed from HTTPS page');
+                        this.showToast('❌ Blocked: Mixed Content (HTTPS -> HTTP)');
                     } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
-                        this.showToast('Cannot connect to server');
+                        this.showToast('❌ Cannot connect to server');
                     } else {
-                        this.showToast('Connection Failed：' + (msg || 'Unknown error'));
+                        this.showToast('❌ Connection Failed: ' + (msg || 'Unknown error'));
                     }
                 } finally {
                     this.toggleLoading(false);
@@ -1822,7 +1822,7 @@
                                 <span class="col-span-2 text-gray-200 font-mono">${fileSizeStr}</span>
                             </div>
                             <div class="grid grid-cols-3 gap-2 py-2 items-center">
-                                <span class="text-gray-500 text-right">Playback Policy</span>
+                                <span class="text-gray-500 text-right">Playback</span>
                                 <span class="col-span-2 text-gray-200">${transcodeState}</span>
                             </div>
                         `;

@@ -299,7 +299,7 @@
                         <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
                             <div>
                                 <label class="text-gray-400 text-xs block mb-1.5">服务器地址</label>
-                                <input type="text" id="configServer" placeholder="非局域网请使用 HTTPS"
+                                <input type="text" id="configServer" placeholder="HTTP 访问可反代或自建 EmbyX"
                                     class="w-full bg-gray-900 text-white text-sm rounded px-3 py-2.5 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                             </div>
                             <div class="grid grid-cols-2 gap-2">
@@ -383,9 +383,9 @@
 
                             <div>
                                 <h4 class="text-gray-300">🔮 播放性能</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs">
+                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
                                     <li>原生 HTML5 播放器，新设备体验最佳</li>
-                                    <li>老设备需服务器转码，<del>不如放到**上回收了(没打钱</del>😂</li>
+                                    <li>老设备需服务器转码，<del>不如放到**上回收(没打钱</del>😂</li>
                                 </ul>
                                 <div class="bg-black/40 rounded-lg overflow-hidden border border-gray-700/50 mt-3">
                                     <table class="w-full text-center text-[11px] leading-tight border-collapse">
@@ -423,10 +423,9 @@
 
                             <div>
                                 <h4 class="text-gray-300">🧩 使用技巧</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs">
-                                    <li>配置建议：新建专用账号，每个媒体库 < 1000 个视频</li>
+                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
+                                    <li>配置建议：每个媒体库 < 1000 个视频</li>
                                     <li>PWA应用：📲 添加到主屏幕/作为应用安装</li>
-                                    <li>键鼠适配：纯按键控制，电脑、电视轻松摸鱼</li>
                                 </ul>
                             </div>
 
@@ -502,16 +501,25 @@
 
                             <div>
                                 <h4 class="text-gray-300">🚀 交流与支持</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-3">
-                                    <li><span class="text-gray-300 font-medium">打赏鼓励：</span>支持我开发更多有趣应用</li>
-                                    <li><span class="text-gray-300 font-medium">互动群聊：</span>加入<a
-                                            href="mqqapi://card/show_pslcard?src_type=internal&version=1&uin=646913307&card_type=group&source=qrcode"
-                                            class="text-primary hover:underline">💬QQ 群</a>可在线催更</li>
-                                    <li><span class="text-gray-300 font-medium">更多内容：</span>访问➡️<a
-                                            href="https://5nav.eu.org" target="_blank"
-                                            class="text-primary hover:underline">谢週五の藏经阁</a></li>
-                                </ul>
-                                <div class="flex justify-center space-x-3 mt-4">
+                                <p class="text-gray-400 text-xs mt-2">💬 欢迎转发分享本项目，关注社媒动态、加群催更互动！</p>
+                                <!-- 胶囊按钮组：社区 & 开源 -->
+                                <div class="grid grid-cols-2 gap-2 mt-3">
+                                    <a href="https://space.bilibili.com/765334/" target="_blank"
+                                        class="flex items-center justify-center text-[#FB7299] bg-[#FB7299]/10 hover:bg-[#FB7299]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FB7299]/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <i data-lucide="tv-2" class="w-3.5 h-3.5 mr-1.5"></i> B 站·教程</a>
+                                    <a href="https://xhslink.com/m/XSWtx7YRfI" target="_blank"
+                                        class="flex items-center justify-center text-[#FF2442] bg-[#FF2442]/10 hover:bg-[#FF2442]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FF2442]/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <i data-lucide="book-open" class="w-3.5 h-3.5 mr-1.5"></i> 小红书·攻略</a>
+                                    <a href="mqqapi://card/show_pslcard?src_type=internal&version=1&uin=646913307&card_type=group&source=qrcode"
+                                        class="flex items-center justify-center text-[#12B7F5] bg-[#12B7F5]/10 hover:bg-[#12B7F5]/20 px-3 py-1.5 rounded-full transition-colors border border-[#12B7F5]/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <i data-lucide="message-circle" class="w-3.5 h-3.5 mr-1.5"></i> QQ 群·催更</a>
+                                    <a href="https://github.com/juneix/embyx" target="_blank"
+                                        class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 py-1.5 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <i data-lucide="github" class="w-3.5 h-3.5 mr-1.5"></i> GitHub · 开源</a>
+                                </div>
+                                <!-- 打赏区 -->
+                                <p class="text-gray-400 text-xs mt-4 mb-2">☕ 打赏鼓励，支持我开发更多有趣应用～</p>
+                                <div class="flex justify-center space-x-3">
                                     <a href="weixin://profile/gh_86f7c0a73738">
                                         <div class="flex flex-col items-center">
                                             <img src="wechat.webp" alt="微信" class="w-24 h-24 object-cover rounded">
@@ -722,13 +730,13 @@
                     });
                     // 先按状态码分流，再尝试解析 JSON（避免非 JSON 响应体导致 json() 报错）
                     if (res.status === 401) {
-                        this.showToast('认证失败：用户名或密码错误');
+                        this.showToast('❌认证失败：用户名或密码错误');
                         return;
                     } else if (res.status === 404) {
-                        this.showToast('连接失败：请检查端口号');
+                        this.showToast('❌连接失败：请检查端口号');
                         return;
                     } else if (!res.ok) {
-                        this.showToast(`连接失败 ${res.status}，请检查 Emby 日志`);
+                        this.showToast('❌连接失败 ' + res.status + '，请检查 Emby 日志');
                         return;
                     }
 
@@ -760,7 +768,7 @@
                         this.toggleModal('profilePage', false);
                         this.fetchVideos();
                     } else {
-                        this.showToast('认证失败：用户名或密码错误');
+                        this.showToast('❌ 认证失败：用户名或密码错误');
                     }
                 } catch (e) {
                     console.error('saveConfig error:', e);
@@ -770,11 +778,11 @@
                     const targetHttp = server.startsWith('http:');
                     if (isHttps && targetHttp) {
                         // HTTPS 页面请求 HTTP Emby 会被浏览器拦截（Mixed Content）
-                        this.showToast('请求被拦截：非局域网不允许 http 协议');
+                        this.showToast('❌ 连接失败：请求被拦截 (HTTPS -> HTTP)');
                     } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
-                        this.showToast('无法连接服务器');
+                        this.showToast('❌ 无法连接服务器');
                     } else {
-                        this.showToast('连接失败：' + (msg || '未知错误'));
+                        this.showToast('❌ 连接失败：' + (msg || '未知错误'));
                     }
                 } finally {
                     this.toggleLoading(false);
