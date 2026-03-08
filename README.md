@@ -2,7 +2,14 @@
 
 [中文说明](./README_zh.md)
 
-A TikTok-style web player for Emby / Jellyfin. Experience your private media library in a whole new, immersive way.
+[![GitHub Release](https://img.shields.io/github/v/release/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/releases)
+[![GitHub Stars](https://img.shields.io/github/stars/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/stargazers)
+[![GitHub Forks](https://img.shields.io/github/forks/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/forks)
+[![Docker Pulls](https://img.shields.io/docker/pulls/juneix/embyx?style=flat-square&logo=docker&color=2496ED)](https://hub.docker.com/r/juneix/embyx)
+[![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](./LICENSE)
+[![Code Size](https://img.shields.io/github/languages/code-size/juneix/embyx?style=flat-square&color=gray)](https://github.com/juneix/embyx)
+
+A TikTok-style web player for Emby / Jellyfin. Experience your private media library in a whole new, immersive way. 🎉
 
 ![EmbyX-1](/poster1-en.webp)
 
@@ -30,7 +37,7 @@ Prefer full control? You can **self-host** EmbyX on your own server.
 
 ## 📢 Spread the Word
 
-If EmbyX makes your digital life easier, please share it with your friends or on social media! As an independent developer, your word-of-mouth is the best way to help this project grow.
+If EmbyX makes your digital life easier, please `star it on GitHub ⭐️`, or share it with your friends and the community! As an independent developer, your support is the best way to help this project grow.
 
 > Love it? [Donations are welcome!](#❤️-support-the-project)
 
@@ -123,6 +130,11 @@ If you find EmbyX useful, consider supporting its development or joining our com
 | [![Buy Me a Coffee](https://img.shields.io/badge/Ko--fi-Support%20Me-FF5E5B?style=for-the-badge&logo=kofi&logoColor=white)](https://ko-fi.com/juneixtse) | [![Telegram Channel](https://img.shields.io/badge/Telegram-Join%20Channel-26A5E4?style=for-the-badge&logo=telegram&logoColor=white)](https://t.me/juneix_en) |
 | [![Donate with PayPal](https://img.shields.io/badge/PayPal-Donate-00457C?style=for-the-badge&logo=paypal&logoColor=white)](https://paypal.me/juneixtse) | [![X (Twitter)](https://img.shields.io/badge/X-Follow%20Me-000000?style=for-the-badge&logo=x&logoColor=white)](https://x.com/juneix_tse) |
 
+
+
+## 🌟 Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=juneix/embyx&type=Date)](https://star-history.com/#juneix/embyx&Date)
 
 
 ## 📝 License
