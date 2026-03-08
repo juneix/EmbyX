@@ -2,7 +2,9 @@
 
 EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉
 
-![EmbyX](/poster-zh.webp)
+![EmbyX-1](/poster1-zh.webp)
+
+![EmbyX-2](/poster2-zh.webp)
 
 ## ✨ 功能特色
 
