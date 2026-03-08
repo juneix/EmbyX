@@ -909,6 +909,8 @@
             renderSlides() {
                 this.dom.videoContainer.innerHTML = '';
                 this.dom.videoContainer.className = 'relative w-full h-full transition-transform duration-300 ease-out';
+                // 清除格子视图残留的内联 transition，防止覆盖 class 里的过渡动画
+                this.dom.videoContainer.style.transition = '';
                 this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
 
                 // 只初始化 3 个物理槽位
@@ -951,10 +953,13 @@
             renderGridView() {
                 this.dom.slides = null;
                 const container = this.dom.videoContainer;
-                container.innerHTML = '';
-                // 先禁用过渡再重置 transform，避免 stream 模式的 translateY 动画在切换时短暂错位
+                // 重置页面滚动（防止 scrollIntoView 污染 html.scrollTop 导致标题栏错位）
+                document.documentElement.scrollTop = 0;
+                // 禁用过渡 + 强制回流，再清零 transform，防止 stream 模式的偏移残留
                 container.style.transition = 'none';
+                void container.offsetHeight;
                 container.style.transform = 'none';
+                container.innerHTML = '';
                 // 完全重置为绝对定位的、可滚动的原生网格层
                 container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
 
@@ -1176,10 +1181,15 @@
                     this.dom.videoDescription.textContent = focusVideo.Overview || '没有简介...';
                 }
 
-                // 滚动到当前高亮的卡片
+                // 滚动到当前高亮的卡片（直接操作 scrollArea，避免 scrollIntoView 污染 html.scrollTop）
                 requestAnimationFrame(() => {
                     const activeEl = gridWrapper.children[this.state.currentIndex];
-                    if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+                    if (activeEl && scrollArea) {
+                        const elTop = activeEl.offsetTop;
+                        const elHeight = activeEl.offsetHeight;
+                        const areaHeight = scrollArea.clientHeight;
+                        scrollArea.scrollTop = elTop - (areaHeight / 2) + (elHeight / 2);
+                    }
                 });
 
                 lucide.createIcons();

@@ -850,6 +850,8 @@
             renderSlides() {
                 this.dom.videoContainer.innerHTML = '';
                 this.dom.videoContainer.className = 'relative w-full h-full transition-transform duration-300 ease-out';
+                // Clear inline transition left by grid mode, so class-based animation works
+                this.dom.videoContainer.style.transition = '';
                 this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
 
                 for (let i = 0; i < 3; i++) {
@@ -887,9 +889,13 @@
             renderGridView() {
                 this.dom.slides = null;
                 const container = this.dom.videoContainer;
-                container.innerHTML = '';
+                // Reset page scroll (scrollIntoView can pollute html.scrollTop causing header misalignment)
+                document.documentElement.scrollTop = 0;
+                // Disable transition + force reflow before clearing transform, prevents stream offset flickering
                 container.style.transition = 'none';
+                void container.offsetHeight;
                 container.style.transform = 'none';
+                container.innerHTML = '';
                 container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
 
                 const currentVideo = this.state.videos[this.state.currentIndex];
@@ -1093,9 +1099,15 @@
                     this.dom.videoDescription.textContent = focusVideo.Overview || 'No Description...';
                 }
 
+                // Scroll to active card (direct scrollArea op, avoids scrollIntoView polluting html.scrollTop)
                 requestAnimationFrame(() => {
                     const activeEl = gridWrapper.children[this.state.currentIndex];
-                    if (activeEl) activeEl.scrollIntoView({ block: 'center', behavior: 'instant' });
+                    if (activeEl && scrollArea) {
+                        const elTop = activeEl.offsetTop;
+                        const elHeight = activeEl.offsetHeight;
+                        const areaHeight = scrollArea.clientHeight;
+                        scrollArea.scrollTop = elTop - (areaHeight / 2) + (elHeight / 2);
+                    }
                 });
 
                 lucide.createIcons();
