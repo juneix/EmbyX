@@ -4,7 +4,9 @@
 
 A TikTok-style web player for Emby / Jellyfin. Experience your private media library in a whole new, immersive way.
 
-![EmbyX](/poster-en.webp)
+![EmbyX-1](/poster1-en.webp)
+
+![EmbyX-2](/poster2-en.webp)
 
 ## ✨ Features
 
