@@ -626,6 +626,11 @@
             init() {
                 this.cacheDOM();
                 this.loadConfig();
+
+                // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
+                const vEl = document.querySelector('.bg-primary\\/20.text-xs');
+                this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
+
                 this.loadFavorites();
                 this.bindEvents();
 
@@ -687,6 +692,13 @@
                 this.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
                 this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
 
+                // 生成或读取设备唯一 ID，解决多设备识别冲突问题
+                if (!localStorage.getItem('emby_device_id')) {
+                    const randomId = Math.random().toString(36).slice(2, 10);
+                    localStorage.setItem('emby_device_id', `EmbyX-${randomId}`);
+                }
+                this.config.deviceId = localStorage.getItem('emby_device_id');
+
                 // 读取高频交互状态
                 const savedScale = localStorage.getItem('emby_is_scale_fill');
                 if (savedScale !== null) this.state.isScaleFill = savedScale === 'true';
@@ -738,7 +750,7 @@
                 this.toggleLoading(true);
                 try {
                     // 如果是用旧 token 更新设置，跳过登录
-                    if (pwd === '****' && this.config.token && this.config.server === server && this.config.user === user) {
+                    if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
                         localStorage.setItem('emby_static', isStatic);
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_delete_mode', deleteMode);
@@ -762,7 +774,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         },
                         body: JSON.stringify({ Username: user, Pw: pwd })
                     });
@@ -790,7 +802,7 @@
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_delete_mode', deleteMode);
 
-                        this.config = { server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, deleteMode };
+                        this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, deleteMode };
 
                         // 将密码位数存入 localStorage，不存密码本身；空密码至少显示 1 个 *
                         const pwdLen = Math.max(1, pwd.length);
@@ -901,7 +913,7 @@
 
                     const res = await fetch(url, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     if (!res.ok) {
@@ -1463,36 +1475,96 @@
                 if (!v) return;
 
                 const retryCount = parseInt(v.dataset.retryCount || '0');
-
-                if (this.config.useStatic) {
-                    // 报错时立即请求文件详情获取库容器编码
-                    const doShow = (fmt) => this.showToast(`原生播放器不支持此编码 (${fmt ? fmt.toUpperCase() : '未知'})`);
-                    const { server, token, userId } = this.config;
-                    fetch(`${server}/emby/Users/${userId}/Items/${item.Id}?api_key=${token}&Fields=MediaSources`)
-                        .then(r => r.json())
-                        .then(d => {
-                            const src = d.MediaSources?.[0];
-                            const vStream = src?.MediaStreams?.find(s => s.Type === 'Video');
-                            const codec = vStream?.Codec || src?.Container || '';
-                            doShow(codec);
-                        })
-                        .catch(() => doShow(''));
-                    return;
-                }
-
-                // 如果取消了"直接播放"（允许转码），进行1次重试，使用转码流
-                if (retryCount >= 1) {
-                    this.showToast('转码播放失败，请检查 Emby 设置');
-                    return;
-                }
+                // iOS 识别：Safari/WKWebView，以及 Mac 上 Safari（maxTouchPoints > 1）
+                const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
                 v.dataset.retryCount = String(retryCount + 1);
+
+                if (this.config.useStatic) {
+                    // ── 直接播放模式下的回退链 ────────────────────────────────
+                    // 修改回退链步数：iOS 三步 / 非 iOS 两步
+                    if (isIOS) {
+                        // iOS 降级链：Direct Play → Direct Stream → HLS 转码
+                        if (retryCount === 0) {
+                            // Step 1: Direct Stream（直接串流：只转封装不重编，速度最快）
+                            // 补全 VideoCodec 声明，防止 Emby 误判定为不支持 hevc 而触发重编码
+                            const { server, token } = this.config;
+                            const deviceId = this.config.deviceId || 'EmbyX-Device';
+                            this.showToast('iOS 直接串流...');
+                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                            v.load();
+                            this.playVideo(index);
+                        } else if (retryCount === 1) {
+                            // Step 2: HLS 转码（兼容所有编码的兜底方案）
+                            this.showToast('iOS 兼容播放...');
+                            v.src = this._buildHlsSrc(item.Id, item);
+                            v.load();
+                            this.playVideo(index);
+                        } else {
+                            this.toggleLoading(false);
+                            this.showToast('播放失败，请检查 Emby 设置');
+                        }
+                    } else {
+                        // 非 iOS 降级链：Direct Play → Direct Stream
+                        if (retryCount === 0) {
+                            const { server, token } = this.config;
+                            const deviceId = this.config.deviceId || 'EmbyX-Device';
+                            this.showToast('尝试直接串流...');
+                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                            v.load();
+                            this.playVideo(index);
+                        } else {
+                            this.toggleLoading(false);
+                            this.showToast('播放失败，禁用"直接播放"可转码');
+                        }
+                    }
+                } else {
+                    // ── 转码模式（HLS）失败，无更多降级选项 ───────────────────
+                    this.toggleLoading(false);
+                    this.showToast('转码失败，请检查 Emby 设置');
+                }
+            }
+
+            // ── HLS 转码 URL 构造器（全平台通用）────────────────────────────────
+            // MediaSourceId、PlaySessionId 是 Emby 转码 API 的必传参数，缺少会导致 500
+            // 修改规格：如需调整码率上限，修改 VideoBitrate（单位 bps，默认 20Mbps）
+            //
+            // 【智能转码策略说明】
+            // VideoCodec=h264（只声明支持 h264）：
+            //   → 源文件是 h264？允许 stream copy（remux 进 HLS 分片，不重编）→ 高效
+            //   → 源文件是 hevc/av1？Emby 判断客户端不支持，自动转码为 h264 → 触发硬件加速
+            // AllowVideoStreamCopy=true：
+            //   明确允许 h264 直接 remux，避免 h264 套娃重编（节省 GPU/CPU）
+            // 注意：EnableAutoStreamCopy 不加，它会绕过 HLS 分片逻辑直接走流传输
+            _buildHlsSrc(id, mediaItem) {
                 const { server, token } = this.config;
-                // 转码模式 Container=mp4
-                v.src = `${server}/emby/Videos/${item.Id}/stream?api_key=${token}&Container=mp4`;
-                v.load();
-                this.playVideo(index);
-                this.showToast('尝试转码播放中...');
+                const mediaSourceId = mediaItem?.MediaSources?.[0]?.Id || '';
+                // 每次播放生成唯一会话 ID，保证 Emby 不复用旧的转码任务
+                const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
+                const deviceId = this.config.deviceId || 'EmbyX-Device';
+
+                const params = [
+                    `api_key=${token}`,
+                    mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
+                    `DeviceId=${deviceId}`,
+                    `PlaySessionId=${playSessionId}`,
+                    `VideoCodec=h264`,           // 只声明 h264：hevc/av1/等会被强制转码为 h264
+                    `AudioCodec=aac,mp3,ac3`,
+                    `VideoBitrate=20000000`,
+                    `AudioBitrate=320000`,
+                    `TranscodingMaxAudioChannels=2`,
+                    `SegmentContainer=ts`,       // 锁定为 ts：解决 h264 源文件在 fMP4/mp4 容器下 HLS 播放失败的问题
+                    `MinSegments=1`,
+                    `BreakOnNonKeyFrames=True`,
+                    `AllowVideoStreamCopy=true`, // h264 源文件：直接 remux，不重编（节省资源）
+                    `AllowAudioStreamCopy=true`  // aac 音频：直接 copy；其他音频：转为 aac
+                    // 不加 EnableAutoStreamCopy：避免 Emby 绕过 HLS 分片直接走流传输
+                ].filter(Boolean).join('&');
+
+                return `${server}/emby/Videos/${id}/master.m3u8?${params}`;
             }
 
             togglePlay() {
@@ -1599,7 +1671,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
                     body: JSON.stringify(payload)
                 }).catch(() => { });
@@ -1612,7 +1684,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
                     body: JSON.stringify({
                         PlayableMediaTypes: ["Video"],
@@ -1627,46 +1699,48 @@
             getVideoSrc(id, mediaItem) {
                 const { server, token, useStatic } = this.config;
 
-                // 策略 B：取消【直接播放】，全权委托 Emby 服务器自动降级
-                // Direct Play > Direct Stream > Transcode，无需前端干预
-                if (!useStatic) {
-                    return `${server}/emby/Videos/${id}/stream.mp4?api_key=${token}&VideoCodec=h264,hevc,vp9&AudioCodec=aac,mp3`;
+                // 获取视频流元数据（用于智能判定）
+                const mediaSource = mediaItem?.MediaSources?.[0];
+                const codec = (mediaSource?.VideoCodec || '').toLowerCase();
+                const container = (mediaSource?.Container || '').toLowerCase();
+                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase(); // 获取编码标签 (如 hev1/hvc1)
+
+                // 智能判定：若是 h264/mp4，则无论是否勾选转码都优先直连，避免冗余 HLS
+                const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v'));
+
+                if (!useStatic && !isNativeCompatible) {
+                    // 只有在【不勾选直接播放】且【视频非 h264+mp4】时，才走 HLS 强制转码
+                    return this._buildHlsSrc(id, mediaItem);
                 }
 
-                // 策略 A：勾选【直接播放】，默认原画直连，对 iOS 进行转封装兼容
-                const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
-                if (isIOS && mediaItem) {
-                    const mediaSourceId = mediaItem.MediaSources?.[0]?.Id || '';
-                    if (mediaSourceId) {
-                        // iOS专属 HLS 流水线
-                        // 修复：Emby API 强制要求 PlaySessionId，且必须指定 SegmentContainer=mp4 支持 fMP4 HEVC 切片
-                        // 补充了 VideoBitrate 避免 Emby 计算带限报错
-                        const playSessionId = 'ios_hls_' + id + '_' + Date.now();
-                        const hlsProps = [
-                            `api_key=${token}`,
-                            `MediaSourceId=${mediaSourceId}`,
-                            `DeviceId=EmbyX_Web_iOS`,
-                            `PlaySessionId=${playSessionId}`,
-                            `VideoCodec=hevc,h264`,
-                            `AudioCodec=aac,mp3,ac3`,
-                            `VideoBitrate=140000000`,
-                            `AudioBitrate=320000`,
-                            `TranscodingMaxAudioChannels=2`,
-                            `SegmentContainer=mp4,ts`,
-                            `MinSegments=1`,
-                            `BreakOnNonKeyFrames=True`,
-                            `EnableAutoStreamCopy=true`,
-                            `AllowVideoStreamCopy=true`,
-                            `AllowAudioStreamCopy=true`
-                        ].join('&');
-                        return `${server}/emby/Videos/${id}/master.m3u8?${hlsProps}`;
-                    }
+                // ── 设备兼容性判定 (苹果生态历史遗留问题处理) ─────────────────────
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                
+                // 特殊拦截：如果是 iOS 且是 hevc 编码且标签是苹果不支持的 hev1 (Safari 仅原生支持 hvc1)
+                // 这种视频直连(Static)必只有声音无画面，主动帮它走“直接串流(Direct Stream)”进行容器修正
+                if (isIOS && codec === 'hevc' && codecTag === 'hev1') {
+                    const deviceId = this.config.deviceId || 'EmbyX-Device';
+                    // 使用 stream.mp4 并允许 Copy。Emby 会自动执行 Remux (hev1 -> hvc1)，不重编码，画质无损。
+                    const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                    return `${server}/emby/Videos/${id}/stream.mp4?${params}`;
                 }
 
-                // 默认：原画直连（安卓全格式 / PC 端 / MediaSources 缺失时兜底）
-                return `${server}/emby/Videos/${id}/stream?api_key=${token}&Static=true`;
+                // ── 原画直连 (Direct Play) ──────────────────────────────────
+                // 余下所有情况（非苹果设备、或是 hvc1、或是 h264）保持最高优先级直连，支持后端状态追踪
+                const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
+                const deviceId = this.config.deviceId || 'EmbyX-Device';
+                const msId = mediaSource?.Id || '';
+
+                const params = [
+                    `api_key=${token}`,
+                    `Static=true`,
+                    msId ? `MediaSourceId=${msId}` : '',
+                    `DeviceId=${deviceId}`,
+                    `PlaySessionId=${playSessionId}`
+                ].filter(Boolean).join('&');
+
+                return `${server}/emby/Videos/${id}/stream?${params}`;
             }
 
             getImageSrc(video) {
@@ -1696,14 +1770,14 @@
 
                     const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     const playlistsData = await playlistsRes.json();
 
                     const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };

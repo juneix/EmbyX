@@ -593,6 +593,11 @@
             init() {
                 this.cacheDOM();
                 this.loadConfig();
+
+                // Dynamic app version detection: extract from HTML (e.g. v1.1 -> 1.1)
+                const vEl = document.querySelector('.bg-primary\\/20.text-xs');
+                this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
+
                 this.loadFavorites();
                 this.bindEvents();
 
@@ -649,6 +654,13 @@
                 this.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
                 this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
 
+                // Unique Device ID for session management
+                if (!localStorage.getItem('emby_device_id')) {
+                    const randomId = Math.random().toString(36).slice(2, 10);
+                    localStorage.setItem('emby_device_id', `EmbyX-${randomId}`);
+                }
+                this.config.deviceId = localStorage.getItem('emby_device_id');
+
                 const savedScale = localStorage.getItem('emby_is_scale_fill');
                 if (savedScale !== null) this.state.isScaleFill = savedScale === 'true';
 
@@ -695,7 +707,7 @@
 
                 this.toggleLoading(true);
                 try {
-                    if (pwd === '****' && this.config.token && this.config.server === server && this.config.user === user) {
+                    if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
                         localStorage.setItem('emby_static', isStatic);
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_delete_mode', deleteMode);
@@ -719,7 +731,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         },
                         body: JSON.stringify({ Username: user, Pw: pwd })
                     });
@@ -745,7 +757,7 @@
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_delete_mode', deleteMode);
 
-                        this.config = { server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, deleteMode };
+                        this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, deleteMode };
 
                         const pwdLen = Math.max(1, pwd.length);
                         localStorage.setItem('emby_pwd_len', pwdLen);
@@ -846,7 +858,7 @@
 
                     const res = await fetch(url, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     if (!res.ok) {
@@ -1359,33 +1371,93 @@
                 if (!v) return;
 
                 const retryCount = parseInt(v.dataset.retryCount || '0');
-
-                if (this.config.useStatic) {
-                    const doShow = (fmt) => this.showToast(`Native player doesn't support codec (${fmt ? fmt.toUpperCase() : 'Unknown'})`);
-                    const { server, token, userId } = this.config;
-                    fetch(`${server}/emby/Users/${userId}/Items/${item.Id}?api_key=${token}&Fields=MediaSources`)
-                        .then(r => r.json())
-                        .then(d => {
-                            const src = d.MediaSources?.[0];
-                            const vStream = src?.MediaStreams?.find(s => s.Type === 'Video');
-                            const codec = vStream?.Codec || src?.Container || '';
-                            doShow(codec);
-                        })
-                        .catch(() => doShow(''));
-                    return;
-                }
-
-                if (retryCount >= 1) {
-                    this.showToast('Transcode failed. Check Emby.');
-                    return;
-                }
+                const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
                 v.dataset.retryCount = String(retryCount + 1);
+
+                if (this.config.useStatic) {
+                    // -- Direct Play fallback chain --
+                    if (isIOS) {
+                        // iOS fallback: Direct Play → Direct Stream → HLS Transcode
+                        if (retryCount === 0) {
+                            // Step 1: Direct Stream (remux only, fastest, no re-encode)
+                            // Declare HEVC support to prevent Emby from transcoding during remux
+                            const { server, token } = this.config;
+                            const deviceId = this.config.deviceId || 'EmbyX-Device';
+                            this.showToast('iOS Direct Stream...');
+                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                            v.load();
+                            this.playVideo(index);
+                        } else if (retryCount === 1) {
+                            // Step 2: HLS Transcode (ultimate fallback)
+                            this.showToast('iOS Transcode...');
+                            v.src = this._buildHlsSrc(item.Id, item);
+                            v.load();
+                            this.playVideo(index);
+                        } else {
+                            this.toggleLoading(false);
+                            this.showToast('Playback failed. Check Emby settings.');
+                        }
+                    } else {
+                        // Non-iOS fallback: Direct Play → Direct Stream
+                        if (retryCount === 0) {
+                            const { server, token } = this.config;
+                            const deviceId = this.config.deviceId || 'EmbyX-Device';
+                            this.showToast('Trying Direct Stream...');
+                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                            v.load();
+                            this.playVideo(index);
+                        } else {
+                            this.toggleLoading(false);
+                            this.showToast('Playback failed. Disable Direct Play for transcoding.');
+                        }
+                    }
+                } else {
+                    // -- Transcode mode (HLS) failed, no further fallback --
+                    this.toggleLoading(false);
+                    this.showToast('Transcode failed. Check Emby settings.');
+                }
+            }
+
+            // -- Universal HLS URL builder (all platforms) --
+            // MediaSourceId and PlaySessionId are required by Emby transcode API; missing them causes 500
+            // To adjust bitrate cap, modify VideoBitrate below (unit: bps, default 20Mbps)
+            //
+            // [Smart Transcode Strategy]
+            // VideoCodec=h264 (declare only h264 support):
+            //   → Source is h264? Allow stream copy (remux into HLS segments, no re-encode) → efficient
+            //   → Source is hevc/av1? Emby detects incompatibility, transcodes to h264 → hardware accel
+            // AllowVideoStreamCopy=true:
+            //   Allows h264 sources to remux directly; prevents wasteful h264→h264 re-encoding
+            // Note: EnableAutoStreamCopy is NOT added — it can bypass HLS segmentation entirely
+            _buildHlsSrc(id, mediaItem) {
                 const { server, token } = this.config;
-                v.src = `${server}/emby/Videos/${item.Id}/stream?api_key=${token}&Container=mp4`;
-                v.load();
-                this.playVideo(index);
-                this.showToast('Trying to transcode...');
+                const mediaSourceId = mediaItem?.MediaSources?.[0]?.Id || '';
+                const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
+                const deviceId = this.config.deviceId || 'EmbyX-Device';
+
+                const params = [
+                    `api_key=${token}`,
+                    mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
+                    `DeviceId=${deviceId}`,
+                    `PlaySessionId=${playSessionId}`,
+                    `VideoCodec=h264`,           // h264 only: hevc/av1/etc. forced to transcode
+                    `AudioCodec=aac,mp3,ac3`,
+                    `VideoBitrate=20000000`,
+                    `AudioBitrate=320000`,
+                    `TranscodingMaxAudioChannels=2`,
+                    `SegmentContainer=ts`,       // Use ts: fixes h264 source playback failure with mp4 HLS segments
+                    `MinSegments=1`,
+                    `BreakOnNonKeyFrames=True`,
+                    `AllowVideoStreamCopy=true`, // h264 source: remux, no re-encode (saves GPU/CPU)
+                    `AllowAudioStreamCopy=true`  // aac audio: copy; other formats: transcode to aac
+                    // EnableAutoStreamCopy NOT added — avoids Emby bypassing HLS segmentation
+                ].filter(Boolean).join('&');
+
+                return `${server}/emby/Videos/${id}/master.m3u8?${params}`;
             }
 
             togglePlay() {
@@ -1486,7 +1558,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
                     body: JSON.stringify(payload)
                 }).catch(() => { });
@@ -1499,7 +1571,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
                     body: JSON.stringify({
                         PlayableMediaTypes: ["Video"],
@@ -1512,39 +1584,47 @@
             getVideoSrc(id, mediaItem) {
                 const { server, token, useStatic } = this.config;
 
-                if (!useStatic) {
-                    return `${server}/emby/Videos/${id}/stream.mp4?api_key=${token}&VideoCodec=h264,hevc,vp9&AudioCodec=aac,mp3`;
+                // Get metadata (codec and container)
+                const mediaSource = mediaItem?.MediaSources?.[0];
+                const codec = (mediaSource?.VideoCodec || '').toLowerCase();
+                const container = (mediaSource?.Container || '').toLowerCase();
+                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase(); // Get tag like hev1/hvc1
+
+                // Smart Decision: For h264+mp4, always prioritize direct play
+                const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v'));
+
+                if (!useStatic && !isNativeCompatible) {
+                    // Force HLS only if Direct Play is off AND codec is not h264+mp4
+                    return this._buildHlsSrc(id, mediaItem);
                 }
 
-                const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                // -- Device Compatibility Check for Apple hev1 issue --
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+                             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-                if (isIOS && mediaItem) {
-                    const mediaSourceId = mediaItem.MediaSources?.[0]?.Id || '';
-                    if (mediaSourceId) {
-                        const playSessionId = 'ios_hls_' + id + '_' + Date.now();
-                        const hlsProps = [
-                            `api_key=${token}`,
-                            `MediaSourceId=${mediaSourceId}`,
-                            `DeviceId=EmbyX_Web_iOS`,
-                            `PlaySessionId=${playSessionId}`,
-                            `VideoCodec=hevc,h264`,
-                            `AudioCodec=aac,mp3,ac3`,
-                            `VideoBitrate=140000000`,
-                            `AudioBitrate=320000`,
-                            `TranscodingMaxAudioChannels=2`,
-                            `SegmentContainer=mp4,ts`,
-                            `MinSegments=1`,
-                            `BreakOnNonKeyFrames=True`,
-                            `EnableAutoStreamCopy=true`,
-                            `AllowVideoStreamCopy=true`,
-                            `AllowAudioStreamCopy=true`
-                        ].join('&');
-                        return `${server}/emby/Videos/${id}/master.m3u8?${hlsProps}`;
-                    }
+                // Specific bypass for iOS + HEVC + hev1 tag (Safari only natively supports hvc1)
+                // Direct play (Static) for hev1 fails on iOS. Force Direct Stream (Remux) to fix the tag.
+                if (isIOS && codec === 'hevc' && codecTag === 'hev1') {
+                    const deviceId = this.config.deviceId || 'EmbyX-Device';
+                    // Using stream.mp4 with Copy allows Emby to Remux (hev1 -> hvc1) without transcoding.
+                    const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                    return `${server}/emby/Videos/${id}/stream.mp4?${params}`;
                 }
 
-                return `${server}/emby/Videos/${id}/stream?api_key=${token}&Static=true`;
+                // -- Direct Play (Static) --
+                const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
+                const deviceId = this.config.deviceId || 'EmbyX-Device';
+                const msId = mediaSource?.Id || '';
+
+                const params = [
+                    `api_key=${token}`,
+                    `Static=true`,
+                    msId ? `MediaSourceId=${msId}` : '',
+                    `DeviceId=${deviceId}`,
+                    `PlaySessionId=${playSessionId}`
+                ].filter(Boolean).join('&');
+
+                return `${server}/emby/Videos/${id}/stream?${params}`;
             }
 
             getImageSrc(video) {
@@ -1572,14 +1652,14 @@
 
                     const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     const playlistsData = await playlistsRes.json();
 
                     const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="EmbyX-Device", Version="1.1"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };
