@@ -1047,8 +1047,8 @@
                     el.style.display = 'none';
                     el.innerHTML = `
                         <div class="w-full h-full relative bg-black">
-                            <!-- 封面缩略图： cover 模式下可见（视频加载前占位），contain 模式下隐藏（模糊背景处理背景） -->
-                            <img id="thumb-${i}" class="absolute inset-0 w-full h-full object-cover z-0 ${this.state.isScaleFill ? '' : 'opacity-0'}" src="" alt="" />
+                            <!-- 封面缩略图：缩放填充模式同步视频（cover 或 contain），始终可见以作为视频加载前的清晰占位 -->
+                            <img id="thumb-${i}" class="absolute inset-0 w-full h-full z-0 transition-opacity duration-300 ${this.state.isScaleFill ? 'object-cover' : 'object-contain'}" src="" alt="" />
                             <!-- 高斯模糊背景（contain 模式下可见，cover 模式下透明）。使用 scale-[1.15] 避免模糊边缘向内渐隐导致光晕/暗角特效 -->
                             <div id="poster-${i}" class="absolute inset-0 bg-cover bg-center scale-[1.15] blur-xl transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-70'}"></div>
                             <div id="overlay-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
