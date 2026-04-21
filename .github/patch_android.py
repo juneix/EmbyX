@@ -218,10 +218,10 @@ if os.path.exists(gradle_path):
     with open(gradle_path, "r", encoding="utf-8") as f:
         gradle = f.read()
 
-    # 替换 versionCode（形如 "versionCode 1" 或 "versionCode 10000"）
-    gradle = re.sub(r"versionCode\s+\d+", f"versionCode {version_code}", gradle)
-    # 替换 versionName（形如 versionName "1.0"）
-    gradle = re.sub(r'versionName\s+"[^"]+"', f'versionName "{version_name}"', gradle)
+    # 替换 versionCode（适配 Capacitor 8 / Gradle 8 的 "=" 赋值语法）
+    gradle = re.sub(r"versionCode(?:\s*=\s*|\s+)\d+", f"versionCode = {version_code}", gradle)
+    # 替换 versionName
+    gradle = re.sub(r'versionName(?:\s*=\s*|\s+)"[^"]+"', f'versionName = "{version_name}"', gradle)
 
     with open(gradle_path, "w", encoding="utf-8") as f:
         f.write(gradle)

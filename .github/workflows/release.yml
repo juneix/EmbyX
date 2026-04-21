@@ -27,18 +27,18 @@ jobs:
     name: Build EmbyX-zh APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup JDK 17
+      - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 22
 
       # 动态生成中文版 capacitor.config.json（webDir 指向 zh/ 目录）
       - name: Create capacitor.config.json (zh)
@@ -85,7 +85,7 @@ jobs:
         run: mv android/app/build/outputs/apk/debug/app-debug.apk EmbyX-zh.apk
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: embyx-zh
           path: EmbyX-zh.apk
@@ -95,18 +95,18 @@ jobs:
     name: Build EmbyX-en APK
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
-      - name: Setup JDK 17
+      - name: Setup JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
-          node-version: 18
+          node-version: 22
 
       # 动态生成英文版 capacitor.config.json（webDir 指向 en/ 目录）
       - name: Create capacitor.config.json (en)
@@ -153,7 +153,7 @@ jobs:
         run: mv android/app/build/outputs/apk/debug/app-debug.apk EmbyX-en.apk
 
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: embyx-en
           path: EmbyX-en.apk
@@ -167,7 +167,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v7
 
       - name: Verify APK files exist
         run: |
@@ -176,7 +176,7 @@ jobs:
           test -f "embyx-en/EmbyX-en.apk"
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           # 如果是 main 分支，固定使用 preview 标签以便滚动更新
           tag_name: ${{ github.ref_name == 'main' && 'preview' || (github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name) }}
