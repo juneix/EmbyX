@@ -48,6 +48,7 @@ jobs:
             "appId": "juneix.embyx",
             "appName": "EmbyX",
             "webDir": "zh",
+            "backgroundColor": "#000000",
             "server": {
               "androidScheme": "http",
               "cleartext": true
@@ -116,6 +117,7 @@ jobs:
             "appId": "juneix.embyx",
             "appName": "EmbyX",
             "webDir": "en",
+            "backgroundColor": "#000000",
             "server": {
               "androidScheme": "http",
               "cleartext": true

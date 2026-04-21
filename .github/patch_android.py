@@ -303,9 +303,13 @@ if "import androidx.core.splashscreen.SplashScreen;" not in ma:
     ma = ma.replace("import android.os.Bundle;", "import android.os.Bundle;\nimport androidx.core.splashscreen.SplashScreen;")
 
 if "SplashScreen.installSplashScreen(this)" not in ma:
+    # 注入官方 SplashScreen 入口，并增加“三重保险”防止闪白：
+    # 1. installSplashScreen() 必须在 super.onCreate 之前
+    # 2. 强行将 Window 背景设为黑（防止 Theme 没生效）
+    # 3. 强行将 WebView 背景设为黑（防止 HTML 渲染慢）
     ma = ma.replace(
         "super.onCreate(savedInstanceState);",
-        "SplashScreen.installSplashScreen(this);\n        super.onCreate(savedInstanceState);\n        // 设置透明底色防止切换回白屏闪烁\n        this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);"
+        "SplashScreen.installSplashScreen(this);\n        super.onCreate(savedInstanceState);\n        // 三重保险：Window + WebView 全程变黑，彻底解决闪白问题\n        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK));\n        this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);"
     )
 
 with open(main_activity_path, "w", encoding="utf-8") as f:
