@@ -211,7 +211,9 @@ else:
 # ── 7. 启动页 (Splash Screen) 规范适配 ───────────────────────────────────
 res_dir = "android/app/src/main/res"
 os.makedirs(f"{res_dir}/values", exist_ok=True)
+os.makedirs(f"{res_dir}/drawable", exist_ok=True)
 
+# 写入颜色资源
 colors_path = f"{res_dir}/values/colors.xml"
 colors_xml = """<?xml version="1.0" encoding="utf-8"?>
 <resources>
@@ -221,7 +223,20 @@ colors_xml = """<?xml version="1.0" encoding="utf-8"?>
 """
 with open(colors_path, "w", encoding="utf-8") as f:
     f.write(colors_xml)
-print("  Created/Updated colors.xml")
+
+# 创建缩小的启动图辅助资源 (使用 inset 解决图标被裁切问题)
+# 核心逻辑：将原本占满 100% 的图标缩小到 60% 左右，使其落入 Google 的圆形安全区
+splash_icon_xml = """<?xml version="1.0" encoding="utf-8"?>
+<inset xmlns:android="http://schemas.android.com/apk/res/android"
+    android:drawable="@drawable/icon"
+    android:insetLeft="20%"
+    android:insetRight="20%"
+    android:insetTop="20%"
+    android:insetBottom="20%" />
+"""
+with open(f"{res_dir}/drawable/splash_icon_padded.xml", "w", encoding="utf-8") as f:
+    f.write(splash_icon_xml)
+print("  Created splash_icon_padded.xml")
 
 # ── 8. 修改主题 (Themes/Styles) 适配 Google SplashScreen API ─────────────────
 target_files = [
@@ -237,17 +252,27 @@ for rel_path in target_files:
     if os.path.exists(full_path):
         with open(full_path, "r", encoding="utf-8") as f:
             content = f.read()
+
+        # A. 修复“第二步白屏”：将基础主题的窗体背景强行设为黑色
+        # 针对 AppTheme 和 AppTheme.NoActionBar 注入 windowBackground，确保交接瞬间不闪白
+        content = re.sub(
+            r'(<style\s+name="AppTheme(?:\.NoActionBar)?"[^>]*>)(.*?)(</style>)',
+            r'\1\2    <item name="android:windowBackground">@color/black</item>\n    \3',
+            content,
+            flags=re.DOTALL
+        )
         
-        # 定位启动主题节点，替换 parent 并注入规范属性
+        # B. 适配官方启动页：精准匹配并提取 AppTheme.NoActionBarLaunch 标签块
         style_block_pattern = r'(<style\s+name="AppTheme\.NoActionBarLaunch"[^>]*>)(.*?)(</style>)'
         m = re.search(style_block_pattern, content, flags=re.DOTALL)
         if m:
             start_tag = m.group(1)
             inner_items = m.group(2)
             
+            # 替换 parent 为官方支持的 Theme.SplashScreen
             start_tag = re.sub(r'parent="[^"]*"', 'parent="Theme.SplashScreen"', start_tag)
             
-            # 清理历史兼容属性，避免冲突
+            # 清理历史可能存在的冲突属性
             inner_items = re.sub(r'<item\s+name="android:background">.*?</item>', '', inner_items)
             inner_items = re.sub(r'<item\s+name="windowSplashScreenBackground">.*?</item>', '', inner_items)
             inner_items = re.sub(r'<item\s+name="windowSplashScreenAnimatedIcon">.*?</item>', '', inner_items)
@@ -255,9 +280,10 @@ for rel_path in target_files:
 
             splash_items = """
         <item name="windowSplashScreenBackground">@color/black</item>
-        <item name="windowSplashScreenAnimatedIcon">@drawable/icon</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_icon_padded</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
 """
+            # 重构整个 style 块并原位替换回文档
             new_block = f"{start_tag}{inner_items}{splash_items}    </style>"
             content = content[:m.start()] + new_block + content[m.end():]
             
