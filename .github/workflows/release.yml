@@ -178,9 +178,9 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          # 如果是 main 分支，固定使用 latest 标签以便滚动更新
-          tag_name: ${{ github.ref_name == 'main' && 'latest' || (github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name) }}
-          name: ${{ github.ref_name == 'main' && 'Latest Build (Rolling)' || (github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name) }}
+          # 如果是 main 分支，固定使用 preview 标签以便滚动更新
+          tag_name: ${{ github.ref_name == 'main' && 'preview' || (github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name) }}
+          name: ${{ github.ref_name == 'main' && 'EmbyX Preview' || (github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name) }}
           prerelease: ${{ github.ref_name == 'main' }}
           draft: false
           fail_on_unmatched_files: true
