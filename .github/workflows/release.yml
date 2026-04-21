@@ -51,6 +51,14 @@ jobs:
             "server": {
               "androidScheme": "http",
               "cleartext": true
+            },
+            "plugins": {
+              "SplashScreen": {
+                "launchAutoHide": true,
+                "backgroundColor": "#000000",
+                "androidScaleType": "CENTER",
+                "showSpinner": false
+              }
             }
           }
           EOF
@@ -111,6 +119,14 @@ jobs:
             "server": {
               "androidScheme": "http",
               "cleartext": true
+            },
+            "plugins": {
+              "SplashScreen": {
+                "launchAutoHide": true,
+                "backgroundColor": "#000000",
+                "androidScaleType": "CENTER",
+                "showSpinner": false
+              }
             }
           }
           EOF

@@ -229,4 +229,72 @@ if os.path.exists(gradle_path):
 else:
     print(f"  WARNING: {gradle_path} not found, skipping version injection")
 
+# ── 7. 启动页 (Splash Screen) 美化 ───────────────────────────────────────────
+# 创建颜色资源
+os.makedirs("android/app/src/main/res/values", exist_ok=True)
+colors_path = "android/app/src/main/res/values/colors.xml"
+colors_xml = """<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFF</color>
+</resources>
+"""
+with open(colors_path, "w", encoding="utf-8") as f:
+    f.write(colors_xml)
+print("  Created colors.xml")
+
+# 创建 Splash Drawable (Layer-List)
+# 背景纯黑，Logo 居中
+splash_xml = """<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:drawable="@color/black" />
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/icon" />
+    </item>
+</layer-list>
+"""
+with open("android/app/src/main/res/drawable/splash_screen.xml", "w", encoding="utf-8") as f:
+    f.write(splash_xml)
+print("  Created splash_screen.xml")
+
+# ── 8. 修改主题 (Themes) 强制黑底 ──────────────────────────────────────────────
+# Capacitor 默认使用 AppTheme.NoActionBarLaunch 作为启动主题
+# 我们将其背景从白色改为我们自定义的黑色启动图
+themes_dirs = ["android/app/src/main/res/values", "android/app/src/main/res/values-night"]
+for t_dir in themes_dirs:
+    t_path = os.path.join(t_dir, "themes.xml")
+    if os.path.exists(t_path):
+        with open(t_path, "r", encoding="utf-8") as f:
+            t_content = f.read()
+        
+        # 替换 windowBackground
+        t_content = re.sub(
+            r'(<item name="android:background">)(.*?)(</item>)',
+            r'\1@drawable/splash_screen\3',
+            t_content
+        )
+        # 针对新版 Android 12+ Splash API
+        t_content = t_content.replace("@drawable/show_splash", "@drawable/splash_screen")
+        
+        with open(t_path, "w", encoding="utf-8") as f:
+            f.write(t_content)
+        print(f"  Patched {t_path} to use splash_screen")
+
+# ── 9. MainActivity 深度黑化 (防止 WebView 加载瞬间闪白) ───────────────────────
+with open(main_activity_path, "r", encoding="utf-8") as f:
+    ma = f.read()
+
+# 在 onCreate 中设置 WebView 背景颜色
+if "getWebView().setBackgroundColor" not in ma:
+    ma = ma.replace(
+        "super.onCreate(savedInstanceState);",
+        "super.onCreate(savedInstanceState);\n        // 消除 WebView 初始化时的白屏闪烁\n        this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);"
+    )
+
+with open(main_activity_path, "w", encoding="utf-8") as f:
+    f.write(ma)
+print("  Injected black background to WebView in MainActivity.java")
+
 print(f"\nPatch complete! ({LANG} version, pkg={PKG_NAME}, v{version_name})")
