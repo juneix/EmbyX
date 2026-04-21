@@ -231,8 +231,11 @@ else:
 
 # ── 7. 启动页 (Splash Screen) 官方规范适配 ───────────────────────────────────
 # 遵循 Android 12+ SplashScreen API 标准 (Plan A)
-os.makedirs("android/app/src/main/res/values", exist_ok=True)
-colors_path = "android/app/src/main/res/values/colors.xml"
+res_dir = "android/app/src/main/res"
+os.makedirs(f"{res_dir}/values", exist_ok=True)
+
+# 写入颜色资源
+colors_path = f"{res_dir}/values/colors.xml"
 colors_xml = """<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="black">#000000</color>
@@ -241,56 +244,70 @@ colors_xml = """<?xml version="1.0" encoding="utf-8"?>
 """
 with open(colors_path, "w", encoding="utf-8") as f:
     f.write(colors_xml)
-print("  Created colors.xml")
+print("  Created/Updated colors.xml")
 
-# ── 8. 修改主题 (Themes) 适配 Google SplashScreen API ────────────────────────
-# 我们将强制主题继承自 Theme.SplashScreen，这是 Android 12+ 的官方标准方法
-# 兼容库 (androidx.core:core-splashscreen) 会负责向下兼容至 Android 6+
-themes_dirs = ["android/app/src/main/res/values", "android/app/src/main/res/values-night"]
-for t_dir in themes_dirs:
-    t_path = os.path.join(t_dir, "themes.xml")
-    if os.path.exists(t_path):
-        with open(t_path, "r", encoding="utf-8") as f:
-            t_content = f.read()
+# ── 8. 修改主题 (Themes/Styles) 适配 Google SplashScreen API ─────────────────
+# 增强鲁棒性：同时查找 themes.xml 和 styles.xml，处理多种可能的生成路径
+target_files = [
+    "values/themes.xml", 
+    "values-night/themes.xml", 
+    "values/styles.xml",
+    "values-v31/themes.xml"
+]
+
+splash_style_found = False
+for rel_path in target_files:
+    full_path = os.path.join(res_dir, rel_path)
+    if os.path.exists(full_path):
+        with open(full_path, "r", encoding="utf-8") as f:
+            content = f.read()
         
-        # 1. 强制修改 parent 为 Theme.SplashScreen
-        t_content = re.sub(
-            r'<style name="AppTheme\.NoActionBarLaunch" parent=".*?">',
-            '<style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">',
-            t_content
-        )
-        
-        # 2. 注入官方规范属性
-        splash_items = """
+        # 使用更灵活的正则匹配 style 标签及其 parent
+        # 兼容单引号/双引号/空格
+        style_pattern = r'(<style\s+name="AppTheme\.NoActionBarLaunch"\s+parent=")(.*?)(">)'
+        if re.search(style_pattern, content):
+            content = re.sub(style_pattern, r'\1Theme.SplashScreen\3', content)
+            
+            # 注入官方规范属性
+            # 移除可能存在的旧 background 属性
+            content = re.sub(r'<item\s+name="android:background">.*?</item>', '', content)
+            content = re.sub(r'<item\s+name="windowSplashScreenBackground">.*?</item>', '', content)
+            content = re.sub(r'<item\s+name="windowSplashScreenAnimatedIcon">.*?</item>', '', content)
+            content = re.sub(r'<item\s+name="postSplashScreenTheme">.*?</item>', '', content)
+
+            splash_items = """
         <item name="windowSplashScreenBackground">@color/black</item>
         <item name="windowSplashScreenAnimatedIcon">@drawable/icon</item>
         <item name="postSplashScreenTheme">@style/AppTheme.NoActionBar</item>
 """
-        # 清理旧属性并注入新规范属性
-        if '<style name="AppTheme.NoActionBarLaunch"' in t_content:
-            # 移除旧的 background 属性以防冲突
-            t_content = re.sub(r'<item name="android:background">.*?</item>', '', t_content)
-            # 在 style 闭合前注入
-            t_content = t_content.replace('</style>', f'{splash_items}    </style>', 1)
-        
-        with open(t_path, "w", encoding="utf-8") as f:
-            f.write(t_content)
-        print(f"  Patched {t_path} to Standard SplashScreen API")
+            content = content.replace('</style>', f'{splash_items}    </style>', 1)
+            
+            with open(full_path, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"  Successfully patched {rel_path} to Standard SplashScreen API")
+            splash_style_found = True
+
+if not splash_style_found:
+    print("  WARNING: AppTheme.NoActionBarLaunch style not found in any res files!")
 
 # ── 9. MainActivity 注入官方启动入口 ──────────────────────────────────────────
+# 确保在 super.onCreate 之前注入，且不重复注入
 with open(main_activity_path, "r", encoding="utf-8") as f:
     ma = f.read()
 
-# 注入核心初始化代码 installSplashScreen
-# 这是 Google 规范要求的标准入口，必须在 super.onCreate 之前执行
-if "installSplashScreen" not in ma:
+# 确保导入语句存在
+if "import androidx.core.splashscreen.SplashScreen;" not in ma:
+    ma = ma.replace("import android.os.Bundle;", "import android.os.Bundle;\nimport androidx.core.splashscreen.SplashScreen;")
+
+if "SplashScreen.installSplashScreen(this)" not in ma:
+    # 精准查找 super.onCreate 并在其上方插入
     ma = ma.replace(
         "super.onCreate(savedInstanceState);",
-        "androidx.core.splashscreen.SplashScreen.installSplashScreen(this);\n        super.onCreate(savedInstanceState);\n        // 消除衔接瞬间的可能白屏\n        this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);"
+        "SplashScreen.installSplashScreen(this);\n        super.onCreate(savedInstanceState);\n        // 设置透明背景防止闪烁\n        this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);"
     )
 
 with open(main_activity_path, "w", encoding="utf-8") as f:
     f.write(ma)
-print("  Injected installSplashScreen() to MainActivity.java")
+print("  Injected installSplashScreen() and black background to MainActivity.java")
 
 print(f"\nPatch complete! ({LANG} version, pkg={PKG_NAME}, v{version_name})")
