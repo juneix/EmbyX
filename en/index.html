@@ -11,6 +11,7 @@
     <meta name="viewport"
         content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#000000">
     <meta name="referrer" content="no-referrer">
@@ -97,7 +98,7 @@
             }
 
             .progress-line {
-                @apply h-full bg-white transition-[width] duration-100 ease-linear;
+                @apply h-full bg-white transition-[width] duration-[250ms] ease-linear;
             }
 
             .nav-btn {
@@ -282,8 +283,7 @@
                         <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
                             <div>
                                 <label class="text-gray-400 text-xs block mb-1.5">Server URL</label>
-                                <input type="text" id="configServer"
-                                    placeholder="Reverse proxy or Self-host EmbyX for HTTP"
+                                <input type="text" id="configServer" placeholder="Auto-completion of IP or domain name"
                                     class="w-full bg-gray-900 text-white text-sm rounded px-3 py-2.5 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                             </div>
                             <div class="grid grid-cols-2 gap-2">
@@ -315,6 +315,14 @@
                                 <input type="checkbox" id="configAutoplay"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none"
                                     checked>
+                            </div>
+                            <div id="rowShortDrama" tabindex="0"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                onclick="document.getElementById('configShortDrama').click();">
+                                <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1">Short
+                                    Drama Mode</label>
+                                <input type="checkbox" id="configShortDrama"
+                                    class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
@@ -572,12 +580,40 @@
                     originalVideos: []
                 };
 
-                this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, deleteMode: false };
+                this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false };
 
                 this.csTimer = null;
 
                 this.dom = {};
+                this.config.deviceName = this.getDeviceName();
                 this.init();
+            }
+
+
+            getDeviceName() {
+                const ua = navigator.userAgent;
+                if (/android/i.test(ua)) {
+                    const match = ua.match(/\(([^)]+)\)/);
+                    if (match && match[1]) {
+                        const parts = match[1].split(';');
+                        for (let p of parts) {
+                            p = p.trim();
+                            if (/^linux/i.test(p) || /^u$/i.test(p) || /^android/i.test(p) || /^[a-z]{2}-[a-z]{2}$/i.test(p) || /wv/.test(p)) continue;
+                            const model = p.split('Build/')[0].trim();
+                            if (model) return `Android (${model})`;
+                        }
+                    }
+                    return "Android";
+                } else if (/ipad|macintosh/i.test(ua) && navigator.maxTouchPoints > 1) {
+                    return "iPad";
+                } else if (/iphone/i.test(ua)) {
+                    return "iPhone";
+                } else if (/macintosh/i.test(ua)) {
+                    return "macOS";
+                } else if (/windows/i.test(ua)) {
+                    return "Windows";
+                }
+                return "Web Browser";
             }
 
             isAnyModalOpen() {
@@ -625,11 +661,20 @@
                 lucide.createIcons();
 
                 if (this.config.server && this.config.token) {
-                    this.fetchVideos(this.state.currentLibraryId);
+                    this.fetchVideos(this.state.currentLibraryId, null, false, this.state.playMode === 'random');
                 } else {
                     setTimeout(() => this.toggleModal('profilePage', true), 500);
                 }
+
+                // ─── Branding Egg ───
+                console.log(
+                    "%c EmbyX %c Designed by Juneix %c",
+                    "background:#3b82f6;color:#fff;padding:2px 6px;border-radius:4px 0 0 4px;font-weight:bold;",
+                    "background:#1e293b;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0;",
+                    "background:transparent"
+                );
             }
+
 
             cacheDOM() {
                 const ids = [
@@ -639,7 +684,7 @@
                     'favoriteBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
-                    'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configDeleteMode'
+                    'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configShortDrama', 'configDeleteMode'
                 ];
                 ids.forEach(id => this.dom[id] = document.getElementById(id));
                 this.dom.rightToolbar = document.querySelector('.right-toolbar');
@@ -652,6 +697,7 @@
                 this.config.userId = localStorage.getItem('emby_uid') || '';
                 this.config.useStatic = localStorage.getItem('emby_static') !== 'false';
                 this.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
+                this.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
                 this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
 
                 // Unique Device ID for session management
@@ -669,6 +715,7 @@
 
                 const savedPlayMode = localStorage.getItem('emby_play_mode');
                 if (savedPlayMode !== null) this.state.playMode = savedPlayMode;
+                if (this.config.shortDrama) this.state.playMode = 'sequence';
 
                 const savedLibId = localStorage.getItem('emby_lib_id');
                 const savedLibType = localStorage.getItem('emby_lib_type');
@@ -685,6 +732,7 @@
                 }
                 if (this.dom.configStatic) this.dom.configStatic.checked = this.config.useStatic;
                 if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
+                if (this.dom.configShortDrama) this.dom.configShortDrama.checked = this.config.shortDrama;
                 if (this.dom.configDeleteMode) this.dom.configDeleteMode.checked = this.config.deleteMode;
 
                 // Sync UI based on config
@@ -696,34 +744,43 @@
             }
 
             async saveConfig() {
-                const server = this.dom.configServer.value.trim().replace(/\/$/, "");
+                let server = this.dom.configServer.value.trim().replace(/\/$/, "");
                 const user = this.dom.configUser.value.trim();
                 const pwd = this.dom.configPwd.value.trim();
+
+                // Auto-fill protocol and port
+                if (server && !server.startsWith('http')) {
+                    const host = server.split(':')[0];
+                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
+
+                    // If IP and no port specified, append default 8096
+                    if (isIP && !server.includes(':')) {
+                        server += ':8096';
+                    }
+
+                    server = (isIP ? 'http://' : 'https://') + server;
+                }
+
                 const isStatic = this.dom.configStatic.checked;
                 const autoplay = this.dom.configAutoplay.checked;
+                const shortDrama = this.dom.configShortDrama.checked;
                 const deleteMode = this.dom.configDeleteMode.checked;
 
                 if (!server || !user) return this.showToast('Please fill in all fields');
+
 
                 this.toggleLoading(true);
                 try {
                     if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
                         localStorage.setItem('emby_static', isStatic);
                         localStorage.setItem('emby_autoplay', autoplay);
+                        localStorage.setItem('emby_shortdrama', shortDrama);
                         localStorage.setItem('emby_delete_mode', deleteMode);
-                        this.config.useStatic = isStatic;
-                        this.config.autoplay = autoplay;
-                        this.config.deleteMode = deleteMode;
-                        this.state.isAutoplay = autoplay;
 
-                        this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
-                        if (this.dom.playModeBtn) {
-                            this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                            lucide.createIcons();
-                        }
-
-                        this.showToast('✅ Settings saved');
-                        this.toggleModal('profilePage', false);
+                        // Clear data cache, keep core settings and reload
+                        localStorage.removeItem('emby_views_cache');
+                        localStorage.removeItem('emby_favorites');
+                        location.reload();
                         return;
                     }
 
@@ -731,7 +788,7 @@
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         },
                         body: JSON.stringify({ Username: user, Pw: pwd })
                     });
@@ -755,9 +812,10 @@
                         localStorage.setItem('emby_uid', data.SessionInfo.UserId);
                         localStorage.setItem('emby_static', isStatic);
                         localStorage.setItem('emby_autoplay', autoplay);
+                        localStorage.setItem('emby_shortdrama', shortDrama);
                         localStorage.setItem('emby_delete_mode', deleteMode);
 
-                        this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, deleteMode };
+                        this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode };
 
                         const pwdLen = Math.max(1, pwd.length);
                         localStorage.setItem('emby_pwd_len', pwdLen);
@@ -822,25 +880,30 @@
                 }
             }
 
-            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false) {
-                this.toggleLoading(true);
+            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false) {
+                this.toggleLoading(!isAppend);
                 try {
                     const { server, token, userId } = this.config;
                     if (!server || !token) {
-                        this.showToast('Please config server first');
+                        if (!isAppend) this.showToast('Please config server first');
                         return;
                     }
 
-                    if (!isLoadMore) {
+                    if (!isLoadMore && !isAppend) {
                         this.state.startIndex = 0;
                     }
 
                     const libraryId = parentId || this.state.currentLibraryId;
 
-                    const PAGE_SIZE = 99;
+                    const PAGE_SIZE = 150;
                     // const MAX_GRID_VIDEOS = 1000;
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video&Limit=${PAGE_SIZE}&StartIndex=${this.state.startIndex || 0}&Fields=Overview,Path,RunTimeTicks,MediaSources`;
+                    let fetchStartIndex = this.state.startIndex || 0;
+                    if (isAppend) {
+                        fetchStartIndex += this.state.videos.length;
+                    }
+
+                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources`;
 
                     if (ids) {
                         url += `&Ids=${ids}`;
@@ -851,14 +914,16 @@
                     } else if (libraryId === 'favorites') {
                         url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
                     } else if (libraryId) {
-                        url += `&SortBy=DateCreated&SortOrder=Descending&ParentId=${libraryId}`;
+                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        url += `&${sortStr}&ParentId=${libraryId}`;
                     } else {
-                        url += `&SortBy=DateCreated&SortOrder=Descending`;
+                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        url += `&${sortStr}`;
                     }
 
                     const res = await fetch(url, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     if (!res.ok) {
@@ -867,23 +932,31 @@
                     let data = await res.json();
 
                     if (data && data.Items && data.Items.length > 0) {
-                        this.state.videos = data.Items;
-                        this.state.currentIndex = 0;
-                        this.state.totalCount = data.TotalRecordCount || 0;
-
-                        if (this.state.playMode === 'random') {
-                            this.state.originalVideos = [...this.state.videos];
-                            this._shuffleAroundCurrent();
-                        }
-
-                        if (this.state.viewMode === 'grid') {
-                            this.renderGridView();
+                        if (isAppend) {
+                            this.state.videos.push(...data.Items);
+                            if (this.state.playMode === 'random' && this.state.originalVideos) {
+                                this.state.originalVideos.push(...data.Items);
+                            }
+                            return;
                         } else {
-                            this.renderSlides();
-                            this.loadVideo(0);
+                            this.state.videos = data.Items;
+                            this.state.currentIndex = 0;
+                            this.state.totalCount = data.TotalRecordCount || 0;
+
+                            if (this.state.playMode === 'random') {
+                                this.state.originalVideos = [...this.state.videos];
+                                this._shuffleAroundCurrent();
+                            }
+
+                            if (this.state.viewMode === 'grid') {
+                                this.renderGridView();
+                            } else {
+                                this.renderSlides();
+                                this.loadVideo(0);
+                            }
                         }
-                    } else if (isLoadMore) {
-                        this.showToast('No more videos');
+                    } else if (isLoadMore || isAppend) {
+                        if (!isAppend) this.showToast('No more videos');
                         this.state.startIndex = Math.max(0, (this.state.startIndex || 0));
                         this.toggleLoading(false);
                         return;
@@ -902,9 +975,13 @@
             renderSlides() {
                 this.dom.videoContainer.innerHTML = '';
                 this.dom.videoContainer.className = 'relative w-full h-full transition-transform duration-300 ease-out';
-                // Clear inline transition left by grid mode, so class-based animation works
-                this.dom.videoContainer.style.transition = '';
+                // Temporarily disable transition for instant snap
+                this.dom.videoContainer.style.transition = 'none';
                 this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
+                // Force browser reflow to apply the instant transform
+                void this.dom.videoContainer.offsetHeight;
+                // Restore transition for subsequent manual swipes
+                this.dom.videoContainer.style.transition = '';
 
                 for (let i = 0; i < 3; i++) {
                     const el = document.createElement('div');
@@ -990,7 +1067,7 @@
                     }
                 }
 
-                const PAGE_SIZE = 99;
+                const PAGE_SIZE = 150;
                 const totalCount = this.state.totalCount || 0;
                 const startIndex = this.state.startIndex || 0;
                 const currentPage = Math.floor(startIndex / PAGE_SIZE) + 1;
@@ -1005,7 +1082,7 @@
 
                 safeHeader.innerHTML = `
                     <span class="text-sm font-bold text-gray-200">${libraryName}</span>
-                    <span class="text-xs text-primary/70 tabular-nums flex items-center">
+                    <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                         ${countStr}
                         <span class="w-1.5"></span>
                         <button id="gridShuffleBtn" title="Shuffle Videos" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20">
@@ -1015,7 +1092,7 @@
                     <span class="flex-1"></span>
                     ${showPager ? `
                         <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
-                        <span class="text-xs text-gray-400 tabular-nums">${currentPage}<span class="text-gray-600">/</span>${totalPages}</span>
+                        <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
                         <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
                     ` : ''}
                 `;
@@ -1505,6 +1582,13 @@
 
                 this.state.currentIndex = newIndex;
 
+                if (newIndex >= this.state.videos.length - 5 && this.state.videos.length < (this.state.totalCount || 999999)) {
+                    if (!this._fetchingAppend) {
+                        this._fetchingAppend = true;
+                        this.fetchVideos(null, null, false, this.state.playMode === 'random', true).finally(() => { this._fetchingAppend = false; });
+                    }
+                }
+
                 if (this.dom.videoContainer) {
                     this.dom.videoContainer.style.transform = `translateY(-${newIndex * 100}%)`;
                 }
@@ -1558,7 +1642,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
                     body: JSON.stringify(payload)
                 }).catch(() => { });
@@ -1571,7 +1655,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
                     body: JSON.stringify({
                         PlayableMediaTypes: ["Video"],
@@ -1599,8 +1683,8 @@
                 }
 
                 // -- Device Compatibility Check for Apple hev1 issue --
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || 
-                             (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
                 // Specific bypass for iOS + HEVC + hev1 tag (Safari only natively supports hvc1)
                 // Direct play (Static) for hev1 fails on iOS. Force Direct Stream (Remux) to fix the tag.
@@ -1652,14 +1736,14 @@
 
                     const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     const playlistsData = await playlistsRes.json();
 
                     const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="Web", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                         }
                     });
                     const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };
@@ -1721,9 +1805,15 @@
                         filteredViews.forEach(lib => {
                             const div = document.createElement('div');
                             const isSelected = lib.Id === this.state.currentLibraryId;
+                            let iconName = 'clapperboard';
+                            if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                            else if (lib.CollectionType === 'homevideos') iconName = 'video';
+                            else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
+                            else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+
                             div.setAttribute('tabindex', '0');
                             div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                            div.innerHTML = `<i data-lucide="film" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                            div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
                             div.onclick = () => {
                                 this.state.currentLibraryId = lib.Id;
                                 this.state.currentLibraryType = 'library';
@@ -1810,7 +1900,7 @@
 
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = item.UserData?.IsFavorite === true;
-                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${isFav ? 'folder-heart' : 'heart'}" class="${isFav ? 'text-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons({ nameAttr: 'data-lucide', nodes: [favBtn] });
                 }
             }
@@ -1916,6 +2006,10 @@
             }
 
             togglePlayMode() {
+                if (this.config.shortDrama) {
+                    this.showToast('ℹ️ Sequence play locked in Short Drama mode');
+                    return;
+                }
                 const isSeq = this.state.playMode === 'sequence';
                 this.state.playMode = isSeq ? 'random' : 'sequence';
                 localStorage.setItem('emby_play_mode', this.state.playMode);
@@ -1965,6 +2059,15 @@
                 lucide.createIcons();
 
                 if (this.state.viewMode === 'grid') {
+                    const PAGE_SIZE = 150;
+                    if (this.state.videos.length > PAGE_SIZE) {
+                        const pageIndex = Math.floor(this.state.currentIndex / PAGE_SIZE);
+                        const start = pageIndex * PAGE_SIZE;
+                        this.state.videos = this.state.videos.slice(start, start + PAGE_SIZE);
+                        this.state.currentIndex = this.state.currentIndex % PAGE_SIZE;
+                        this.state.startIndex = (this.state.startIndex || 0) + start;
+                    }
+
                     const app = document.getElementById('app');
                     if (app) {
                         app.classList.remove('interface-hidden');
@@ -2088,7 +2191,7 @@
                     this.toggleFavorite();
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = this.state.favorites.has(String(this.state.videos[this.state.currentIndex]?.Id));
-                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${isFav ? 'folder-heart' : 'heart'}" class="${isFav ? 'text-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons();
                     this.showInterfaceTemp();
                 };
@@ -2606,7 +2709,14 @@
                         } else if (clickCount === 2) {
                             clearTimeout(clickTimer);
                             clickCount = 0;
-                            this.handleDoubleTap(t.clientX, t.clientY);
+                            const w = window.innerWidth;
+                            if (t.clientX < w / 4) {
+                                this.handleDoubleTapSkip('rewind', t.clientX, t.clientY);
+                            } else if (t.clientX > w * 3 / 4) {
+                                this.handleDoubleTapSkip('forward', t.clientX, t.clientY);
+                            } else {
+                                this.handleDoubleTap(t.clientX, t.clientY);
+                            }
                         }
                     }
                 };
@@ -2653,6 +2763,49 @@
                 container.addEventListener('mouseleave', mouseEndHandler);
             }
 
+            async handleDoubleTapSkip(direction, x, y) {
+                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                const v = document.getElementById(`video-p${slideIdx}`);
+                if (!v || !v.duration) return;
+
+                const isRewind = direction === 'rewind';
+                if (isRewind) {
+                    v.currentTime = Math.max(0, v.currentTime - 15);
+                } else {
+                    v.currentTime = Math.min(v.duration, v.currentTime + 15);
+                }
+                this.showInterfaceTemp();
+
+                const bubble = document.createElement('div');
+                bubble.innerHTML = `
+                    <div class="flex flex-col items-center justify-center bg-black/40 backdrop-blur-md text-white rounded-full w-[80px] h-[80px] shadow-2xl space-y-1">
+                        <div class="flex items-center justify-center">
+                            ${isRewind ? '<i data-lucide="chevrons-left" class="w-6 h-6"></i>' : '<i data-lucide="chevrons-right" class="w-6 h-6"></i>'}
+                        </div>
+                        <span class="text-xs font-bold leading-none">15s</span>
+                    </div>
+                `;
+                bubble.className = 'absolute pointer-events-none z-50 transform pointer-events-none transition-all duration-300 ease-out flex items-center justify-center';
+                bubble.style.top = `${Math.max(80, Math.min(y - 40, window.innerHeight - 80))}px`;
+                if (isRewind) bubble.style.left = '20px';
+                else bubble.style.right = '20px';
+                bubble.style.opacity = '0';
+                bubble.style.transform = `scale(0.8) ${isRewind ? 'translateX(-20px)' : 'translateX(20px)'}`;
+
+                document.getElementById('app').appendChild(bubble);
+                lucide.createIcons({ root: bubble });
+
+                requestAnimationFrame(() => {
+                    bubble.style.transform = 'scale(1) translateX(0)';
+                    bubble.style.opacity = '1';
+                    setTimeout(() => {
+                        bubble.style.transform = `scale(0.8) ${isRewind ? 'translateX(-20px)' : 'translateX(20px)'}`;
+                        bubble.style.opacity = '0';
+                        setTimeout(() => bubble.remove(), 300);
+                    }, 400);
+                });
+            }
+
             async handleDoubleTap(x, y) {
                 const heart = document.createElement('div');
                 heart.innerHTML = '<i data-lucide="heart" class="fill-red-500 text-red-500 w-16 h-16 drop-shadow-xl"></i>';
@@ -2690,7 +2843,7 @@
 
                             const favBtn = document.getElementById('favoriteBtn');
                             if (favBtn) {
-                                favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="folder-heart" class="text-secondary w-6 h-6 drop-shadow-md"></i></div>`;
+                                favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="text-secondary fill-secondary w-6 h-6 drop-shadow-md"></i></div>`;
                                 lucide.createIcons({ root: favBtn });
                             }
                             this.showToast('❤️ Favorited');
@@ -2758,9 +2911,7 @@
             window.app = new EmbyApp();
 
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(reg => console.log('SW Registered', reg))
-                    .catch(err => console.log('SW Failed', err));
+                navigator.serviceWorker.register('./sw.js').catch(() => { });
             }
         };
     </script>
