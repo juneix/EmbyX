@@ -133,6 +133,15 @@
             .nav-btn.nav-clicked svg {
                 filter: drop-shadow(0 0 6px rgba(82, 181, 75, 0.6));
             }
+
+            /* 彻底隐藏部分安卓 WebView/浏览器自带的巨大播放按钮 */
+            video::-webkit-media-controls-start-playback-button {
+                display: none !important;
+                -webkit-appearance: none;
+            }
+            video::-webkit-media-controls {
+                display: none !important;
+            }
         }
     </style>
 </head>
@@ -1045,7 +1054,10 @@
                             <div id="overlay-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
                             
                             <!-- 视频层：初始透明，于 canplay 时淡入覆盖封面 -->
-                            <video id="video-p${i}" class="video-fullscreen ${this.state.isScaleFill ? 'object-cover' : 'object-contain'} opacity-0 transition-opacity duration-500 z-10" playsinline webkit-playsinline muted autoplay></video>
+                            <video id="video-p${i}"
+                                class="video-fullscreen ${this.state.isScaleFill ? 'object-cover' : 'object-contain'} opacity-0 transition-opacity duration-500 z-10"
+                                playsinline webkit-playsinline muted autoplay
+                                poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
                             
                             <!-- 遅罩层：置于视频之上以屏蔽长按啇出的系统原生下载菜单 -->
                             <div class="touch-layer absolute inset-0 z-20" style="-webkit-touch-callout: none;"></div>

@@ -121,6 +121,15 @@
             .nav-btn.nav-clicked svg {
                 filter: drop-shadow(0 0 6px rgba(82, 181, 75, 0.6));
             }
+
+            /* Hide ugly default play button in some Android WebViews */
+            video::-webkit-media-controls-start-playback-button {
+                display: none !important;
+                -webkit-appearance: none;
+            }
+            video::-webkit-media-controls {
+                display: none !important;
+            }
         }
     </style>
 </head>
@@ -994,7 +1003,10 @@
                             <div id="poster-${i}" class="absolute inset-0 bg-cover bg-center scale-[1.15] blur-xl transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-70'}"></div>
                             <div id="overlay-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
                             
-                            <video id="video-p${i}" class="video-fullscreen ${this.state.isScaleFill ? 'object-cover' : 'object-contain'} opacity-0 transition-opacity duration-500 z-10" playsinline webkit-playsinline muted autoplay></video>
+                            <video id="video-p${i}"
+                                class="video-fullscreen ${this.state.isScaleFill ? 'object-cover' : 'object-contain'} opacity-0 transition-opacity duration-500 z-10"
+                                playsinline webkit-playsinline muted autoplay
+                                poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
                             
                             <div class="touch-layer absolute inset-0 z-20" style="-webkit-touch-callout: none;"></div>
                             
