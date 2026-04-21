@@ -5,6 +5,9 @@ on:
     branches:
       - main
     paths-ignore:
+      - '.github/patch_android.py'
+      - '.github/workflows/release.yml'
+      - 'package.json'
       - 'README.md'
       - 'README_zh.md'
   workflow_dispatch:

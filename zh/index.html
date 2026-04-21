@@ -377,7 +377,7 @@
                             class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div class="flex items-center">
                                 <h3 class="text-white font-bold text-2xl tracking-tight">📱 EmbyX</h3>
-                                <span
+                                <span id="appVersionBadge"
                                     class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v1.1</span>
                             </div>
 
@@ -705,6 +705,9 @@
                     setTimeout(() => this.toggleModal('profilePage', true), 500);
                 }
 
+                // 检查版本更新 (静默模式，仅修改个人中心胶囊颜色)
+                this.checkUpdate();
+
                 // ─── 注入项目签名彩蛋 (Branding Egg) ───
                 console.log(
                     "%c EmbyX %c 原创设计@谢週五 %c",
@@ -712,6 +715,52 @@
                     "background:#1e293b;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0;",
                     "background:transparent"
                 );
+            }
+
+            /**
+             * 检查 GitHub 更新
+             * 逻辑：对比本地版本与 GitHub 最新 Release
+             */
+            async checkUpdate() {
+                const badge = document.getElementById('appVersionBadge');
+                if (!badge) return;
+
+                // 频率限制：24小时检查一次
+                const lastCheck = localStorage.getItem('embyx_last_update_check');
+                const now = Date.now();
+                if (lastCheck && now - parseInt(lastCheck) < 24 * 60 * 60 * 1000) return;
+
+                try {
+                    const response = await fetch('https://api.github.com/repos/juneix/EmbyX/releases/latest');
+                    if (!response.ok) return;
+                    const data = await response.json();
+                    localStorage.setItem('embyx_last_update_check', now.toString());
+
+                    const latestTag = data.tag_name; // 例如 v1.2
+                    const latestVersion = latestTag.replace('v', '').trim();
+                    const currentVersion = this.config.appVersion;
+
+                    // 语义化版本对比函数 (支持 1.1 < 1.1.2 等)
+                    const isNewer = (latest, current) => {
+                        const l = latest.split('.').map(Number);
+                        const c = current.split('.').map(Number);
+                        for (let i = 0; i < Math.max(l.length, c.length); i++) {
+                            if ((l[i] || 0) > (c[i] || 0)) return true;
+                            if ((l[i] || 0) < (c[i] || 0)) return false;
+                        }
+                        return false;
+                    };
+
+                    if (isNewer(latestVersion, currentVersion)) {
+                        // 发现新版本：变橙并激活点击
+                        badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
+                        badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
+                        badge.title = '发现新版本，点击前往下载';
+                        badge.onclick = () => window.open('https://github.com/juneix/EmbyX/releases', '_blank');
+                    }
+                } catch (err) {
+                    console.error('Update check failed:', err);
+                }
             }
 
 
