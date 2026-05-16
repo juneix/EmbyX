@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EmbyX - 浏览器播放能力检测</title>
+    <!-- 沿用 index.html 的 Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script data-cfasync="false">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#52B54B', // Emby绿
+                        secondary: '#EE3152' // 抖音红
+                    },
+                    fontFamily: {
+                        sans: ['PingFang SC', 'Helvetica Neue', 'Arial', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .glass-card {
+                @apply bg-gray-800/40 border border-gray-700/50 backdrop-blur-sm rounded-xl;
+            }
+        }
+    </style>
+</head>
+
+<body class="bg-black text-white font-sans select-none min-h-screen pb-10">
+    <!-- Header -->
+    <div class="fixed top-0 left-0 w-full h-[calc(3.5rem+env(safe-area-inset-top))] border-b border-gray-700/50 bg-black/50 backdrop-blur-sm z-10 pt-[env(safe-area-inset-top)]">
+        <div class="flex items-center justify-between h-14 px-4 relative">
+            <button onclick="history.back()" class="text-gray-400 w-10 h-10 flex items-center justify-center active:text-gray-300 rounded-full">
+                <i data-lucide="chevron-left" class="w-6 h-6"></i>
+            </button>
+            <span class="font-bold text-lg">浏览器播放能力检测</span>
+            <div class="w-10"></div> <!-- 占位 -->
+        </div>
+    </div>
+
+    <!-- Content Area -->
+    <div class="pt-[calc(4.5rem+env(safe-area-inset-top))] p-4 space-y-6">
+        
+        <!-- 检测结果上半部分（4列网格） -->
+        <div class="space-y-2">
+            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">检测结果</h2>
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                
+                <!-- 浏览器外壳 -->
+                <div class="glass-card p-4 flex flex-col items-center justify-center text-center space-y-2">
+                    <div class="w-12 h-12 bg-gray-700/30 rounded-full flex items-center justify-center">
+                        <i data-lucide="compass" class="w-7 h-7 text-primary" id="shell-icon"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-medium">浏览器外壳</div>
+                        <div class="text-sm font-bold mt-0.5" id="shell-name">正在检测...</div>
+                        <div class="text-[10px] text-gray-400 font-mono mt-0.5" id="shell-version">-</div>
+                    </div>
+                </div>
+
+                <!-- 浏览器内核 -->
+                <div class="glass-card p-4 flex flex-col items-center justify-center text-center space-y-2">
+                    <div class="w-12 h-12 bg-gray-700/30 rounded-full flex items-center justify-center">
+                        <i data-lucide="cpu" class="w-7 h-7 text-blue-500" id="kernel-icon"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-medium">浏览器内核</div>
+                        <div class="text-sm font-bold mt-0.5" id="kernel-name">正在检测...</div>
+                        <div class="text-[10px] text-gray-400 font-mono mt-0.5" id="kernel-version">-</div>
+                    </div>
+                </div>
+
+                <!-- 操作系统 -->
+                <div class="glass-card p-4 flex flex-col items-center justify-center text-center space-y-2">
+                    <div class="w-12 h-12 bg-gray-700/30 rounded-full flex items-center justify-center">
+                        <i data-lucide="monitor" class="w-7 h-7 text-purple-500" id="os-icon"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-medium">操作系统</div>
+                        <div class="text-sm font-bold mt-0.5" id="os-name">正在检测...</div>
+                        <div class="text-[10px] text-gray-400 font-mono mt-0.5" id="os-version">-</div>
+                    </div>
+                </div>
+
+                <!-- 终端设备 -->
+                <div class="glass-card p-4 flex flex-col items-center justify-center text-center space-y-2">
+                    <div class="w-12 h-12 bg-gray-700/30 rounded-full flex items-center justify-center">
+                        <i data-lucide="smartphone" class="w-7 h-7 text-orange-500" id="device-icon"></i>
+                    </div>
+                    <div>
+                        <div class="text-xs text-gray-500 font-medium">终端设备</div>
+                        <div class="text-sm font-bold mt-0.5" id="device-name">正在检测...</div>
+                        <div class="text-[10px] text-gray-400 font-mono mt-0.5" id="device-info">-</div>
+                    </div>
+                </div>
+
+            </div>
+            
+            <!-- Raw User-Agent -->
+            <div class="glass-card p-3 text-[10px] text-gray-500 font-mono break-all" id="ua-string">
+                正在获取 User-Agent...
+            </div>
+        </div>
+
+        <!-- 体验度评估 -->
+        <div class="space-y-2">
+            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">体验评估</h2>
+            <div class="glass-card p-4 bg-primary/10 border-primary/20 flex items-center justify-between">
+                <div class="flex items-center space-x-3">
+                    <div class="w-10 h-10 bg-primary/20 rounded-full flex items-center justify-center flex-shrink-0">
+                        <i data-lucide="zap" class="w-5 h-5 text-primary"></i>
+                    </div>
+                    <div>
+                        <h3 class="text-sm font-bold text-primary">EmbyX 体验度预估</h3>
+                        <p class="text-xs text-gray-300 mt-0.5" id="exp-summary">老古董设备，建议换机或转码。</p>
+                    </div>
+                </div>
+                <!-- 评分放在右侧，使用超大字重 -->
+                <div class="text-3xl font-black text-primary pr-2" id="exp-score">--</div>
+            </div>
+        </div>
+
+        <!-- 浏览器其他参数检测（下半部分） -->
+        <div class="space-y-2">
+            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">视频播放与解码能力</h2>
+            <div class="glass-card overflow-hidden">
+                <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-gray-700/30 text-gray-400 text-[10px] uppercase font-bold">
+                        <tr>
+                            <th class="py-2.5 px-4 whitespace-nowrap text-center">序号</th>
+                            <th class="py-2.5 px-2">功能特性</th>
+                            <th class="py-2.5 px-2 text-center">支持状态</th>
+                            <th class="py-2.5 px-4 hidden md:table-cell">详细说明</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-700/30 text-gray-300" id="capability-table">
+                        <!-- 动态填充 -->
+                        <tr>
+                            <td colspan="4" class="py-4 text-center text-gray-500">正在扫描媒体能力...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- 脚本逻辑 -->
+    <script>
+        // 初始化 Lucide 图标
+        lucide.createIcons();
+
+        // 基础元素
+        const $ = id => document.getElementById(id);
+        const ua = navigator.userAgent;
+        $('ua-string').textContent = ua;
+
+        // --- 1. 基础环境检测 ---
+        function detectEnvironment() {
+            let shell = "Unknown", shellVer = "-";
+            let kernel = "Unknown", kernelVer = "-";
+            let os = "Unknown", osVer = "-";
+
+            // 浏览器外壳简单识别
+            if (/edg\//i.test(ua)) { shell = "Edge"; shellVer = ua.match(/Edg\/([\d.]+)/)?.[1] || "-"; }
+            else if (/chrome/i.test(ua)) { shell = "Chrome"; shellVer = ua.match(/Chrome\/([\d.]+)/)?.[1] || "-"; }
+            else if (/safari/i.test(ua) && !/chrome/i.test(ua)) { shell = "Safari"; shellVer = ua.match(/Version\/([\d.]+)/)?.[1] || "-"; }
+            else if (/firefox/i.test(ua)) { shell = "Firefox"; shellVer = ua.match(/Firefox\/([\d.]+)/)?.[1] || "-"; }
+
+            // 内核
+            if (/webkit/i.test(ua)) { kernel = "WebKit"; kernelVer = ua.match(/AppleWebKit\/([\d.]+)/)?.[1] || "-"; }
+            else if (/gecko/i.test(ua) && !/webkit/i.test(ua)) { kernel = "Gecko"; kernelVer = ua.match(/rv:([\d.]+)/)?.[1] || "-"; }
+
+            // 操作系统
+            if (/macintosh|mac os x/i.test(ua)) { os = "Mac OS"; osVer = ua.match(/Mac OS X ([\d_]+)/)?.[1]?.replace(/_/g, '.') || "-"; }
+            else if (/windows/i.test(ua)) { os = "Windows"; osVer = ua.match(/Windows NT ([\d.]+)/)?.[1] || "-"; }
+            else if (/android/i.test(ua)) { 
+                os = "Android"; 
+                osVer = ua.match(/Android ([\d.]+)/)?.[1] || "-"; 
+                if (osVer === "10") osVer = "10+";
+            }
+            else if (/iphone|ipad/i.test(ua)) { os = "iOS"; osVer = ua.match(/OS ([\d_]+)/)?.[1]?.replace(/_/g, '.') || "-"; }
+
+            $('shell-name').textContent = shell;
+            $('shell-version').textContent = shellVer;
+            $('kernel-name').textContent = kernel;
+            $('kernel-version').textContent = kernelVer;
+            $('os-name').textContent = os;
+            $('os-version').textContent = osVer;
+
+            // 动态更换图标
+            if (shell === "Safari") $('shell-icon').setAttribute('data-lucide', 'compass');
+            if (os === "iOS" || os === "Mac OS") $('os-icon').setAttribute('data-lucide', 'apple');
+            lucide.createIcons();
+        }
+
+        // --- 2. 终端设备检测 ---
+        function getGPU() {
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                if (!gl) return null;
+                const ext = gl.getExtension('WEBGL_debug_renderer_info');
+                if (!ext) return null;
+                return gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        function getGPUClean() {
+            const gpu = getGPU();
+            if (!gpu) return null;
+            return gpu.replace('ANGLE (', '')
+                      .replace(/\(/g, '')
+                      .replace(/\)/g, '')
+                      .replace(/TM/i, '')
+                      .replace(/\s+/g, ' ')
+                      .split(',')[0]
+                      .trim();
+        }
+
+        async function detectDevice() {
+            let deviceName = "Unknown Device";
+            let brand = "Other";
+
+            // 1. 同步保底识别 (参考 SidePod)
+            if (/iPhone|iPad|iPod/.test(ua)) brand = 'Apple';
+            else if (/Xiaomi|Redmi|MIUI|POCO/i.test(ua) || /2312|2210|2109|2405/i.test(ua)) brand = 'Xiaomi';
+            else if (/Samsung/i.test(ua)) brand = 'Samsung';
+            else if (/Huawei/i.test(ua)) brand = 'Huawei';
+            else if (/Honor/i.test(ua)) brand = 'Honor';
+            else if (/OPPO/i.test(ua)) brand = 'OPPO';
+            else if (/vivo/i.test(ua)) brand = 'vivo';
+
+            if (brand !== 'Other') {
+                deviceName = brand + " 设备";
+            }
+
+            // 2. 异步 Client Hints 深度识别 (SidePod 方案)
+            if (navigator.userAgentData) {
+                try {
+                    const hints = await navigator.userAgentData.getHighEntropyValues(['model']);
+                    if (hints.model) {
+                        deviceName = hints.model;
+                        // 从获取到的真实型号中二次判定品牌
+                        if (/Xiaomi|Redmi|POCO|Mi /i.test(deviceName) || /2312|2210|2109|2405/i.test(deviceName)) {
+                            brand = 'Xiaomi';
+                        } else if (/Samsung/i.test(deviceName)) {
+                            brand = 'Samsung';
+                        } else if (/Huawei/i.test(deviceName)) {
+                            brand = 'Huawei';
+                        } else if (/Honor/i.test(deviceName)) {
+                            brand = 'Honor';
+                        } else if (/OPPO/i.test(deviceName)) {
+                            brand = 'OPPO';
+                        } else if (/vivo/i.test(deviceName)) {
+                            brand = 'vivo';
+                        }
+                    }
+                } catch (e) { }
+            } else {
+                // 3. 从 UA 提取型号（针对安卓未冻结或老设备）
+                if (/android/i.test(ua)) {
+                    const match = ua.match(/\(([^)]+)\)/);
+                    if (match && match[1]) {
+                        const parts = match[1].split(';');
+                        for (let p of parts) {
+                            p = p.trim();
+                            // 修复：安卓 10+ 冻结 UA 会返回 "K"，必须过滤掉，否则会显示为设备名
+                            if (/^linux/i.test(p) || /^u$/i.test(p) || /^android/i.test(p) || /^[a-z]{2}-[a-z]{2}$/i.test(p) || /wv/.test(p) || p === 'K') continue;
+                            deviceName = p.split('Build/')[0].trim();
+                            break;
+                        }
+                    }
+                } else if (/iphone/i.test(ua)) {
+                    deviceName = "iPhone";
+                } else if (/ipad/i.test(ua)) {
+                    deviceName = "iPad";
+                }
+            }
+
+            // 4. 终极绕过：如果依然无法获取真实型号（如 HTTP 环境下 Client Hints 失效）
+            // 使用 WebGL 获取 GPU 型号作为真实设备信息的补充
+            if (deviceName === "Unknown Device" || deviceName === "K" || deviceName.includes("设备")) {
+                const gpuClean = getGPUClean();
+                if (gpuClean) {
+                    deviceName = gpuClean;
+                }
+            }
+
+            // 保持与其他选项一致，只有两行
+            $('device-name').textContent = deviceName;
+            $('device-info').textContent = brand;
+        }
+
+        // --- 3. 视频播放与解码能力检测 ---
+        async function checkMediaCapabilities() {
+            const video = document.createElement('video');
+            
+            async function getCodecStatus(codec) {
+                const canPlay = video.canPlayType(codec);
+                if (canPlay === "") return 'none';
+                
+                let status = (canPlay === 'probably') ? 'full' : 'partial';
+
+                if (navigator.mediaCapabilities && navigator.mediaCapabilities.decodingInfo) {
+                    try {
+                        const result = await navigator.mediaCapabilities.decodingInfo({
+                            type: 'file',
+                            video: {
+                                contentType: codec,
+                                width: 1280,
+                                height: 720,
+                                bitrate: 1000,
+                                framerate: 30
+                            }
+                        });
+                        
+                        if (result.supported) {
+                            if (result.powerEfficient) {
+                                return 'full';
+                            } else {
+                                return 'partial';
+                            }
+                        }
+                    } catch (e) { }
+                }
+                
+                return status;
+            }
+
+            const isIPhone = /iphone/i.test(ua);
+
+            // 主流芯片解码能力对照表 (2021-2026 5年跨度)
+            // 用于校验和修正浏览器 API 的假阴性报告
+            // 1. Adreno 660 (Snapdragon 888): 支持 HEVC, AV1仅软解
+            //    https://www.qualcomm.com/smartphones/products/8-series/snapdragon-888-5g-mobile-platform
+            // 2. Adreno 730 (Snapdragon 8 Gen 1): 支持 HEVC, AV1仅软解
+            //    https://www.qualcomm.com/smartphones/products/8-series/snapdragon-8-gen-1-mobile-platform
+            // 3. Adreno 740 (Snapdragon 8 Gen 2): 支持 AV1, HEVC
+            //    https://www.qualcomm.com/smartphones/products/8-series/snapdragon-8-gen-2-mobile-platform
+            // 4. Adreno 750 (Snapdragon 8 Gen 3): 支持 AV1, HEVC
+            //    https://www.qualcomm.com/smartphones/products/8-series/snapdragon-8-gen-3-mobile-platform
+            // 5. Apple A14/A15/A16: 支持 HEVC, AV1仅软解
+            //    https://support.apple.com/en-us/111876
+            // 6. Apple A17 Pro / A18: 支持 AV1, HEVC
+            //    https://support.apple.com/en-us/111829
+            // 7. Mali-G78 (Dimensity 1200): 支持 AV1, HEVC
+            //    https://i.mediatek.com/dimensity-1200
+            // 8. Mali-G710 (Dimensity 9000): 支持 AV1, HEVC
+            //    https://www.mediatek.com/products/smartphones-2/mediatek-dimensity-9000
+            // 9. Mali-G720 (Dimensity 9300): 支持 AV1, HEVC
+            //    https://www.mediatek.com/products/smartphones-2/mediatek-dimensity-9300
+            
+            const gpuDatabase = {
+                "Adreno 660": { hevc: 'full', av1: 'partial' },
+                "Adreno 730": { hevc: 'full', av1: 'partial' },
+                "Adreno 740": { hevc: 'full', av1: 'full' },
+                "Adreno 750": { hevc: 'full', av1: 'full' },
+                "Apple A14": { hevc: 'full', av1: 'partial' },
+                "Apple A15": { hevc: 'full', av1: 'partial' },
+                "Apple A16": { hevc: 'full', av1: 'partial' },
+                "Apple A17 Pro": { hevc: 'full', av1: 'full' },
+                "Apple A18": { hevc: 'full', av1: 'full' },
+                "Mali-G78": { hevc: 'full', av1: 'full' },
+                "Mali-G710": { hevc: 'full', av1: 'full' },
+                "Mali-G715": { hevc: 'full', av1: 'full' },
+                "Mali-G720": { hevc: 'full', av1: 'full' }
+            };
+
+            const gpuName = getGPUClean();
+            const hwSpecs = gpuDatabase[gpuName] || {};
+
+            const checks = [
+                {
+                    name: "HTML5 Video 基础",
+                    desc: "支持原生网页播放",
+                    check: async () => !!video.canPlayType ? 'full' : 'none'
+                },
+                {
+                    name: "MSE (媒体源扩展)",
+                    desc: "流媒体切片播放基础",
+                    check: async () => 'MediaSource' in window ? 'full' : 'none'
+                },
+                {
+                    name: "H.264 (AVC) 解码",
+                    desc: "最通用视频格式",
+                    check: async () => await getCodecStatus('video/mp4; codecs="avc1.42E01E"')
+                },
+                {
+                    name: "H.265 (HEVC) 解码",
+                    desc: "高画质格式，防发热卡顿",
+                    check: async () => {
+                        if (isIPhone) return 'partial'; // 针对 iPhone 强制灰色对勾
+                        
+                        const browserStatus = (await getCodecStatus('video/mp4; codecs="hev1.1.6.L93.B0"') === 'full' || await getCodecStatus('video/mp4; codecs="hvc1"') === 'full') ? 'full' : 'none';
+                        const hwStatus = hwSpecs.hevc || 'none';
+
+                        // 只有两者都确认完全支持，才给绿色对勾
+                        if (browserStatus === 'full' && hwStatus === 'full') return 'full';
+                        // 只要有一方不支持或部分支持，一律显示灰色对勾（不加额外注释）
+                        if (browserStatus === 'full' || hwStatus === 'full' || hwStatus === 'partial') return 'partial';
+                        return 'none';
+                    }
+                },
+                {
+                    name: "AV1 解码",
+                    desc: "下一代极高压缩率格式",
+                    check: async () => {
+                        if (isIPhone) return 'partial'; // 针对 iPhone 强制灰色对勾
+                        
+                        const browserStatus = await getCodecStatus('video/mp4; codecs="av01.0.05M.08"');
+                        const hwStatus = hwSpecs.av1 || 'none';
+
+                        // 只有两者都确认完全支持，才给绿色对勾
+                        if (browserStatus === 'full' && hwStatus === 'full') return 'full';
+                        // 只要有一方不支持或部分支持，一律显示灰色对勾（不加额外注释）
+                        if (browserStatus === 'full' || hwStatus === 'full' || hwStatus === 'partial') return 'partial';
+                        // 针对老设备，即便 API 返回不支持，也给予“灰色对勾（保底软解）”，因为很多设备支持低规格软解
+                        return 'partial';
+                    }
+                },
+                {
+                    name: "VP9 解码",
+                    desc: "Google高清视频格式",
+                    check: async () => await getCodecStatus('video/webm; codecs="vp9"')
+                },
+                {
+                    name: "HDR 画面支持",
+                    desc: "高动态范围色彩显示",
+                    check: async () => {
+                        const isHDR = window.matchMedia('(video-dynamic-range: high)').matches || window.matchMedia('(dynamic-range: high)').matches;
+                        // 苹果设备 + P3屏幕 = 绝对支持 HDR 播放
+                        const isAppleP3 = (/macintosh|mac os x|iphone|ipad/i.test(ua) && window.matchMedia('(color-gamut: p3)').matches);
+                        return (isHDR || isAppleP3) ? 'full' : 'none';
+                    }
+                }
+            ];
+
+            const tbody = $('capability-table');
+            tbody.innerHTML = '';
+            
+            let hasHEVC = false, hasHEVCPartial = false;
+            let hasAV1 = false, hasAV1Partial = false;
+
+            for (let i = 0; i < checks.length; i++) {
+                const item = checks[i];
+                const status = await item.check();
+                
+                if (item.name.includes("H.265")) {
+                    if (status === 'full') hasHEVC = true;
+                    if (status === 'partial') hasHEVCPartial = true;
+                }
+                if (item.name.includes("AV1")) {
+                    if (status === 'full') hasAV1 = true;
+                    if (status === 'partial') hasAV1Partial = true;
+                }
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-700/10 transition-colors align-middle";
+                
+                let iconHtml = '';
+                if (status === 'full') {
+                    iconHtml = `<i data-lucide="check" class="w-5 h-5 text-primary"></i>`;
+                } else if (status === 'partial') {
+                    iconHtml = `<i data-lucide="check" class="w-5 h-5 text-gray-500"></i>`;
+                } else {
+                    iconHtml = `<i data-lucide="x" class="w-5 h-5 text-secondary"></i>`;
+                }
+
+                tr.innerHTML = `
+                    <td class="py-2 px-4 text-center text-gray-500 font-mono">${i + 1}</td>
+                    <td class="py-2 px-2">
+                        <div class="font-bold text-sm">${item.name}</div>
+                        <div class="text-[10px] text-gray-500 md:hidden mt-0.5">${item.desc}</div>
+                    </td>
+                    <td class="py-2 px-2 text-center">
+                        <div class="flex justify-center">
+                            ${iconHtml}
+                        </div>
+                    </td>
+                    <td class="py-2 px-4 text-gray-400 text-xs hidden md:table-cell">${item.desc}</td>
+                `;
+                tbody.appendChild(tr);
+            }
+            
+            lucide.createIcons();
+
+            // 评估体验度（调整评分逻辑）
+            let score = "一般";
+            let tip = "老古董设备，建议换机或转码。";
+            
+            const hevcSupported = hasHEVC || hasHEVCPartial;
+            const av1Supported = hasAV1 || hasAV1Partial;
+
+            if (hasHEVC && hasAV1) {
+                score = "完美";
+                tip = "支持全格式硬解，体验极佳。";
+            } else if (hasHEVC || (hevcSupported && av1Supported)) {
+                // 有 HEVC 硬解，或者 HEVC 和 AV1 都有支持（哪怕是软解），判定为良好
+                score = "良好";
+                tip = "支持主流格式，体验流畅。";
+            }
+
+            $('exp-summary').textContent = tip;
+            $('exp-score').textContent = score;
+        }
+
+        // 运行所有检测
+        detectEnvironment();
+        detectDevice();
+        checkMediaCapabilities();
+    </script>
+</body>
+
+</html>

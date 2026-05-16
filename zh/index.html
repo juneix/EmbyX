@@ -220,6 +220,25 @@
             </div>
         </div>
 
+        <div id="syncConfirmModal"
+            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
+            <div
+                class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm border border-gray-700/50 shadow-2xl backdrop-blur-sm text-center">
+                <div
+                    class="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/20">
+                    <i data-lucide="refresh-cw" class="stroke-primary w-6 h-6"></i>
+                </div>
+                <h3 class="text-xl font-bold text-white mb-2">同步进度</h3>
+                <p id="syncFileName" class="text-gray-400 text-sm mb-6 leading-relaxed"></p>
+                <div class="flex space-x-3">
+                    <button id="cancelSyncBtn"
+                        class="flex-1 px-4 py-2.5 rounded-xl bg-gray-800 text-gray-300 font-medium active:scale-95 transition-all">忽略</button>
+                    <button id="confirmSyncBtn"
+                        class="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white font-medium active:scale-95 transition-all">同步</button>
+                </div>
+            </div>
+        </div>
+
         <div id="deleteConfirmModal"
             class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
             <div
@@ -378,7 +397,7 @@
                             <div class="flex items-center">
                                 <h3 class="text-white font-bold text-2xl tracking-tight">📱 EmbyX</h3>
                                 <span id="appVersionBadge"
-                                    class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v1.1</span>
+                                    class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v1.2</span>
                             </div>
 
                             <div>
@@ -394,7 +413,14 @@
                             </div>
 
                             <div>
-                                <h4 class="text-gray-300">🔮 播放性能</h4>
+                                <h4 class="text-gray-300 flex items-center">
+                                    🔮 播放性能
+                                    <a href="./info.html"
+                                        class="ml-2 text-gray-500 hover:text-primary transition-colors active:scale-95"
+                                        title="检测播放能力">
+                                        <i data-lucide="cpu" class="w-4 h-4"></i>
+                                    </a>
+                                </h4>
                                 <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
                                     <li>原生 HTML5 播放器，新设备体验最佳</li>
                                     <li>老设备需服务器转码，<del>不如放到**上回收(没打钱</del> 😂</li>
@@ -651,7 +677,7 @@
             // 检查当前是否有任何弹窗/面板处于打开状态
             // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
-                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'profilePage', 'libraryModal'];
+                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'syncConfirmModal', 'profilePage', 'libraryModal'];
                 return modals.some(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
@@ -772,6 +798,7 @@
                     'favoriteBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
+                    'syncConfirmModal', 'confirmSyncBtn', 'cancelSyncBtn', 'syncFileName',
                     'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configShortDrama', 'configDeleteMode'
                 ];
                 ids.forEach(id => this.dom[id] = document.getElementById(id));
@@ -1042,6 +1069,18 @@
                         } else {
                             this.state.videos = data.Items;
                             this.state.currentIndex = 0;
+
+                            // 短剧模式：尝试从本地恢复进度
+                            if (this.config.shortDrama && !isAppend && this.state.currentLibraryId) {
+                                const lastId = localStorage.getItem(`emby_last_id_${this.state.currentLibraryId}`);
+                                if (lastId) {
+                                    const savedIndex = this.state.videos.findIndex(v => v.Id === lastId);
+                                    if (savedIndex !== -1) {
+                                        this.state.currentIndex = savedIndex;
+                                    }
+                                }
+                            }
+
                             // 保存媒体库真实总数（API 返回，不受 Limit 影响）供分页显示
                             this.state.totalCount = data.TotalRecordCount || 0;
 
@@ -1055,7 +1094,11 @@
                                 this.renderGridView();
                             } else {
                                 this.renderSlides();
-                                this.loadVideo(0);
+                                this.loadVideo(this.state.currentIndex);
+                                // 短剧模式：异步检查云端是否有更新的进度
+                                if (this.config.shortDrama && !isAppend) {
+                                    setTimeout(() => this.checkCloudSync(), 1500);
+                                }
                             }
                         }
                     } else if (isLoadMore || isAppend) {
@@ -1457,6 +1500,15 @@
 
                 if (!videoEl || !videoData) return;
 
+                // 短剧模式：记录当前本地播放进度标识
+                if (this.config.shortDrama && this.state.currentLibraryId) {
+                    const now = new Date().toISOString();
+                    localStorage.setItem(`emby_last_id_${this.state.currentLibraryId}`, videoData.Id);
+                    localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
+                    // 异步同步到云端
+                    this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
+                }
+
                 // renderBuffer 已赋值 src，处理未匹配时的修正
                 const src = this.getVideoSrc(videoData.Id, videoData);
                 if (videoEl.src !== src) {
@@ -1798,6 +1850,110 @@
                     },
                     body: JSON.stringify(payload)
                 }).catch(() => { });
+            }
+
+            // --- 续播与同步逻辑 (方案 A: DisplayPreferences) ---
+
+            async saveCloudSync(itemId, libId, libType, date) {
+                try {
+                    const { server, token, userId } = this.config;
+                    const url = `${server}/emby/DisplayPreferences/EmbyX-Resume-Drama?userId=${userId}&api_key=${token}`;
+
+                    const prefs = {
+                        Id: "EmbyX-Resume-Drama",
+                        CustomPrefs: {
+                            lastId: itemId,
+                            libId: libId,
+                            libType: libType,
+                            date: date,
+                            deviceName: this.config.deviceName
+                        }
+                    };
+
+                    fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(prefs)
+                    }).catch(() => { });
+                } catch (e) { }
+            }
+
+            async checkCloudSync() {
+                if (!this.config.shortDrama) return;
+
+                try {
+                    const { server, token, userId } = this.config;
+                    const url = `${server}/emby/DisplayPreferences/EmbyX-Resume-Drama?userId=${userId}&api_key=${token}`;
+                    const res = await fetch(url);
+                    if (!res.ok) return;
+
+                    const data = await res.json();
+                    const cloud = data.CustomPrefs;
+                    if (!cloud || !cloud.lastId || !cloud.date) return;
+
+                    const localId = localStorage.getItem(`emby_last_id_${this.state.currentLibraryId}`);
+                    const localDateStr = localStorage.getItem(`emby_last_date_${this.state.currentLibraryId}`) || '';
+
+                    const cloudDate = new Date(cloud.date).getTime();
+                    const localDate = localDateStr ? new Date(localDateStr).getTime() : 0;
+
+                    // 只有云端进度更新，且 ID 不同时才提示
+                    if (cloudDate > localDate && cloud.lastId !== localId) {
+                        // 获取设备名称与视频名称
+                        let deviceDisplay = cloud.deviceName || "其他设备";
+                        let displayName = "更新的剧集";
+                        
+                        if (cloud.libId === this.state.currentLibraryId) {
+                            const item = this.state.videos.find(v => v.Id === cloud.lastId);
+                            if (item) displayName = item.Name;
+                        }
+
+                        this.dom.syncFileName.textContent = `检测到 ${deviceDisplay} 播放至：${displayName}`;
+                        this.state._pendingSyncItem = cloud;
+                        this.toggleModal('syncConfirmModal', true);
+                        lucide.createIcons();
+                    }
+                } catch (e) {
+                    console.warn('云端同步检测失败:', e);
+                }
+            }
+
+            async applyCloudSync() {
+                const cloud = this.state._pendingSyncItem;
+                if (!cloud) return;
+
+                this.toggleModal('syncConfirmModal', false);
+                this.showToast('正在同步进度...');
+
+                // 更新本地缓存，确保后续逻辑一致
+                localStorage.setItem(`emby_last_id_${cloud.libId}`, cloud.lastId);
+                localStorage.setItem(`emby_last_date_${cloud.libId}`, cloud.date);
+
+                if (cloud.libId !== this.state.currentLibraryId) {
+                    // 跨库跳转
+                    this.state.currentLibraryId = cloud.libId;
+                    this.state.currentLibraryType = cloud.libType;
+                    localStorage.setItem('emby_lib_id', cloud.libId);
+                    localStorage.setItem('emby_lib_type', cloud.libType);
+
+                    // 重新加载新库
+                    this.state.startIndex = 0;
+                    await this.fetchVideos(0, false);
+                    this.showToast('✅ 已跨库同步');
+                } else {
+                    // 同库跳转
+                    const index = this.state.videos.findIndex(v => v.Id === cloud.lastId);
+                    if (index !== -1) {
+                        this.state.currentIndex = index;
+                        this.renderSlides();
+                        this.loadVideo(index);
+                        this.showToast('✅ 进度已同步');
+                    } else {
+                        // 如果当前分页没找到，重刷该库
+                        this.state.startIndex = 0;
+                        await this.fetchVideos(0, false);
+                    }
+                }
             }
 
             reportCapabilities() {
@@ -2543,10 +2699,18 @@
 
                 this.dom.confirmDeleteBtn.onclick = () => this.executeDelete();
                 this.dom.cancelDeleteBtn.onclick = () => this.toggleModal('deleteConfirmModal', false);
+                this.dom.confirmSyncBtn.onclick = () => this.applyCloudSync();
+                this.dom.cancelSyncBtn.onclick = () => this.toggleModal('syncConfirmModal', false);
 
                 this.dom.deleteConfirmModal.onclick = (e) => {
                     if (e.target === e.currentTarget) {
                         this.toggleModal('deleteConfirmModal', false);
+                    }
+                };
+
+                this.dom.syncConfirmModal.onclick = (e) => {
+                    if (e.target === e.currentTarget) {
+                        this.toggleModal('syncConfirmModal', false);
                     }
                 };
 
