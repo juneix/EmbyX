@@ -614,12 +614,30 @@
     </div>
 
     <script>
-        /**
-         * EmbyX Core Logic
-         * 包含配置管理、播放器核心、UI 交互、手势控制
-         */
+        // Jellyfin 前缀兼容拦截
+        function enableJellyfinFetchProxy() {
+            if (window._jellyfinProxyEnabled) return;
+            const origFetch = window.fetch;
+            window.fetch = function (url, options) {
+                if (typeof url === 'string' && url.includes('/emby/')) {
+                    url = url.replace('/emby/', '/');
+                }
+                return origFetch(url, options);
+            };
+            window._jellyfinProxyEnabled = true;
+        }
+
+        // Jellyfin 媒体与图片地址修正
+        function fixUrlForJellyfin(url) {
+            if (typeof url === 'string' && localStorage.getItem('emby_is_jellyfin') === 'true') {
+                return url.replace('/emby/', '/');
+            }
+            return url;
+        }
+
         class EmbyApp {
             constructor() {
+                this._isFirstLoad = true; // 启动加载锁，防时间戳自污染
                 // 应用状态
                 this.state = {
                     videos: [],
@@ -860,6 +878,11 @@
                     this.dom.playModeBtn.innerHTML = `<i data-lucide="${this.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                     lucide.createIcons();
                 }
+
+                // Jellyfin 初始化挂载
+                if (localStorage.getItem('emby_is_jellyfin') === 'true') {
+                    enableJellyfinFetchProxy();
+                }
             }
 
             async saveConfig() {
@@ -901,6 +924,33 @@
                         localStorage.removeItem('emby_favorites');
                         location.reload();
                         return;
+                    }
+
+                    // Jellyfin 登录前置探测
+                    let isJellyfin = false;
+                    try {
+                        let detectRes = await fetch(`${server}/System/Info/Public`);
+                        if (detectRes.ok) {
+                            const detectData = await detectRes.json();
+                            if (detectData.ProductName && detectData.ProductName.toLowerCase().includes('jellyfin')) {
+                                isJellyfin = true;
+                            }
+                        } else {
+                            detectRes = await fetch(`${server}/emby/System/Info/Public`);
+                            if (detectRes.ok) {
+                                const detectData = await detectRes.json();
+                                if (detectData.ProductName && detectData.ProductName.toLowerCase().includes('jellyfin')) {
+                                    isJellyfin = true;
+                                }
+                            }
+                        }
+                    } catch (e) {}
+
+                    if (isJellyfin) {
+                        localStorage.setItem('emby_is_jellyfin', 'true');
+                        enableJellyfinFetchProxy();
+                    } else {
+                        localStorage.removeItem('emby_is_jellyfin');
                     }
 
                     const res = await fetch(`${server}/emby/Users/AuthenticateByName`, {
@@ -1504,9 +1554,18 @@
                 if (this.config.shortDrama && this.state.currentLibraryId) {
                     const now = new Date().toISOString();
                     localStorage.setItem(`emby_last_id_${this.state.currentLibraryId}`, videoData.Id);
-                    localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
-                    // 异步同步到云端
-                    this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
+
+                    // 非首次加载时同步上报，防止启动污染时间戳
+                    if (!this._isFirstLoad) {
+                        localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
+                        // 1秒延迟防抖，避开高频滑动并发写冲突
+                        clearTimeout(this._syncTimer);
+                        this._syncTimer = setTimeout(() => {
+                            this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
+                        }, 1000);
+                    } else {
+                        this._isFirstLoad = false;
+                    }
                 }
 
                 // renderBuffer 已赋值 src，处理未匹配时的修正
@@ -1730,7 +1789,7 @@
                     // 不加 EnableAutoStreamCopy：避免 Emby 绕过 HLS 分片直接走流传输
                 ].filter(Boolean).join('&');
 
-                return `${server}/emby/Videos/${id}/master.m3u8?${params}`;
+                return fixUrlForJellyfin(`${server}/emby/Videos/${id}/master.m3u8?${params}`);
             }
 
             togglePlay() {
@@ -1802,7 +1861,7 @@
                 });
             }
 
-            reportPlayback(event, videoEl) {
+            reportPlayback(event, videoEl, isKeepAlive = false) {
                 if (!this.config.server || !this.config.token || this.state.videos.length === 0) return;
 
                 const now = Date.now();
@@ -1848,7 +1907,8 @@
                         'Content-Type': 'application/json',
                         'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
                     },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify(payload),
+                    keepalive: isKeepAlive
                 }).catch(() => { });
             }
 
@@ -2002,7 +2062,7 @@
                     const deviceId = this.config.deviceId || 'EmbyX-Device';
                     // 使用 stream.mp4 并允许 Copy。Emby 会自动执行 Remux (hev1 -> hvc1)，不重编码，画质无损。
                     const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                    return `${server}/emby/Videos/${id}/stream.mp4?${params}`;
+                    return fixUrlForJellyfin(`${server}/emby/Videos/${id}/stream.mp4?${params}`);
                 }
 
                 // ── 原画直连 (Direct Play) ──────────────────────────────────
@@ -2019,24 +2079,17 @@
                     `PlaySessionId=${playSessionId}`
                 ].filter(Boolean).join('&');
 
-                return `${server}/emby/Videos/${id}/stream?${params}`;
+                return fixUrlForJellyfin(`${server}/emby/Videos/${id}/stream?${params}`);
             }
 
             getImageSrc(video) {
                 const { server, token } = this.config;
-                // 优先加载同目录的定制封面图
                 const fallbackUrl = './poster.webp';
 
-                if (typeof video === 'object' && video !== null) {
-                    if (video.ImageTags && video.ImageTags.Primary) {
-                        return `${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`;
-                    }
-                    return fallbackUrl;
+                if (video && video.ImageTags && video.ImageTags.Primary) {
+                    return fixUrlForJellyfin(`${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`);
                 }
-
-                // 此时传入的是纯 ID 字符串（旧逻辑残留处理）
-                if (!video) return fallbackUrl;
-                return `${server}/emby/Items/${video}/Images/Primary?api_key=${token}`;
+                return fallbackUrl;
             }
 
             async showLibraries() {
@@ -2728,6 +2781,15 @@
 
                 // 键盘与遥控器适配
                 this.bindKeyboard();
+
+                // 网页卸载时上报 Stopped，清除 Session 残留
+                window.addEventListener('pagehide', () => {
+                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                    const curV = document.getElementById(`video-p${slideIdx}`);
+                    if (curV && this.config.server && this.config.token) {
+                        this.reportPlayback('stopped', curV, true);
+                    }
+                });
             }
 
             bindKeyboard() {
