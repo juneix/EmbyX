@@ -921,7 +921,11 @@
                     return;
                 }
                 try {
-                    const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&Fields=Id`);
+                    const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&Fields=Id`, {
+                        headers: {
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                        }
+                    });
                     if (res.ok) {
                         const data = await res.json();
                         if (data && data.Items) {
@@ -980,7 +984,7 @@
 
                     const res = await fetch(url, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
                         }
                     });
                     if (!res.ok) {
@@ -1702,7 +1706,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
                     },
                     body: JSON.stringify(payload)
                 }).catch(() => { });
@@ -1715,7 +1719,7 @@
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
                     },
                     body: JSON.stringify({
                         PlayableMediaTypes: ["Video"],
@@ -1794,16 +1798,21 @@
                 try {
                     const userId = this.config.userId;
 
-                    const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                    let playlistsData = { Items: [] };
+                    try {
+                        const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
+                            headers: {
+                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
+                            }
+                        });
+                        if (playlistsRes.ok) {
+                            playlistsData = await playlistsRes.json();
                         }
-                    });
-                    const playlistsData = await playlistsRes.json();
+                    } catch (e) {}
 
                     const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
                         headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
                         }
                     });
                     const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };
@@ -1938,7 +1947,12 @@
                 if (server && token && userId) {
                     try {
                         const method = isFav ? 'DELETE' : 'POST';
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${id}?api_key=${token}`, { method });
+                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${id}?api_key=${token}`, {
+                            method,
+                            headers: {
+                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                            }
+                        });
                         if (!res.ok) {
                             item.UserData.IsFavorite = isFav;
                             if (isFav) this.state.favorites.add(id); else this.state.favorites.delete(id);
@@ -2000,7 +2014,10 @@
                     // Note: Emby DELETE API requires admin account; regular users get 403
                     // Must check res.ok, otherwise 403/404 are silently treated as success
                     const res = await fetch(`${this.config.server}/emby/Items/${item.Id}?api_key=${this.config.token}`, {
-                        method: 'DELETE'
+                        method: 'DELETE',
+                        headers: {
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
+                        }
                     });
 
                     if (!res.ok) {
@@ -2185,7 +2202,11 @@
                 lucide.createIcons();
 
                 try {
-                    const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`);
+                    const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
+                        headers: {
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
+                        }
+                    });
                     if (!res.ok) throw new Error('API Error');
                     const data = await res.json();
 
@@ -2895,7 +2916,12 @@
                 if (currentVideo && !currentVideo.UserData?.IsFavorite) {
                     try {
                         const { server, token, userId } = this.config;
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${currentVideo.Id}?api_key=${token}`, { method: 'POST' });
+                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${currentVideo.Id}?api_key=${token}`, {
+                            method: 'POST',
+                            headers: {
+                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                            }
+                        });
                         if (res.ok) {
                             if (!currentVideo.UserData) currentVideo.UserData = {};
                             currentVideo.UserData.IsFavorite = true;
