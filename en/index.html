@@ -805,19 +805,6 @@
                 const user = this.dom.configUser.value.trim();
                 const pwd = this.dom.configPwd.value.trim();
 
-                // Auto-fill protocol and port
-                if (server && !server.startsWith('http')) {
-                    const host = server.split(':')[0];
-                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
-
-                    // If IP and no port specified, append default 8096
-                    if (isIP && !server.includes(':')) {
-                        server += ':8096';
-                    }
-
-                    server = (isIP ? 'http://' : 'https://') + server;
-                }
-
                 const isStatic = this.dom.configStatic.checked;
                 const autoplay = this.dom.configAutoplay.checked;
                 const shortDrama = this.dom.configShortDrama.checked;
@@ -825,8 +812,40 @@
 
                 if (!server || !user) return this.showToast('Please fill in all fields');
 
-
                 this.toggleLoading(true);
+
+                // Auto-fill protocol and port
+                if (server && !server.startsWith('http')) {
+                    const host = server.split(':')[0];
+                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
+
+                    if (isIP && !server.includes(':')) {
+                        // Adapt automatically based on the client origin scheme
+                        const scheme = location.protocol === 'https:' ? 'https://' : 'http://';
+                        
+                        // Step 1: Probe default 8096 port first
+                        let is8096Alive = false;
+                        try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2s rapid timeout
+                            const testRes = await fetch(`${scheme}${server}:8096/System/Info/Public`, { signal: controller.signal });
+                            clearTimeout(timeoutId);
+                            if (testRes.ok || testRes.status === 401 || testRes.status === 403) {
+                                is8096Alive = true;
+                            }
+                        } catch (e) {}
+
+                        // Step 2: Symmetrically fallback to Feiniu default 8090 if 8096 is offline
+                        if (is8096Alive) {
+                            server = `${scheme}${server}:8096`;
+                        } else {
+                            server = `${scheme}${server}:8090`;
+                        }
+                    } else {
+                        server = (isIP ? 'http://' : 'https://') + server;
+                    }
+                }
+
                 try {
                     if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
                         localStorage.setItem('emby_static', isStatic);

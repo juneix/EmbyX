@@ -890,19 +890,6 @@
                 const user = this.dom.configUser.value.trim();
                 const pwd = this.dom.configPwd.value.trim();
 
-                // 自动补全协议头和端口
-                if (server && !server.startsWith('http')) {
-                    const host = server.split(':')[0];
-                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
-
-                    // 如果是 IP 且没有端口号，补全默认的 8096
-                    if (isIP && !server.includes(':')) {
-                        server += ':8096';
-                    }
-
-                    server = (isIP ? 'http://' : 'https://') + server;
-                }
-
                 const isStatic = this.dom.configStatic.checked;
                 const autoplay = this.dom.configAutoplay.checked;
                 const shortDrama = this.dom.configShortDrama.checked;
@@ -911,6 +898,39 @@
                 if (!server || !user) return this.showToast('请填写完整信息');
 
                 this.toggleLoading(true);
+
+                // 自动补全协议头和端口
+                if (server && !server.startsWith('http')) {
+                    const host = server.split(':')[0];
+                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
+
+                    if (isIP && !server.includes(':')) {
+                        // 根据客户端当前网页的协议自适应（HTTPS 环境下只补全 https，HTTP 环境下只补全 http）
+                        const scheme = location.protocol === 'https:' ? 'https://' : 'http://';
+                        
+                        // 步骤一：优先探测默认的 8096 端口
+                        let is8096Alive = false;
+                        try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2秒快速超时
+                            const testRes = await fetch(`${scheme}${server}:8096/System/Info/Public`, { signal: controller.signal });
+                            clearTimeout(timeoutId);
+                            if (testRes.ok || testRes.status === 401 || testRes.status === 403) {
+                                is8096Alive = true;
+                            }
+                        } catch (e) {}
+
+                        // 步骤二：应用探测结果（若 8096 不通，则直接补全飞牛影视的默认端口 8090）
+                        if (is8096Alive) {
+                            server = `${scheme}${server}:8096`;
+                        } else {
+                            server = `${scheme}${server}:8090`;
+                        }
+                    } else {
+                        server = (isIP ? 'http://' : 'https://') + server;
+                    }
+                }
+
                 try {
                     // 如果是用旧 token 更新设置，跳过登录
                     if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
