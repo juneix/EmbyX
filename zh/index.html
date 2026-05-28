@@ -24,6 +24,8 @@
     <title>EmbyX</title>
     <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
     <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js" data-cfasync="false"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {
@@ -1716,7 +1718,7 @@
 
                             // 降级：如果被浏览器强行阻止，弹出UI引导用户点击
                             if (error.name === 'NotAllowedError') {
-                                this.showToast('浏览器限制自动播放，请点击屏幕开始');
+                                this.showToast('浏览器限制自动播放，请手动点击');
                                 const app = document.getElementById('app');
                                 if (app.classList.contains('interface-hidden')) {
                                     app.classList.remove('interface-hidden');
@@ -1744,6 +1746,11 @@
                     // ── 直接播放模式下的回退链 ────────────────────────────────
                     // 修改回退链步数：iOS 三步 / 非 iOS 两步
                     if (isIOS) {
+                        // 确保先清理并重置 Hls 实例
+                        if (window.activeHls) {
+                            window.activeHls.destroy();
+                            window.activeHls = null;
+                        }
                         // iOS 降级链：Direct Play → Direct Stream → HLS 转码
                         if (retryCount === 0) {
                             // Step 1: Direct Stream（直接串流：只转封装不重编，速度最快）
@@ -1770,11 +1777,91 @@
                         if (retryCount === 0) {
                             const { server, token } = this.config;
                             const deviceId = this.config.deviceId || 'EmbyX-Device';
-                            this.showToast('尝试直接串流...');
-                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
-                            v.load();
-                            this.playVideo(index);
+                            
+                            // 智能判定是否是 strm 直播流视频源
+                            const isStrm = (item.Path && item.Path.endsWith('.strm')) || 
+                                           (item.MediaSources && item.MediaSources[0] && 
+                                            (item.MediaSources[0].Path.startsWith('http') || 
+                                             item.MediaSources[0].Container === 'strm'));
+                            
+                            if (isStrm) {
+                                if (window.activeHls) {
+                                    window.activeHls.destroy();
+                                    window.activeHls = null;
+                                }
+                                if (window.activeMpegtsPlayer) {
+                                    window.activeMpegtsPlayer.destroy();
+                                    window.activeMpegtsPlayer = null;
+                                }
+
+                                const msId = item.MediaSources?.[0]?.Id || '';
+                                const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
+
+                                const mediaSource = item.MediaSources?.[0];
+                                const container = (mediaSource?.Container || '').toLowerCase();
+                                const path = (mediaSource?.Path || '').toLowerCase();
+                                const isFlv = container === 'flv' || path.includes('.flv') || path.includes('flv=') || path.includes('/flv');
+
+                                // 智能提取 strm 中的外部直播流 URL 以实现原画直连，绕过 Emby 的 Static 500 报错限制
+                                // 如果 path 是以 http 开头的真实网络流，前端直接用 mpegts/Hls 进行直连播放，不经过 Emby 服务器中转
+                                const playUrl = mediaSource?.Path && mediaSource.Path.startsWith('http') 
+                                    ? mediaSource.Path 
+                                    : `${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`;
+
+                                if (isFlv && typeof mpegts !== 'undefined' && mpegts.isSupported()) {
+                                    this.showToast('直连播放 STRM 文件...');
+                                    // 清理旧报错残留并解绑原生错误监听，防止直播抖动误触发降级导致反复刷新
+                                    v.removeAttribute('src');
+                                    v.onerror = null;
+
+                                    const player = mpegts.createPlayer({
+                                        type: 'mse',
+                                        isLive: true,
+                                        url: playUrl
+                                    }, {
+                                        enableWorker: true,
+                                        enableStashBuffer: false,
+                                        stashInitialSize: 128,
+                                        liveBufferLatencyChasing: true,
+                                        liveBufferLatencyMaxLatency: 1.5,
+                                        liveBufferLatencyMinRemain: 0.5
+                                    });
+                                    player.attachMediaElement(v);
+                                    player.load();
+                                    window.activeMpegtsPlayer = player;
+                                    this.playVideo(index);
+                                } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                                    this.showToast('直播源直连...');
+                                    // 清理旧报错残留并解绑原生错误监听，防止直播抖动误触发降级导致反复刷新
+                                    v.removeAttribute('src');
+                                    v.onerror = null;
+
+                                    const hls = new Hls({
+                                        maxBufferSize: 0,
+                                        liveSyncDurationCount: 3,
+                                    });
+                                    hls.loadSource(playUrl);
+                                    hls.attachMedia(v);
+                                    window.activeHls = hls;
+                                    v.load();
+                                    this.playVideo(index);
+                                }
+                            } else {
+                                // 普通本地视频（如 MP4/MKV）：原生 HTML5 播放器，清理并卸载 Hls.js 和 mpegts
+                                if (window.activeHls) {
+                                    window.activeHls.destroy();
+                                    window.activeHls = null;
+                                }
+                                if (window.activeMpegtsPlayer) {
+                                    window.activeMpegtsPlayer.destroy();
+                                    window.activeMpegtsPlayer = null;
+                                }
+                                this.showToast('尝试直接串流...');
+                                const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                                v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                                v.load();
+                                this.playVideo(index);
+                            }
                         } else {
                             this.toggleLoading(false);
                             this.showToast('播放失败，禁用"直接播放"可转码');
@@ -1847,6 +1934,10 @@
                 const curV = document.getElementById(`video-p${slideIdx}`);
                 if (curV) {
                     curV.pause();
+                    if (window.activeMpegtsPlayer) {
+                        window.activeMpegtsPlayer.destroy();
+                        window.activeMpegtsPlayer = null;
+                    }
                     this.reportPlayback('stopped', curV);
                 }
 
@@ -3008,7 +3099,8 @@
                     }
                     // 5. 新增快捷键适配 (R, E, F, G, V, I, U, M)
                     else {
-                        if (lowKey === 'r') {
+                        // 屏蔽 Cmd+R/Ctrl+R/Alt+R 刷新热键，防止被误判为切换播放模式
+                        if (lowKey === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
                             this.dom.playModeBtn.click(); // 触发视觉反馈
                         } else if (lowKey === 'f') {
                             this.dom.fullscreenBtn.click();

@@ -11,9 +11,9 @@
 
 A TikTok-style web player for Emby / Jellyfin. Experience your private media library in a whole new, immersive way. 🎉
 
-![EmbyX-1](/poster1-en.webp)
+![EmbyX-1](pic/poster1-en.webp)
 
-![EmbyX-2](/poster2-en.webp)
+![EmbyX-2](pic/poster2-en.webp)
 
 ## ✨ Features
 
@@ -75,12 +75,11 @@ If EmbyX makes your digital life easier, please `star it on GitHub ⭐️`, or s
 embyx/
 ├── zh/               # Chinese Version
 ├── en/               # English Version
-├── README.md         # English Documentation (Default)
-├── README_zh.md      # Chinese Documentation
-├── Dockerfile        # Docker Image Build File
-├── docker-compose.yml # Docker Compose Configuration
-├── entrypoint.sh     # Docker Entrypoint
-└── nginx.conf        # Nginx configuration
+├── pic/              # Marketing & demo screenshots
+├── live/             # live-redirect proxy service
+├── docker/           # Docker deployment configurations
+├── README.md         # English Documentation
+└── README_zh.md      # Chinese Documentation
 ```
 
 
@@ -105,6 +104,7 @@ docker run -d \
   --network host \
   -e APP_LANG=en \
   -e APP_PORT=8090 \
+  -e LIVE_PORT=8091 \
   ghcr.io/juneix/embyx
 ```
 #### Docker Compose:
@@ -119,6 +119,7 @@ services:
     environment:
       - APP_LANG=en # English Version
       - APP_PORT=8090 # Access Port
+      - LIVE_PORT=8091 # Live Proxy Port
 ```
 
 ## ❤️ Support & Community
