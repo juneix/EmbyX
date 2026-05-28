@@ -7,3 +7,4 @@ services:
     environment:
       - APP_LANG=zh # zh (中文), en (English)
       - APP_PORT=8090 # 访问端口 (Access Port)
+      - LIVE_PORT=8091 # 直播中转端口 (Live Port)

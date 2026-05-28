@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="bg-black">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EmbyX 直播源配置</title>
+    <!-- 引入 Tailwind CSS 与 Lucide 图标库 -->
+    <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script data-cfasync="false">
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#52B54B', // Emby绿
+                        secondary: '#EE3152', // 抖音红
+                        glass: 'rgba(255, 255, 255, 0.05)'
+                    },
+                    fontFamily: {
+                        sans: ['PingFang SC', 'Helvetica Neue', 'Arial', 'sans-serif']
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            /* 玻璃态背景 */
+            .glass-panel {
+                background: rgba(18, 18, 18, 0.6);
+                backdrop-filter: blur(16px);
+                -webkit-backdrop-filter: blur(16px);
+                border: 1px solid rgba(255, 255, 255, 0.07);
+            }
+            /* 输入框高亮动画 */
+            .custom-input {
+                @apply bg-black/40 border border-gray-700/60 rounded-xl px-4 py-3 text-white outline-none transition-all duration-300 focus:border-primary focus:ring-2 focus:ring-primary/20 text-sm;
+            }
+        }
+    </style>
+</head>
+
+<body class="min-h-screen text-gray-200 bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-gray-900 via-black to-black pb-12 font-sans select-none">
+    
+    <!-- 顶部导航栏 -->
+    <div class="fixed top-0 left-0 w-full h-[calc(3.5rem+env(safe-area-inset-top))] border-b border-gray-700/50 bg-black/50 backdrop-blur-sm z-40 pt-[env(safe-area-inset-top)]">
+        <div class="flex items-center justify-between h-14 px-4 relative">
+            <a href="index.html" class="text-gray-400 w-10 h-10 flex items-center justify-center active:text-gray-300 rounded-full" title="返回 EmbyX 主页">
+                <i data-lucide="chevron-left" class="w-6 h-6"></i>
+            </a>
+            <span class="font-bold text-lg">直播源配置</span>
+            <div class="w-10"></div> <!-- 占位 -->
+        </div>
+    </div>
+
+    <main class="max-w-4xl mx-auto px-4 pt-[calc(4.5rem+env(safe-area-inset-top))] grid grid-cols-1 md:grid-cols-12 gap-8">
+        
+        <!-- 左侧：录入配置表单 -->
+        <section class="md:col-span-5">
+            <div class="glass-panel p-6 rounded-2xl shadow-2xl space-y-6">
+                <div>
+                    <h2 class="text-white text-lg font-bold flex items-center">
+                        <i data-lucide="plus-circle" class="stroke-primary w-5 h-5 mr-2"></i>录入直播源
+                    </h2>
+                    <p class="text-xs text-gray-400 mt-1">自动转换为 Emby STRM 虚拟文件</p>
+                </div>
+
+                <form id="liveForm" class="space-y-4">
+                    <!-- 隐藏的索引，编辑模式下有用 -->
+                    <input type="hidden" id="editIndex" value="-1">
+
+                    <!-- 平台选择 -->
+                    <div class="flex flex-col space-y-1.5">
+                        <label class="text-xs text-gray-400 font-medium">直播平台</label>
+                        <select id="platformSelect" class="custom-input cursor-pointer">
+                            <option value="manual">通用 m3u8</option>
+                            <option value="douyu">斗鱼</option>
+                            <option value="huya">虎牙</option>
+                            <option value="bilibili">B站</option>
+                        </select>
+                    </div>
+
+                    <!-- 主播昵称 -->
+                    <div class="flex flex-col space-y-1.5">
+                        <label class="text-xs text-gray-400 font-medium" id="nameLabel">频道名称</label>
+                        <input type="text" id="streamName" placeholder="例如: 湖南卫视" class="custom-input" required>
+                    </div>
+
+                    <!-- 地址 / 房间号 -->
+                    <div class="flex flex-col space-y-1.5">
+                        <label class="text-xs text-gray-400 font-medium" id="urlLabel">m3u8 地址</label>
+                        <input type="text" id="streamValue" placeholder="https:// 开头的 m3u8 直播流" class="custom-input" required>
+                    </div>
+
+                    <!-- 头像链接 -->
+                    <div class="flex flex-col space-y-1.5">
+                        <label class="text-xs text-gray-400 font-medium flex items-center justify-between">
+                            <span>封面海报/头像链接 (选填)</span>
+                            <button type="button" id="fetchLogoBtn" class="text-[10px] text-primary hover:underline font-bold hidden flex items-center">
+                                <i data-lucide="sparkles" class="w-3 h-3 mr-0.5 animate-pulse"></i>自动获取封面
+                            </button>
+                        </label>
+                        <input type="text" id="streamLogo" placeholder="http:// 开头的海报图链接" class="custom-input">
+                    </div>
+
+                    <!-- 提交按钮 -->
+                    <div class="pt-4 flex space-x-3">
+                        <button type="button" id="resetBtn" class="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm font-medium py-3 rounded-xl active:scale-95 transition-all">重置</button>
+                        <button type="submit" id="submitBtn" class="flex-[2] bg-primary hover:bg-primary/90 text-white text-sm font-bold py-3 rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all">添加频道</button>
+                    </div>
+                </form>
+            </div>
+        </section>
+
+        <!-- 右侧：已有列表展示 -->
+        <section class="md:col-span-7">
+            <div class="glass-panel p-6 rounded-2xl shadow-2xl flex flex-col min-h-[500px]">
+                <div class="flex items-center justify-between mb-4">
+                    <div>
+                        <h2 class="text-white text-lg font-bold flex items-center">
+                            <i data-lucide="list-video" class="stroke-primary w-5 h-5 mr-2"></i>已配置频道墙
+                        </h2>
+                        <p class="text-xs text-gray-400 mt-1" id="channelSummary">正在加载配置...</p>
+                    </div>
+                    <!-- 一键增量扫描 Emby -->
+                    <button id="scanEmbyBtn" class="flex items-center space-x-1 text-xs text-yellow-500 bg-yellow-500/10 hover:bg-yellow-500/20 py-2 px-3 rounded-xl border border-yellow-500/20 transition-all active:scale-95">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+                        <span>通知 Emby 扫库</span>
+                    </button>
+                </div>
+
+                <!-- 滚动列表 -->
+                <div class="flex-1 overflow-y-auto max-h-[420px] pr-1 space-y-3" id="channelsList">
+                    <!-- 骨架屏加载 -->
+                    <div class="flex justify-center items-center py-20">
+                        <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-gray-500"></i>
+                    </div>
+                </div>
+
+                <!-- 保存总配置 -->
+                <div class="pt-6 border-t border-gray-800/80 mt-4 flex items-center justify-between">
+                    <span class="text-xs text-gray-400 flex items-center">
+                        <i data-lucide="shield-alert" class="w-3.5 h-3.5 mr-1 text-yellow-500"></i>
+                        保存将自动重写本地 `.strm` 文件
+                    </span>
+                    <button id="saveAllBtn" class="bg-primary hover:bg-primary/90 text-white text-sm font-bold py-2.5 px-6 rounded-xl shadow-lg shadow-primary/20 active:scale-95 transition-all flex items-center space-x-2">
+                        <i data-lucide="save" class="w-4 h-4"></i>
+                        <span>保存</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 交互 Toast 气泡 -->
+    <div id="toast" class="fixed bottom-6 left-1/2 -translate-x-1/2 bg-black/80 border border-white/10 px-5 py-3 rounded-2xl text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] text-center shadow-2xl backdrop-blur-md">
+        提示信息
+    </div>
+
+    <script>
+        // 频道总配置数组
+        let manualList = [];
+        let autoList = [];
+
+        // 智能判定本地调试或生产部署的 Go 后端 API 基准地址 (自适应 3000, 5500 等任何本地调试端口，支持局域网 IP)
+        const isProd = window.location.port === '8090' || window.location.port === '8091' || window.location.port === '';
+        const API_BASE = isProd ? '' : `${window.location.protocol}//${window.location.hostname}:8091`;
+
+        // 初始化
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initFormBehavior();
+            loadConfigFromServer();
+            bindActionButtons();
+        });
+
+        // 提示框组件
+        function showToast(msg, duration = 2500) {
+            const toast = document.getElementById('toast');
+            toast.textContent = msg;
+            toast.classList.remove('opacity-0');
+            toast.classList.add('opacity-100');
+            setTimeout(() => {
+                toast.classList.remove('opacity-100');
+                toast.classList.add('opacity-0');
+            }, duration);
+        }
+
+        // 表单动态表现（根据平台类型切换输入框的 placeholder 与自动头像获取按钮）
+        function initFormBehavior() {
+            const platformSelect = document.getElementById('platformSelect');
+            const urlLabel = document.getElementById('urlLabel');
+            const streamValue = document.getElementById('streamValue');
+            const nameLabel = document.getElementById('nameLabel');
+            const streamName = document.getElementById('streamName');
+            const fetchLogoBtn = document.getElementById('fetchLogoBtn');
+
+            platformSelect.addEventListener('change', () => {
+                const plat = platformSelect.value;
+                if (plat === 'manual') {
+                    urlLabel.textContent = 'm3u8 直播流地址';
+                    streamValue.placeholder = '请输入 https:// 开头的 m3u8 地址';
+                    nameLabel.textContent = '频道名称';
+                    streamName.placeholder = '例如: 湖南卫视';
+                    fetchLogoBtn.classList.add('hidden');
+                } else {
+                    urlLabel.textContent = '房间号';
+                    streamValue.placeholder = '例如: 2926481';
+                    nameLabel.textContent = '主播昵称';
+                    streamName.placeholder = '例如: 语格yoga';
+                    fetchLogoBtn.classList.remove('hidden');
+                }
+            });
+
+            // 联想获取主播头像逻辑
+            fetchLogoBtn.addEventListener('click', async () => {
+                const plat = platformSelect.value;
+                const roomId = streamValue.value.trim();
+                if (!roomId) {
+                    showToast('请先输入房间号！');
+                    return;
+                }
+                showToast('正在联想拉取头像...');
+                try {
+                    const res = await fetch(`${API_BASE}/api/fetch_avatar?platform=${plat}&room_id=${roomId}`);
+                    const data = await res.json();
+                    if (data && data.avatar) {
+                        document.getElementById('streamLogo').value = data.avatar;
+                        if (data.nickname && !streamName.value.trim()) {
+                            streamName.value = data.nickname;
+                        }
+                        showToast('成功联想获取头像和昵称！');
+                    } else {
+                        showToast('未能获取到头像，请手动填写。');
+                    }
+                } catch (e) {
+                    showToast('请求超时，请手动填写海报链接。');
+                }
+            });
+        }
+
+        // 从后端 Go 服务加载配置
+        async function loadConfigFromServer() {
+            try {
+                const res = await fetch(`${API_BASE}/api/config`);
+                if (res.ok) {
+                    const data = await res.json();
+                    manualList = data.manual_list || [];
+                    autoList = data.auto_list || [];
+                    renderChannels();
+                } else {
+                    showToast('读取配置文件失败！');
+                }
+            } catch (err) {
+                console.error(err);
+                showToast('无法连接本地 Go 中转后端服务！');
+            }
+        }
+
+        // 渲染已添加的频道墙
+        function renderChannels() {
+            const listContainer = document.getElementById('channelsList');
+            const summary = document.getElementById('channelSummary');
+            
+            const total = manualList.length + autoList.length;
+            summary.textContent = `共配置了 ${total} 个直播频道`;
+
+            if (total === 0) {
+                listContainer.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-20 text-gray-500 space-y-3">
+                        <i data-lucide="video-off" class="w-12 h-12 stroke-gray-600"></i>
+                        <p class="text-sm">暂无配置频道，快在左侧录入第一个吧！</p>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            let html = '';
+
+            // 1. 渲染手动静态 m3u8
+            manualList.forEach((item, index) => {
+                const avatar = item.logo ? `${API_BASE}/api/logo?name=${encodeURIComponent(item.name)}` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100&auto=format&fit=crop&q=60';
+                html += `
+                    <div class="flex items-center justify-between p-3.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all group">
+                        <div class="flex items-center space-x-3.5 min-w-0 flex-1">
+                            <img src="${avatar}" class="w-12 h-12 object-cover rounded-xl border border-white/10 shadow-lg" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100'">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-bold text-white truncate">${item.name}</span>
+                                    <span class="px-2 py-0.5 bg-gray-700/80 text-gray-300 text-[9px] font-bold rounded-full border border-gray-600">手动</span>
+                                </div>
+                                <p class="text-xs text-gray-400 truncate mt-1">${item.url}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2 pl-3">
+                            <button onclick="editChannel('manual', ${index})" class="p-2 hover:bg-primary/20 text-gray-400 hover:text-primary rounded-xl active:scale-90 transition-all" title="编辑">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="deleteChannel('manual', ${index})" class="p-2 hover:bg-secondary/20 text-gray-400 hover:text-secondary rounded-xl active:scale-90 transition-all" title="删除">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // 2. 渲染动态解析频道
+            autoList.forEach((item, index) => {
+                const avatar = item.logo ? `${API_BASE}/api/logo?name=${encodeURIComponent(item.name)}` : 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100';
+                const platMap = { 'douyu': '斗鱼', 'huya': '虎牙', 'bilibili': 'B站' };
+                const platColor = { 'douyu': 'border-orange-500/30 bg-orange-500/10 text-orange-400', 'huya': 'border-yellow-500/30 bg-yellow-500/10 text-yellow-400', 'bilibili': 'border-[#FB7299]/30 bg-[#FB7299]/10 text-[#FB7299]' };
+                html += `
+                    <div class="flex items-center justify-between p-3.5 bg-white/5 hover:bg-white/10 border border-white/5 rounded-2xl transition-all group">
+                        <div class="flex items-center space-x-3.5 min-w-0 flex-1">
+                            <img src="${avatar}" class="w-12 h-12 object-cover rounded-xl border border-white/10 shadow-lg" onerror="this.src='https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=100'">
+                            <div class="min-w-0 flex-1">
+                                <div class="flex items-center space-x-2">
+                                    <span class="text-sm font-bold text-white truncate">${item.name}</span>
+                                    <span class="px-2 py-0.5 text-[9px] font-bold rounded-full border ${platColor[item.platform] || 'border-primary/30 bg-primary/10 text-primary'}">${platMap[item.platform] || item.platform}</span>
+                                </div>
+                                <p class="text-xs text-gray-400 truncate mt-1">房间号: ${item.room_id}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2 pl-3">
+                            <button onclick="editChannel('auto', ${index})" class="p-2 hover:bg-primary/20 text-gray-400 hover:text-primary rounded-xl active:scale-90 transition-all" title="编辑">
+                                <i data-lucide="edit-3" class="w-4 h-4"></i>
+                            </button>
+                            <button onclick="deleteChannel('auto', ${index})" class="p-2 hover:bg-secondary/20 text-gray-400 hover:text-secondary rounded-xl active:scale-90 transition-all" title="删除">
+                                <i data-lucide="trash-2" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                `;
+            });
+
+            listContainer.innerHTML = html;
+            lucide.createIcons();
+        }
+
+        // 编辑频道
+        window.editChannel = function(type, index) {
+            const platformSelect = document.getElementById('platformSelect');
+            const streamName = document.getElementById('streamName');
+            const streamValue = document.getElementById('streamValue');
+            const streamLogo = document.getElementById('streamLogo');
+            const editIndex = document.getElementById('editIndex');
+            const submitBtn = document.getElementById('submitBtn');
+
+            const item = type === 'manual' ? manualList[index] : autoList[index];
+            
+            // 设定编辑态
+            editIndex.value = `${type}_${index}`;
+            submitBtn.textContent = '更新频道';
+
+            if (type === 'manual') {
+                platformSelect.value = 'manual';
+                streamName.value = item.name;
+                streamValue.value = item.url;
+                streamLogo.value = item.logo || '';
+            } else {
+                platformSelect.value = item.platform;
+                streamName.value = item.name;
+                streamValue.value = item.room_id;
+                streamLogo.value = item.logo || '';
+            }
+
+            // 触发 change 事件更新表单 placeholder
+            platformSelect.dispatchEvent(new Event('change'));
+            showToast('已载入编辑信息，请在左侧修改后提交更新。');
+        };
+
+        // 删除频道（仅在前端删除，保存后正式生效）
+        window.deleteChannel = function(type, index) {
+            if (type === 'manual') {
+                manualList.splice(index, 1);
+            } else {
+                autoList.splice(index, 1);
+            }
+            renderChannels();
+            showToast('已移出列表，点击右下角“全部应用”后生效！');
+        };
+
+        // 绑定各类提交按钮
+        function bindActionButtons() {
+            const form = document.getElementById('liveForm');
+            const editIndex = document.getElementById('editIndex');
+            const submitBtn = document.getElementById('submitBtn');
+
+            // 表单提交（处理新增/修改）
+            form.addEventListener('submit', (e) => {
+                e.preventDefault();
+
+                const plat = document.getElementById('platformSelect').value;
+                const name = document.getElementById('streamName').value.trim();
+                const val = document.getElementById('streamValue').value.trim();
+                const logo = document.getElementById('streamLogo').value.trim();
+                const eIdx = editIndex.value;
+
+                if (eIdx !== '-1') {
+                    // 1. 修改模式
+                    const [type, index] = eIdx.split('_');
+                    const idx = parseInt(index);
+                    
+                    if (plat === 'manual') {
+                        // 如果原本是动态修改为手动
+                        if (type === 'auto') autoList.splice(idx, 1);
+                        const newItem = { name, url: val, logo };
+                        if (type === 'manual') manualList[idx] = newItem;
+                        else manualList.push(newItem);
+                    } else {
+                        // 如果原本是手动修改为动态
+                        if (type === 'manual') manualList.splice(idx, 1);
+                        const newItem = { name, platform: plat, room_id: val, logo };
+                        if (type === 'auto') autoList[idx] = newItem;
+                        else autoList.push(newItem);
+                    }
+                    showToast('已更新到列表！');
+                } else {
+                    // 2. 新增模式
+                    if (plat === 'manual') {
+                        manualList.push({ name, url: val, logo });
+                    } else {
+                        autoList.push({ name, platform: plat, room_id: val, logo });
+                    }
+                    showToast('已成功添加！');
+                }
+
+                // 还原表单
+                resetForm();
+                renderChannels();
+            });
+
+            // 重置表单
+            document.getElementById('resetBtn').addEventListener('click', resetForm);
+
+            // 保存配置并推送至 Go 后端
+            document.getElementById('saveAllBtn').addEventListener('click', async () => {
+                showToast('正在写入 strm 虚拟库...');
+                // 重点：如果是在本地调试（如 5500 端口），strm 里面的基准播放地址必须设为 Go 的 8091 局域网服务地址，而不是 5500
+                const base_url = isProd ? window.location.origin : `${window.location.protocol}//${window.location.hostname}:8091`;
+                try {
+                    const res = await fetch(`${API_BASE}/api/config`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ manual_list: manualList, auto_list: autoList, base_url: base_url })
+                    });
+                    if (res.ok) {
+                        showToast('🎉 保存配置成功！');
+                        loadConfigFromServer();
+                    } else {
+                        showToast('保存配置到后端失败，请重试！');
+                    }
+                } catch (e) {
+                    showToast('网络错误，无法保存！');
+                }
+            });
+
+            // 通知 Emby 扫库
+            document.getElementById('scanEmbyBtn').addEventListener('click', async () => {
+                showToast('正在通知 Emby Server 执行扫描...');
+                // 自动抓取前端 EmbyX 已登录的 Server 和 Token (实现免二次录入配置)
+                const embyServer = localStorage.getItem('emby_server') || '';
+                const embyToken = localStorage.getItem('emby_token') || '';
+                try {
+                    const res = await fetch(`${API_BASE}/api/scan_library`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ server: embyServer, token: embyToken })
+                    });
+                    if (res.ok) {
+                        showToast('🚀 Emby 已成功触发扫描，新频道将立即入库！');
+                    } else {
+                        const data = await res.json();
+                        showToast(`触发扫库失败: ${data.message || '未知错误'}`);
+                    }
+                } catch (e) {
+                    showToast('无法连接本地 Go 的 API 服务！');
+                }
+            });
+        }
+
+        // 还原表单状态
+        function resetForm() {
+            document.getElementById('liveForm').reset();
+            document.getElementById('editIndex').value = '-1';
+            document.getElementById('submitBtn').textContent = '添加频道';
+            document.getElementById('platformSelect').dispatchEvent(new Event('change'));
+        }
+    </script>
+</body>
+
+</html>
