@@ -2797,9 +2797,12 @@
                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
+                    // 检测是否被嵌入在 iframe 中
+                    const isEmbedded = window.self !== window.top;
+
                     // 方案一：向 iOS 妥协，采用“沉浸式融合”伪全屏
-                    // 若在 iOS 且已加主屏幕（PWA），通过手动移除 UI 来模拟系统全屏
-                    if (isIOS && isStandalone) {
+                    // 只要在 iOS PWA 状态，或者【处于嵌入状态时】，一律强制走“沉浸式伪全屏”分支
+                    if ((isIOS && isStandalone) || isEmbedded) {
                         if (!app.classList.contains('ios-pwa-fullscreen')) {
                             app.classList.add('ios-pwa-fullscreen');
                             this.showInterfaceTemp();

@@ -2354,7 +2354,11 @@
                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
-                    if (isIOS && isStandalone) {
+                    // Detect if embedded in iframe
+                    const isEmbedded = window.self !== window.top;
+
+                    // Compel to use immersive pseudo-fullscreen in iOS PWA or embedded environment
+                    if ((isIOS && isStandalone) || isEmbedded) {
                         if (!app.classList.contains('ios-pwa-fullscreen')) {
                             app.classList.add('ios-pwa-fullscreen');
                             this.showInterfaceTemp();
