@@ -7,6 +7,8 @@ name: Android APK 构建
 on:
   push:
     branches: [ main ]
+    paths-ignore:
+      - '**.md'
     tags: [ 'v*' ]
   workflow_dispatch:
     inputs:
@@ -81,6 +83,10 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
       - name: Rename to EmbyX-zh.apk
         run: mv android/app/build/outputs/apk/debug/app-debug.apk EmbyX-zh.apk
@@ -150,6 +156,10 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew assembleDebug
+        env:
+          SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
       - name: Rename to EmbyX-en.apk
         run: mv android/app/build/outputs/apk/debug/app-debug.apk EmbyX-en.apk

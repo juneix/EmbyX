@@ -202,6 +202,25 @@ if os.path.exists(gradle_path):
     gradle = re.sub(r"versionCode(?:\s*=\s*|\s+)\d+", f"versionCode = {version_code}", gradle)
     gradle = re.sub(r'versionName(?:\s*=\s*|\s+)"[^"]+"', f'versionName = "{version_name}"', gradle)
 
+    # 注入签名配置 (signingConfigs)
+    if "signingConfigs" not in gradle:
+        signing_configs_str = """
+    signingConfigs {
+        release {
+            storeFile file("../../key/embyx.jks")
+            storePassword System.getenv("SIGNING_STORE_PASSWORD")
+            keyAlias System.getenv("SIGNING_KEY_ALIAS")
+            keyPassword System.getenv("SIGNING_KEY_PASSWORD")
+        }
+    }
+"""
+        gradle = gradle.replace("buildTypes {", signing_configs_str + "\n    buildTypes {")
+
+    if "signingConfig signingConfigs.release" not in gradle:
+        # 将 debug 和 release 都应用此签名配置
+        gradle = gradle.replace("buildTypes {", "buildTypes {\n        debug {\n            signingConfig signingConfigs.release\n        }")
+        gradle = gradle.replace("release {", "release {\n            signingConfig signingConfigs.release")
+
     with open(gradle_path, "w", encoding="utf-8") as f:
         f.write(gradle)
     print(f"  Patched build.gradle → versionCode={version_code}, versionName=\"{version_name}\"")
