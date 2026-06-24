@@ -4,4 +4,5 @@ __pycache__/
 android/
 strm_out/
 strm_test/
+.mimocode/
 emby-api.md

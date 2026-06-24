@@ -206,7 +206,7 @@ if os.path.exists(gradle_path):
         gradle = gradle.replace("buildTypes {", "buildTypes {\n        debug {\n            signingConfig signingConfigs.release\n        }")
         gradle = gradle.replace("release {", "release {\n            signingConfig signingConfigs.release")
 
-    if "signingConfigs" not in gradle:
+    if "signingConfigs {" not in gradle:
         signing_configs_str = """
     signingConfigs {
         release {
