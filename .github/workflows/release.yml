@@ -78,6 +78,11 @@ jobs:
       - name: Patch Android Project (zh)
         run: python .github/patch_android.py --lang zh
 
+      - name: Decode Android Keystore (zh)
+        run: |
+          mkdir -p key
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > key/embyx.jks
+
       - name: Build Debug APK
         run: |
           cd android
@@ -150,6 +155,11 @@ jobs:
       # 运行补丁脚本：替换图标、注册屏保、添加全屏模式
       - name: Patch Android Project (en)
         run: python .github/patch_android.py --lang en
+
+      - name: Decode Android Keystore (en)
+        run: |
+          mkdir -p key
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > key/embyx.jks
 
       - name: Build Debug APK
         run: |
