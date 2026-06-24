@@ -1751,7 +1751,7 @@
                             if (btn) btn.classList.add('paused');
 
                             // 降级：如果被浏览器强行阻止，弹出UI引导用户点击
-                            if (error.name === 'NotAllowedError') {
+                            if (!error || error.name === 'NotAllowedError' || error.name === 'AbortError') {
                                 this.showToast('浏览器限制，请手动播放');
                                 const app = document.getElementById('app');
                                 if (app.classList.contains('interface-hidden')) {
@@ -1937,7 +1937,7 @@
 
                 const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
                 const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
-                const useTsContainer = forceReencode || codec === 'h264' || codec === 'hevc';
+                const useTsContainer = forceReencode || codec === 'h264';
 
                 const params = [
                     `api_key=${token}`,

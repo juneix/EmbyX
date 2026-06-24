@@ -1549,7 +1549,7 @@
                             this.toggleLoading(false);
                             if (btn) btn.classList.add('paused');
 
-                            if (error.name === 'NotAllowedError') {
+                            if (!error || error.name === 'NotAllowedError' || error.name === 'AbortError') {
                                 this.showToast('Browser restricted autoplay. Tap to play.');
                                 const app = document.getElementById('app');
                                 if (app.classList.contains('interface-hidden')) {
@@ -1742,7 +1742,7 @@
 
                 const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
                 const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
-                const useTsContainer = forceReencode || codec === 'h264' || codec === 'hevc';
+                const useTsContainer = forceReencode || codec === 'h264';
 
                 const params = [
                     `api_key=${token}`,
