@@ -786,6 +786,9 @@
                 if (savedLibId) {
                     this.state.currentLibraryId = savedLibId;
                     this.state.currentLibraryType = savedLibType || 'library';
+                } else {
+                    this.state.currentLibraryId = 'favorites';
+                    this.state.currentLibraryType = 'favorites';
                 }
 
                 if (this.dom.configServer) this.dom.configServer.value = this.config.server;
@@ -909,9 +912,12 @@
                             lucide.createIcons();
                         }
 
-                        this.showToast('✅ Settings saved');
-                        this.toggleModal('profilePage', false);
-                        this.fetchVideos();
+                        // Clear data cache, keep core settings and reload
+                        localStorage.removeItem('emby_views_cache');
+                        localStorage.removeItem('emby_favorites');
+                        localStorage.removeItem('emby_lib_id');
+                        localStorage.removeItem('emby_lib_type');
+                        location.reload();
                     } else {
                         this.showToast('❌ Auth failed: Invalid Username or Password');
                     }
@@ -1366,10 +1372,25 @@
                         videoEl.style.opacity = '0';
                         videoEl.onerror = null;
 
-                        const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
-                        if (videoEl.src !== preloadSrc) {
-                            videoEl.src = preloadSrc;
-                            videoEl.load();
+                        // iOS WebKit platform-specific optimization: disable preloading adjacent streams
+                        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+                        if (isIOS && offset !== 0) {
+                            if (videoEl.src) {
+                                videoEl.removeAttribute('src');
+                                videoEl.load();
+                            }
+                        } else {
+                            const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
+                            if (videoEl.src !== preloadSrc) {
+                                if (isIOS) {
+                                    videoEl.removeAttribute('src');
+                                    videoEl.load();
+                                }
+                                videoEl.src = preloadSrc;
+                                videoEl.load();
+                            }
                         }
 
                         videoEl.muted = (offset === 0) ? this.state.isMuted : true;
@@ -1412,6 +1433,12 @@
                 const src = this.getVideoSrc(videoData.Id, videoData, true);
                 if (videoEl.src !== src) {
                     videoEl.pause();
+                    const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    if (isIOS) {
+                        videoEl.removeAttribute('src');
+                        videoEl.load();
+                    }
                     videoEl.src = src;
                     videoEl.load();
                 }
@@ -1546,6 +1573,9 @@
 
                 v.dataset.retryCount = String(retryCount + 1);
 
+                const { server, token } = this.config;
+                const deviceId = this.config.deviceId || 'EmbyX-Device';
+
                 if (this.config.useStatic) {
                     // -- Direct Play Mode adaptive compatibility fallback --
                     if (isIOS) {
@@ -1559,11 +1589,20 @@
                             v.load();
                             this.playVideo(index);
                         } else if (retryCount === 1 && this.state.playbackMethod === 'DirectPlay') {
-                            // Perfect format Direct Play failed -> downgrade to HLS stream copy
-                            this.state.playbackMethod = 'DirectStream';
-                            v.src = this._buildHlsSrc(item.Id, item, false);
-                            v.load();
-                            this.playVideo(index);
+                            // Perfect format Direct Play failed -> downgrade
+                            const vStream = item.MediaSources?.[0]?.MediaStreams?.find(s => s.Type === 'Video');
+                            const codec = (vStream?.Codec || item.MediaSources?.[0]?.VideoCodec || '').toLowerCase();
+                            if (codec === 'hevc') {
+                                // iOS has HLS fMP4 packaging 500 error bugs for HEVC streams, block stream copy and show toast
+                                this.toggleLoading(false);
+                                this.state.playbackMethod = 'Failed';
+                                this.showToast('iOS limit. Enable transcoding.');
+                            } else {
+                                this.state.playbackMethod = 'DirectStream';
+                                v.src = this._buildHlsSrc(item.Id, item, false);
+                                v.load();
+                                this.playVideo(index);
+                            }
                         } else {
                             // No forced transcoding in Direct Play mode — mark as Failed
                             this.toggleLoading(false);
@@ -1701,6 +1740,10 @@
                 const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
                 const deviceId = this.config.deviceId || 'EmbyX-Device';
 
+                const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
+                const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
+                const useTsContainer = forceReencode || codec === 'h264' || codec === 'hevc';
+
                 const params = [
                     `api_key=${token}`,
                     mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
@@ -1711,9 +1754,9 @@
                     forceReencode ? `VideoBitrate=20000000` : '',  // Bitrate cap only for transcode (LAN 20Mbps); stream copy uses source bitrate
                     `AudioBitrate=320000`,
                     `TranscodingMaxAudioChannels=2`,
-                    forceReencode ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // Transcode: TS (H264+TS most compatible); stream copy: fMP4 (VP9/AV1 support, iOS 10+)
+                    useTsContainer ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // Use TS for H264/HEVC to avoid Emby 500 remux bug; keep fMP4 for AV1/VP9
                     `MinSegments=1`,
-                    forceReencode ? `BreakOnNonKeyFrames=True` : '',  // Only needed for TS segments, not fMP4
+                    useTsContainer ? `BreakOnNonKeyFrames=True` : '',  // TS container keyframe optimization
                     forceReencode ? `AllowVideoStreamCopy=false` : `AllowVideoStreamCopy=true`,
                     `AllowAudioStreamCopy=true`
                 ].filter(Boolean).join('&');
@@ -1854,9 +1897,10 @@
 
                 // Get metadata (codec and container)
                 const mediaSource = mediaItem?.MediaSources?.[0];
-                const codec = (mediaSource?.VideoCodec || '').toLowerCase();
+                const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
+                const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
                 const container = (mediaSource?.Container || '').toLowerCase();
-                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase();
+                const codecTag = (vStream?.CodecTag || mediaSource?.VideoCodecTag || '').toLowerCase();
 
                 // -- Case 1: Direct Play off (Transcode mode) --
                 if (!useStatic) {
@@ -1869,8 +1913,10 @@
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
                 if (isIOS) {
-                    // Smart Check: For natively supported format and codec (Only H.264 MP4 is treated as native on iOS; HEVC goes to HLS copy for compatibility)
-                    const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v') || container.includes('mov'));
+                    // Smart Check: For natively supported format (H.264/hvc1 MP4 is treated as native on iOS; other HEVC goes to HLS copy)
+                    const isMp4Container = container.includes('mp4') || container.includes('m4v') || container.includes('mov');
+                    const isNativeCompatible = (codec === 'h264' && isMp4Container) ||
+                                               (codec === 'hevc' && codecTag.includes('hvc1') && isMp4Container);
 
                     if (!isNativeCompatible) {
                         // For non-perfect formats (HEVC hev1, VP9, AV1, MKV, etc.), start playing via HLS video copy immediately

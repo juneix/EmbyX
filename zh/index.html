@@ -860,6 +860,9 @@
                 if (savedLibId) {
                     this.state.currentLibraryId = savedLibId;
                     this.state.currentLibraryType = savedLibType || 'library';
+                } else {
+                    this.state.currentLibraryId = 'favorites';
+                    this.state.currentLibraryType = 'favorites';
                 }
 
                 // 填充 UI
@@ -1026,6 +1029,8 @@
                         // 清理数据缓存，保留核心设置并重新加载
                         localStorage.removeItem('emby_views_cache');
                         localStorage.removeItem('emby_favorites');
+                        localStorage.removeItem('emby_lib_id');
+                        localStorage.removeItem('emby_lib_type');
                         location.reload();
                     } else {
                         this.showToast('❌ 认证失败：用户名或密码错误');
@@ -1533,11 +1538,28 @@
                         videoEl.style.opacity = '0';
                         videoEl.onerror = null;
 
-                        // 《修复点④》 预加载相邻视频：将实际播放地址赋给相邻 slot
-                        const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
-                        if (videoEl.src !== preloadSrc) {
-                            videoEl.src = preloadSrc;
-                            videoEl.load();
+                        // ── iOS 平台特异性极简优化：iOS 限制并发多流 Range 请求，不预加载相邻视频 ──
+                        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+                        if (isIOS && offset !== 0) {
+                            // iOS 下对相邻视频只清理，不预加载
+                            if (videoEl.src) {
+                                videoEl.removeAttribute('src');
+                                videoEl.load();
+                            }
+                        } else {
+                            // 非 iOS 设备，或当前正在播放的视频：正常预加载
+                            const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
+                            if (videoEl.src !== preloadSrc) {
+                                if (isIOS) {
+                                    // iOS 当前视频加载前做一次干净的置空，防旧连接残留
+                                    videoEl.removeAttribute('src');
+                                    videoEl.load();
+                                }
+                                videoEl.src = preloadSrc;
+                                videoEl.load();
+                            }
                         }
 
                         // 【关键修复】防止声音重叠：
@@ -1603,6 +1625,12 @@
                 const src = this.getVideoSrc(videoData.Id, videoData, true);
                 if (videoEl.src !== src) {
                     videoEl.pause();
+                    const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    if (isIOS) {
+                        videoEl.removeAttribute('src');
+                        videoEl.load();
+                    }
                     videoEl.src = src;
                     videoEl.load();
                 }
@@ -1747,6 +1775,9 @@
 
                 v.dataset.retryCount = String(retryCount + 1);
 
+                const { server, token } = this.config;
+                const deviceId = this.config.deviceId || 'EmbyX-Device';
+
                 if (this.config.useStatic) {
                     // ── A. 直接播放模式下的自适应兼容回退 ───────────────────────
                     if (isIOS) {
@@ -1760,11 +1791,20 @@
                             v.load();
                             this.playVideo(index);
                         } else if (retryCount === 1 && this.state.playbackMethod === 'DirectPlay') {
-                            // 完美格式直连失败 ➔ 降级至 HLS 流拷贝（视频拷贝，音频重编 TS）
-                            this.state.playbackMethod = 'DirectStream';
-                            v.src = this._buildHlsSrc(item.Id, item, false);
-                            v.load();
-                            this.playVideo(index);
+                            // 完美格式直连失败 ➔ 降级
+                            const vStream = item.MediaSources?.[0]?.MediaStreams?.find(s => s.Type === 'Video');
+                            const codec = (vStream?.Codec || item.MediaSources?.[0]?.VideoCodec || '').toLowerCase();
+                            if (codec === 'hevc') {
+                                // HEVC 的 HLS 流拷贝在 iOS 下有 fMP4 封装 500 崩溃 Bug，在此处禁止降级流拷贝，直接报错提示转码
+                                this.toggleLoading(false);
+                                this.state.playbackMethod = 'Failed';
+                                this.showToast('iOS 限制，请开启转码');
+                            } else {
+                                this.state.playbackMethod = 'DirectStream';
+                                v.src = this._buildHlsSrc(item.Id, item, false);
+                                v.load();
+                                this.playVideo(index);
+                            }
                         } else {
                             // 直连模式下不允许强制转码，直接标记失败
                             this.toggleLoading(false);
@@ -1895,6 +1935,10 @@
                 const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
                 const deviceId = this.config.deviceId || 'EmbyX-Device';
 
+                const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
+                const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
+                const useTsContainer = forceReencode || codec === 'h264' || codec === 'hevc';
+
                 const params = [
                     `api_key=${token}`,
                     mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
@@ -1905,9 +1949,9 @@
                     forceReencode ? `VideoBitrate=20000000` : '',   // 仅强转码时限制码率（局域网 20Mbps 上限）；流拷贝时不限制，按源码率传输
                     `AudioBitrate=320000`,
                     `TranscodingMaxAudioChannels=2`,
-                    forceReencode ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // 强转码用 TS（H264+TS 最兼容）；流拷贝用 fMP4（支持 VP9/AV1，iOS 10+ 原生支持）
+                    useTsContainer ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // H264/HEVC 强制用 TS 容器避开 Emby 500 封装 Bug；AV1/VP9 保留用 fMP4
                     `MinSegments=1`,
-                    forceReencode ? `BreakOnNonKeyFrames=True` : '',  // 仅 TS 容器需要此关键帧优化，fMP4 不需要
+                    useTsContainer ? `BreakOnNonKeyFrames=True` : '',  // 仅 TS 容器需要此关键帧优化
                     forceReencode ? `AllowVideoStreamCopy=false` : `AllowVideoStreamCopy=true`,
                     `AllowAudioStreamCopy=true`
                 ].filter(Boolean).join('&');
@@ -2174,9 +2218,10 @@
 
                 // 获取视频流元数据
                 const mediaSource = mediaItem?.MediaSources?.[0];
-                const codec = (mediaSource?.VideoCodec || '').toLowerCase();
+                const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
+                const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
                 const container = (mediaSource?.Container || '').toLowerCase();
-                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase();
+                const codecTag = (vStream?.CodecTag || mediaSource?.VideoCodecTag || '').toLowerCase();
 
                 // ── 情况 1: 未勾选【直接播放】 (允许转码/稳妥模式) ──────────────────────
                 // 直接交给 Emby 服务端决策，使用 HLS 接口（允许流拷贝，排除 av1 宣告）
@@ -2190,8 +2235,10 @@
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
                 if (isIOS) {
-                    // 智能判定是否是原生完美支持的封装格式及编码（iOS 端仅 H.264 MP4 视为完美格式，HEVC 统一走 HLS 流拷贝以确保兼容性）
-                    const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v') || container.includes('mov'));
+                    // 智能判定是否是原生完美支持的封装格式及编码（iOS 端 H.264/hvc1 MP4 视为完美格式，其他 HEVC 走 HLS 拷贝）
+                    const isMp4Container = container.includes('mp4') || container.includes('m4v') || container.includes('mov');
+                    const isNativeCompatible = (codec === 'h264' && isMp4Container) ||
+                                               (codec === 'hevc' && codecTag.includes('hvc1') && isMp4Container);
 
                     if (!isNativeCompatible) {
                         // 对于非完美兼容格式（如 HEVC hev1、VP9、AV1、MKV等），首播直接走轻量级的 HLS 视频流拷贝 (Direct Stream)
