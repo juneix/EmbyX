@@ -868,7 +868,7 @@
                 if (this.dom.configPwd && this.config.token) {
                     // 显示与实际密码位数一致的掩码（密码长度存入 localStorage，不存密码本身）
                     const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    this.dom.configPwd.value = '*'.repeat(Math.max(1, pwdLen));
+                    this.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
                 }
                 if (this.dom.configStatic) this.dom.configStatic.checked = this.config.useStatic;
                 if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
@@ -936,7 +936,9 @@
 
                 try {
                     // 如果是用旧 token 更新设置，跳过登录
-                    if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
+                    const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
+                    const isUnchangedPwd = (/^\*+$/.test(pwd) && pwd.length === pwdLen) || (pwd === "" && pwdLen === 0);
+                    if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
                         localStorage.setItem('emby_static', isStatic);
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_shortdrama', shortDrama);
@@ -1011,8 +1013,8 @@
 
                         this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode };
 
-                        // 将密码位数存入 localStorage，不存密码本身；空密码至少显示 1 个 *
-                        const pwdLen = Math.max(1, pwd.length);
+                        // 将密码位数存入 localStorage，不存密码本身，空密码记为 0
+                        const pwdLen = pwd.length;
                         localStorage.setItem('emby_pwd_len', pwdLen);
                         this.dom.configPwd.value = '*'.repeat(pwdLen);
                         this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
@@ -1557,8 +1559,10 @@
                         const videoEl = document.getElementById(`video-p${i}`);
                         if (videoEl) {
                             videoEl.onerror = null;
+                            videoEl.pause();
                             videoEl.style.opacity = '0';
                             videoEl.removeAttribute('src');
+                            videoEl.load();
                         }
                     }
                 }
@@ -1598,6 +1602,7 @@
                 // renderBuffer 已赋值 src，处理未匹配时的修正
                 const src = this.getVideoSrc(videoData.Id, videoData, true);
                 if (videoEl.src !== src) {
+                    videoEl.pause();
                     videoEl.src = src;
                     videoEl.load();
                 }
@@ -1719,7 +1724,7 @@
 
                             // 降级：如果被浏览器强行阻止，弹出UI引导用户点击
                             if (error.name === 'NotAllowedError') {
-                                this.showToast('浏览器限制自动播放，请手动点击');
+                                this.showToast('浏览器限制，请手动播放');
                                 const app = document.getElementById('app');
                                 if (app.classList.contains('interface-hidden')) {
                                     app.classList.remove('interface-hidden');
@@ -1737,50 +1742,47 @@
                 if (!v) return;
 
                 const retryCount = parseInt(v.dataset.retryCount || '0');
-                // iOS 识别：Safari/WKWebView，以及 Mac 上 Safari（maxTouchPoints > 1）
                 const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
                 v.dataset.retryCount = String(retryCount + 1);
 
                 if (this.config.useStatic) {
-                    // ── 直接播放模式下的回退链 ────────────────────────────────
-                    // 修改回退链步数：iOS 三步 / 非 iOS 两步
+                    // ── A. 直接播放模式下的自适应兼容回退 ───────────────────────
                     if (isIOS) {
-                        // 确保先清理并重置 Hls 实例
                         if (window.activeHls) {
                             window.activeHls.destroy();
                             window.activeHls = null;
                         }
-                        // iOS 降级链：Direct Play → Direct Stream → HLS 转码
+
                         if (retryCount === 0) {
-                            // Step 1: Direct Stream（直接串流：只转封装不重编，速度最快）
-                            // 补全 VideoCodec 声明，防止 Emby 误判定为不支持 hevc 而触发重编码
-                            const { server, token } = this.config;
-                            const deviceId = this.config.deviceId || 'EmbyX-Device';
-                            this.showToast('iOS 直接串流...');
-                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                            this.state.playbackMethod = 'DirectStream';
-                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                            // 原地重载重试，防瞬时网络波动
                             v.load();
                             this.playVideo(index);
-                        } else if (retryCount === 1) {
-                            // Step 2: HLS 转码（兼容所有编码的兜底方案）
-                            this.showToast('iOS 兼容播放...');
-                            this.state.playbackMethod = 'Transcode';
-                            v.src = this._buildHlsSrc(item.Id, item);
+                        } else if (retryCount === 1 && this.state.playbackMethod === 'DirectPlay') {
+                            // 完美格式直连失败 ➔ 降级至 HLS 流拷贝（视频拷贝，音频重编 TS）
+                            this.state.playbackMethod = 'DirectStream';
+                            v.src = this._buildHlsSrc(item.Id, item, false);
                             v.load();
                             this.playVideo(index);
                         } else {
+                            // 直连模式下不允许强制转码，直接标记失败
                             this.toggleLoading(false);
-                            this.showToast('播放失败，请检查 Emby 设置');
+                            this.state.playbackMethod = 'Failed';
+                            this.showToast('iOS 限制，请开启转码');
                         }
                     } else {
-                        // 非 iOS 降级链：Direct Play → Direct Stream
+                        // 非 iOS 降级链：保持原样 (Direct Play -> Direct Stream)
                         if (retryCount === 0) {
-                            const { server, token } = this.config;
-                            const deviceId = this.config.deviceId || 'EmbyX-Device';
-                            
+                            if (window.activeHls) {
+                                window.activeHls.destroy();
+                                window.activeHls = null;
+                            }
+                            if (window.activeMpegtsPlayer) {
+                                window.activeMpegtsPlayer.destroy();
+                                window.activeMpegtsPlayer = null;
+                            }
+
                             // 智能判定是否是 strm 直播流视频源
                             const isStrm = (item.Path && item.Path.endsWith('.strm')) || 
                                            (item.MediaSources && item.MediaSources[0] && 
@@ -1809,10 +1811,9 @@
                                 // 如果 path 是以 http 开头的真实网络流，前端直接用 mpegts/Hls 进行直连播放，不经过 Emby 服务器中转
                                 const playUrl = mediaSource?.Path && mediaSource.Path.startsWith('http') 
                                     ? mediaSource.Path 
-                                    : `${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`;
+                                    : fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`);
 
                                 if (isFlv && typeof mpegts !== 'undefined' && mpegts.isSupported()) {
-                                    this.showToast('直连播放 STRM 文件...');
                                     this.state.playbackMethod = 'DirectPlay';
                                     // 清理旧报错残留并解绑原生错误监听，防止直播抖动误触发降级导致反复刷新
                                     v.removeAttribute('src');
@@ -1835,7 +1836,6 @@
                                     window.activeMpegtsPlayer = player;
                                     this.playVideo(index);
                                 } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
-                                    this.showToast('直播源直连...');
                                     this.state.playbackMethod = 'DirectPlay';
                                     // 清理旧报错残留并解绑原生错误监听，防止直播抖动误触发降级导致反复刷新
                                     v.removeAttribute('src');
@@ -1861,30 +1861,37 @@
                                     window.activeMpegtsPlayer.destroy();
                                     window.activeMpegtsPlayer = null;
                                 }
-                                this.showToast('尝试直接串流...');
-                                const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                                const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
                                 this.state.playbackMethod = 'DirectStream';
-                                v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                                v.src = fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream.mp4?${params}`);
                                 v.load();
                                 this.playVideo(index);
                             }
                         } else {
                             this.toggleLoading(false);
-                            this.showToast('播放失败，禁用"直接播放"可转码');
+                            this.state.playbackMethod = 'Failed';
+                            this.showToast('播放失败，请开启转码');
                         }
                     }
                 } else {
-                    // ── 转码模式（HLS）失败，无更多降级选项 ───────────────────
-                    this.toggleLoading(false);
-                    this.showToast('转码失败，请检查 Emby 设置');
+                    // ── B. 转码模式下的兼容失效回退 ───────────────────────────
+                    if (retryCount === 0) {
+                        this.state.playbackMethod = 'Transcode';
+                        v.src = this._buildHlsSrc(item.Id, item, true); // forceReencode = true
+                        v.load();
+                        this.playVideo(index);
+                    } else {
+                        this.toggleLoading(false);
+                        this.state.playbackMethod = 'Failed';
+                        this.showToast('转码失败，请检查 Emby 设置');
+                    }
                 }
             }
 
-            // HLS master.m3u8 构造逻辑，处理 MediaSource 兼容性
-            _buildHlsSrc(id, mediaItem) {
+            _buildHlsSrc(id, mediaItem, forceReencode = false) {
                 const { server, token } = this.config;
-                const mediaSourceId = mediaItem?.MediaSources?.[0]?.Id || '';
-                // 每次播放生成唯一会话 ID，保证 Emby 不复用旧的转码任务
+                const mediaSource = mediaItem?.MediaSources?.[0];
+                const mediaSourceId = mediaSource?.Id || '';
                 const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
                 const deviceId = this.config.deviceId || 'EmbyX-Device';
 
@@ -1893,17 +1900,16 @@
                     mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
                     `DeviceId=${deviceId}`,
                     `PlaySessionId=${playSessionId}`,
-                    `VideoCodec=h264`,           // 只声明 h264：hevc/av1/等会被强制转码为 h264
+                    forceReencode ? `VideoCodec=h264` : `VideoCodec=h264,hevc,vp9,av1`, // 强转码锁定 h264；流拷贝声明全格式，fMP4 容器原生支持 VP9/AV1 流拷贝
                     `AudioCodec=aac,mp3,ac3`,
-                    `VideoBitrate=20000000`,
+                    forceReencode ? `VideoBitrate=20000000` : '',   // 仅强转码时限制码率（局域网 20Mbps 上限）；流拷贝时不限制，按源码率传输
                     `AudioBitrate=320000`,
                     `TranscodingMaxAudioChannels=2`,
-                    `SegmentContainer=ts`,       // 锁定为 ts：解决 h264 源文件在 fMP4/mp4 容器下 HLS 播放失败的问题
+                    forceReencode ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // 强转码用 TS（H264+TS 最兼容）；流拷贝用 fMP4（支持 VP9/AV1，iOS 10+ 原生支持）
                     `MinSegments=1`,
-                    `BreakOnNonKeyFrames=True`,
-                    `AllowVideoStreamCopy=true`, // h264 源文件：直接 remux，不重编（节省资源）
-                    `AllowAudioStreamCopy=true`  // aac 音频：直接 copy；其他音频：转为 aac
-                    // 不加 EnableAutoStreamCopy：避免 Emby 绕过 HLS 分片直接走流传输
+                    forceReencode ? `BreakOnNonKeyFrames=True` : '',  // 仅 TS 容器需要此关键帧优化，fMP4 不需要
+                    forceReencode ? `AllowVideoStreamCopy=false` : `AllowVideoStreamCopy=true`,
+                    `AllowAudioStreamCopy=true`
                 ].filter(Boolean).join('&');
 
                 return fixUrlForJellyfin(`${server}/emby/Videos/${id}/master.m3u8?${params}`);
@@ -2166,37 +2172,35 @@
             getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
                 const { server, token, useStatic } = this.config;
 
-                // 获取视频流元数据（用于智能判定）
+                // 获取视频流元数据
                 const mediaSource = mediaItem?.MediaSources?.[0];
                 const codec = (mediaSource?.VideoCodec || '').toLowerCase();
                 const container = (mediaSource?.Container || '').toLowerCase();
-                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase(); // 获取编码标签 (如 hev1/hvc1)
+                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase();
 
-                // 智能判定：若是 h264/mp4，则无论是否勾选转码都优先直连，避免冗余 HLS
-                const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v'));
-
-                if (!useStatic && !isNativeCompatible) {
-                    // 只有在【不勾选直接播放】且【视频非 h264+mp4】时，才走 HLS 强制转码
+                // ── 情况 1: 未勾选【直接播放】 (允许转码/稳妥模式) ──────────────────────
+                // 直接交给 Emby 服务端决策，使用 HLS 接口（允许流拷贝，排除 av1 宣告）
+                if (!useStatic) {
                     if (isPrimaryPlayback) this.state.playbackMethod = 'Transcode';
                     return this._buildHlsSrc(id, mediaItem);
                 }
 
-                // ── 设备兼容性判定 (苹果生态历史遗留问题处理) ─────────────────────
+                // ── 情况 2: 已勾选【直接播放】 (绝不重编码/极限硬解模式) ────────────────────
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-                // 特殊拦截：如果是 iOS 且是 hevc 编码且标签是苹果不支持的 hev1 (Safari 仅原生支持 hvc1)
-                // 这种视频直连(Static)必只有声音无画面，主动帮它走“直接串流(Direct Stream)”进行容器修正
-                if (isIOS && codec === 'hevc' && codecTag === 'hev1') {
-                    const deviceId = this.config.deviceId || 'EmbyX-Device';
-                    // 使用 stream.mp4 并允许 Copy。Emby 会自动执行 Remux (hev1 -> hvc1)，不重编码，画质无损。
-                    const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                    if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
-                    return fixUrlForJellyfin(`${server}/emby/Videos/${id}/stream.mp4?${params}`);
+                if (isIOS) {
+                    // 智能判定是否是原生完美支持的封装格式及编码（iOS 端仅 H.264 MP4 视为完美格式，HEVC 统一走 HLS 流拷贝以确保兼容性）
+                    const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v') || container.includes('mov'));
+
+                    if (!isNativeCompatible) {
+                        // 对于非完美兼容格式（如 HEVC hev1、VP9、AV1、MKV等），首播直接走轻量级的 HLS 视频流拷贝 (Direct Stream)
+                        if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
+                        return this._buildHlsSrc(id, mediaItem, false); // forceReencode = false
+                    }
                 }
 
-                // ── 原画直连 (Direct Play) ──────────────────────────────────
-                // 余下所有情况（非苹果设备、或是 hvc1、或是 h264）保持最高优先级直连，支持后端状态追踪
+                // 余下所有情况（非苹果设备、或是苹果下完美兼容 of h264+mp4）执行原画直连 (Direct Play)
                 const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
                 const deviceId = this.config.deviceId || 'EmbyX-Device';
                 const msId = mediaSource?.Id || '';
@@ -2693,7 +2697,25 @@
                         const aCodec = src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '未知';
                         const bitrate = src.Bitrate ? (src.Bitrate / 1000000).toFixed(2) + ' Mbps' : '未知';
                         const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
-                        const transcodeState = this.config.useStatic ? '直接播放' : '自动转码';
+                        let transcodeState = '直接播放';
+                        if (this.state.playbackMethod === 'Failed') {
+                            transcodeState = '播放失败';
+                        } else if (this.state.playbackMethod === 'DirectPlay') {
+                            transcodeState = '直接播放';
+                        } else if (this.state.playbackMethod === 'DirectStream') {
+                            const audioCodec = (src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '').toLowerCase();
+                            const isAudioNative = ['aac', 'mp3', 'ac3', 'eac3', 'aac_latm'].includes(audioCodec);
+                            if (isAudioNative) {
+                                transcodeState = '直接串流';
+                            } else {
+                                const audioLabel = { 'dts': 'DTS', 'truehd': 'TrueHD', 'opus': 'Opus', 'flac': 'FLAC', 'vorbis': 'Vorbis' }[audioCodec] || audioCodec.toUpperCase();
+                                transcodeState = `直接串流（${audioLabel}→AAC）`;
+                            }
+                        } else if (this.state.playbackMethod === 'Transcode' || this.state.playbackMethod === 'TranscodeStream') {
+                            transcodeState = '转码播放';
+                        } else {
+                            transcodeState = this.config.useStatic ? '直接播放' : '转码播放';
+                        }
 
                         // 布局说明：py-2 控制行高（间距），items-center 确保文字垂直居中
                         this.dom.mediaInfoContent.innerHTML = `

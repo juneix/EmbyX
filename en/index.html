@@ -567,9 +567,15 @@
             <div class="w-10 h-10 border-4 border-gray-600 border-t-primary rounded-full animate-spin"></div>
         </div>
     </div>
-
     <script>
-        /* Styles */
+        // Jellyfin media and image URL correction
+        function fixUrlForJellyfin(url) {
+            if (typeof url === 'string' && localStorage.getItem('emby_is_jellyfin') === 'true') {
+                return url.replace('/emby/', '/');
+            }
+            return url;
+        }
+
         class EmbyApp {
             constructor() {
                 this.state = {
@@ -586,6 +592,7 @@
                     isMuted: false,
                     lastReportTime: 0,
                     playSessionId: null,
+                    playbackMethod: 'DirectPlay',
                     originalVideos: []
                 };
 
@@ -1359,7 +1366,7 @@
                         videoEl.style.opacity = '0';
                         videoEl.onerror = null;
 
-                        const preloadSrc = this.getVideoSrc(videoData.Id, videoData);
+                        const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
                         if (videoEl.src !== preloadSrc) {
                             videoEl.src = preloadSrc;
                             videoEl.load();
@@ -1380,8 +1387,10 @@
                         const videoEl = document.getElementById(`video-p${i}`);
                         if (videoEl) {
                             videoEl.onerror = null;
+                            videoEl.pause();
                             videoEl.style.opacity = '0';
                             videoEl.removeAttribute('src');
+                            videoEl.load();
                         }
                     }
                 }
@@ -1400,8 +1409,9 @@
 
                 if (!videoEl || !videoData) return;
 
-                const src = this.getVideoSrc(videoData.Id, videoData);
+                const src = this.getVideoSrc(videoData.Id, videoData, true);
                 if (videoEl.src !== src) {
+                    videoEl.pause();
                     videoEl.src = src;
                     videoEl.load();
                 }
@@ -1537,48 +1547,140 @@
                 v.dataset.retryCount = String(retryCount + 1);
 
                 if (this.config.useStatic) {
-                    // -- Direct Play fallback chain --
+                    // -- Direct Play Mode adaptive compatibility fallback --
                     if (isIOS) {
-                        // iOS fallback: Direct Play → Direct Stream → HLS Transcode
+                        if (window.activeHls) {
+                            window.activeHls.destroy();
+                            window.activeHls = null;
+                        }
+
                         if (retryCount === 0) {
-                            // Step 1: Direct Stream (remux only, fastest, no re-encode)
-                            // Declare HEVC support to prevent Emby from transcoding during remux
-                            const { server, token } = this.config;
-                            const deviceId = this.config.deviceId || 'EmbyX-Device';
-                            this.showToast('iOS Direct Stream...');
-                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
+                            // Reload in place to prevent momentary network glitches
                             v.load();
                             this.playVideo(index);
-                        } else if (retryCount === 1) {
-                            // Step 2: HLS Transcode (ultimate fallback)
-                            this.showToast('iOS Transcode...');
-                            v.src = this._buildHlsSrc(item.Id, item);
+                        } else if (retryCount === 1 && this.state.playbackMethod === 'DirectPlay') {
+                            // Perfect format Direct Play failed -> downgrade to HLS stream copy
+                            this.state.playbackMethod = 'DirectStream';
+                            v.src = this._buildHlsSrc(item.Id, item, false);
                             v.load();
                             this.playVideo(index);
                         } else {
+                            // No forced transcoding in Direct Play mode — mark as Failed
                             this.toggleLoading(false);
-                            this.showToast('Playback failed. Check Emby settings.');
+                            this.state.playbackMethod = 'Failed';
+                            this.showToast('iOS limit. Enable transcoding.');
                         }
                     } else {
-                        // Non-iOS fallback: Direct Play → Direct Stream
+                        // Non-iOS fallback: Direct Play -> Direct Stream
                         if (retryCount === 0) {
-                            const { server, token } = this.config;
-                            const deviceId = this.config.deviceId || 'EmbyX-Device';
-                            this.showToast('Trying Direct Stream...');
-                            const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                            v.src = `${server}/emby/Videos/${item.Id}/stream.mp4?${params}`;
-                            v.load();
-                            this.playVideo(index);
+                            if (window.activeHls) {
+                                window.activeHls.destroy();
+                                window.activeHls = null;
+                            }
+                            if (window.activeMpegtsPlayer) {
+                                window.activeMpegtsPlayer.destroy();
+                                window.activeMpegtsPlayer = null;
+                            }
+
+                            // STRM stream detection
+                            const isStrm = (item.Path && item.Path.endsWith('.strm')) || 
+                                           (item.MediaSources && item.MediaSources[0] && 
+                                            (item.MediaSources[0].Path.startsWith('http') || 
+                                             item.MediaSources[0].Container === 'strm'));
+                            
+                            if (isStrm) {
+                                if (window.activeHls) {
+                                    window.activeHls.destroy();
+                                    window.activeHls = null;
+                                }
+                                if (window.activeMpegtsPlayer) {
+                                    window.activeMpegtsPlayer.destroy();
+                                    window.activeMpegtsPlayer = null;
+                                }
+
+                                const msId = item.MediaSources?.[0]?.Id || '';
+                                const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
+
+                                const mediaSource = item.MediaSources?.[0];
+                                const container = (mediaSource?.Container || '').toLowerCase();
+                                const path = (mediaSource?.Path || '').toLowerCase();
+                                const isFlv = container === 'flv' || path.includes('.flv') || path.includes('flv=') || path.includes('/flv');
+
+                                const playUrl = mediaSource?.Path && mediaSource.Path.startsWith('http') 
+                                    ? mediaSource.Path 
+                                    : fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`);
+
+                                if (isFlv && typeof mpegts !== 'undefined' && mpegts.isSupported()) {
+                                    this.state.playbackMethod = 'DirectPlay';
+                                    v.removeAttribute('src');
+                                    v.onerror = null;
+
+                                    const player = mpegts.createPlayer({
+                                        type: 'mse',
+                                        isLive: true,
+                                        url: playUrl
+                                    }, {
+                                        enableWorker: true,
+                                        enableStashBuffer: false,
+                                        stashInitialSize: 128,
+                                        liveBufferLatencyChasing: true,
+                                        liveBufferLatencyMaxLatency: 1.5,
+                                        liveBufferLatencyMinRemain: 0.5
+                                    });
+                                    player.attachMediaElement(v);
+                                    player.load();
+                                    window.activeMpegtsPlayer = player;
+                                    this.playVideo(index);
+                                } else if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+                                    this.state.playbackMethod = 'DirectPlay';
+                                    v.removeAttribute('src');
+                                    v.onerror = null;
+
+                                    const hls = new Hls({
+                                        maxBufferSize: 0,
+                                        liveSyncDurationCount: 3,
+                                    });
+                                    hls.loadSource(playUrl);
+                                    hls.attachMedia(v);
+                                    window.activeHls = hls;
+                                    v.load();
+                                    this.playVideo(index);
+                                }
+                            } else {
+                                if (window.activeHls) {
+                                    window.activeHls.destroy();
+                                    window.activeHls = null;
+                                }
+                                if (window.activeMpegtsPlayer) {
+                                    window.activeMpegtsPlayer.destroy();
+                                    window.activeMpegtsPlayer = null;
+                                }
+                                const { server, token } = this.config;
+                                const deviceId = this.config.deviceId || 'EmbyX-Device';
+                                const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
+                                this.state.playbackMethod = 'DirectStream';
+                                v.src = fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream.mp4?${params}`);
+                                v.load();
+                                this.playVideo(index);
+                            }
                         } else {
                             this.toggleLoading(false);
+                            this.state.playbackMethod = 'Failed';
                             this.showToast('Playback failed. Disable Direct Play for transcoding.');
                         }
                     }
                 } else {
-                    // -- Transcode mode (HLS) failed, no further fallback --
-                    this.toggleLoading(false);
-                    this.showToast('Transcode failed. Check Emby settings.');
+                    // -- Transcode Mode fallback --
+                    if (retryCount === 0) {
+                        this.state.playbackMethod = 'Transcode';
+                        v.src = this._buildHlsSrc(item.Id, item, true); // forceReencode = true
+                        v.load();
+                        this.playVideo(index);
+                    } else {
+                        this.toggleLoading(false);
+                        this.state.playbackMethod = 'Failed';
+                        this.showToast('Transcode failed. Check Emby settings.');
+                    }
                 }
             }
 
@@ -1592,10 +1694,10 @@
             //   → Source is hevc/av1? Emby detects incompatibility, transcodes to h264 → hardware accel
             // AllowVideoStreamCopy=true:
             //   Allows h264 sources to remux directly; prevents wasteful h264→h264 re-encoding
-            // Note: EnableAutoStreamCopy is NOT added — it can bypass HLS segmentation entirely
-            _buildHlsSrc(id, mediaItem) {
+            _buildHlsSrc(id, mediaItem, forceReencode = false) {
                 const { server, token } = this.config;
-                const mediaSourceId = mediaItem?.MediaSources?.[0]?.Id || '';
+                const mediaSource = mediaItem?.MediaSources?.[0];
+                const mediaSourceId = mediaSource?.Id || '';
                 const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
                 const deviceId = this.config.deviceId || 'EmbyX-Device';
 
@@ -1604,20 +1706,19 @@
                     mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
                     `DeviceId=${deviceId}`,
                     `PlaySessionId=${playSessionId}`,
-                    `VideoCodec=h264`,           // h264 only: hevc/av1/etc. forced to transcode
+                    forceReencode ? `VideoCodec=h264` : `VideoCodec=h264,hevc,vp9,av1`, // Transcode: lock to h264; stream copy: declare all formats, fMP4 natively supports VP9/AV1 copy
                     `AudioCodec=aac,mp3,ac3`,
-                    `VideoBitrate=20000000`,
+                    forceReencode ? `VideoBitrate=20000000` : '',  // Bitrate cap only for transcode (LAN 20Mbps); stream copy uses source bitrate
                     `AudioBitrate=320000`,
                     `TranscodingMaxAudioChannels=2`,
-                    `SegmentContainer=ts`,       // Use ts: fixes h264 source playback failure with mp4 HLS segments
+                    forceReencode ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // Transcode: TS (H264+TS most compatible); stream copy: fMP4 (VP9/AV1 support, iOS 10+)
                     `MinSegments=1`,
-                    `BreakOnNonKeyFrames=True`,
-                    `AllowVideoStreamCopy=true`, // h264 source: remux, no re-encode (saves GPU/CPU)
-                    `AllowAudioStreamCopy=true`  // aac audio: copy; other formats: transcode to aac
-                    // EnableAutoStreamCopy NOT added — avoids Emby bypassing HLS segmentation
+                    forceReencode ? `BreakOnNonKeyFrames=True` : '',  // Only needed for TS segments, not fMP4
+                    forceReencode ? `AllowVideoStreamCopy=false` : `AllowVideoStreamCopy=true`,
+                    `AllowAudioStreamCopy=true`
                 ].filter(Boolean).join('&');
 
-                return `${server}/emby/Videos/${id}/master.m3u8?${params}`;
+                return fixUrlForJellyfin(`${server}/emby/Videos/${id}/master.m3u8?${params}`);
             }
 
             togglePlay() {
@@ -1713,7 +1814,7 @@
                     IsPaused: videoEl.paused || event === 'stopped',
                     IsMuted: videoEl.muted,
                     VolumeLevel: Math.floor(videoEl.volume * 100),
-                    PlayMethod: this.config.useStatic ? 'DirectPlay' : 'Transcode',
+                    PlayMethod: this.state.playbackMethod || (this.config.useStatic ? 'DirectPlay' : 'Transcode'),
                     EventName: eventName,
                     CanSeek: true,
                     PlaySessionId: this.state.playSessionId,
@@ -1748,37 +1849,37 @@
                 }).catch(() => { });
             }
 
-            getVideoSrc(id, mediaItem) {
+            getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
                 const { server, token, useStatic } = this.config;
 
                 // Get metadata (codec and container)
                 const mediaSource = mediaItem?.MediaSources?.[0];
                 const codec = (mediaSource?.VideoCodec || '').toLowerCase();
                 const container = (mediaSource?.Container || '').toLowerCase();
-                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase(); // Get tag like hev1/hvc1
+                const codecTag = (mediaSource?.VideoCodecTag || '').toLowerCase();
 
-                // Smart Decision: For h264+mp4, always prioritize direct play
-                const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v'));
-
-                if (!useStatic && !isNativeCompatible) {
-                    // Force HLS only if Direct Play is off AND codec is not h264+mp4
+                // -- Case 1: Direct Play off (Transcode mode) --
+                if (!useStatic) {
+                    if (isPrimaryPlayback) this.state.playbackMethod = 'Transcode';
                     return this._buildHlsSrc(id, mediaItem);
                 }
 
-                // -- Device Compatibility Check for Apple hev1 issue --
+                // -- Case 2: Direct Play on (Absolute direct play / remux) --
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
                     (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-                // Specific bypass for iOS + HEVC + hev1 tag (Safari only natively supports hvc1)
-                // Direct play (Static) for hev1 fails on iOS. Force Direct Stream (Remux) to fix the tag.
-                if (isIOS && codec === 'hevc' && codecTag === 'hev1') {
-                    const deviceId = this.config.deviceId || 'EmbyX-Device';
-                    // Using stream.mp4 with Copy allows Emby to Remux (hev1 -> hvc1) without transcoding.
-                    const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,hevc,av1&AudioCodec=aac,mp3,ac3&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                    return `${server}/emby/Videos/${id}/stream.mp4?${params}`;
+                if (isIOS) {
+                    // Smart Check: For natively supported format and codec (Only H.264 MP4 is treated as native on iOS; HEVC goes to HLS copy for compatibility)
+                    const isNativeCompatible = codec === 'h264' && (container.includes('mp4') || container.includes('m4v') || container.includes('mov'));
+
+                    if (!isNativeCompatible) {
+                        // For non-perfect formats (HEVC hev1, VP9, AV1, MKV, etc.), start playing via HLS video copy immediately
+                        if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
+                        return this._buildHlsSrc(id, mediaItem, false); // forceReencode = false
+                    }
                 }
 
-                // -- Direct Play (Static) --
+                // Fall through to Direct Play (Static=true) for non-iOS or perfect formats
                 const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
                 const deviceId = this.config.deviceId || 'EmbyX-Device';
                 const msId = mediaSource?.Id || '';
@@ -1791,7 +1892,8 @@
                     `PlaySessionId=${playSessionId}`
                 ].filter(Boolean).join('&');
 
-                return `${server}/emby/Videos/${id}/stream?${params}`;
+                if (isPrimaryPlayback) this.state.playbackMethod = 'DirectPlay';
+                return fixUrlForJellyfin(`${server}/emby/Videos/${id}/stream?${params}`);
             }
 
             getImageSrc(video) {
@@ -1800,13 +1902,13 @@
 
                 if (typeof video === 'object' && video !== null) {
                     if (video.ImageTags && video.ImageTags.Primary) {
-                        return `${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`;
+                        return fixUrlForJellyfin(`${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`);
                     }
                     return fallbackUrl;
                 }
 
                 if (!video) return fallbackUrl;
-                return `${server}/emby/Items/${video}/Images/Primary?api_key=${token}`;
+                return fixUrlForJellyfin(`${server}/emby/Items/${video}/Images/Primary?api_key=${token}`);
             }
 
             async showLibraries() {
@@ -2240,7 +2342,25 @@
                         const aCodec = src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || 'Unknown';
                         const bitrate = src.Bitrate ? (src.Bitrate / 1000000).toFixed(2) + ' Mbps' : 'Unknown';
                         const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : 'Unknown';
-                        const transcodeState = this.config.useStatic ? 'Direct Play' : 'Auto Transcode';
+                        let transcodeState = 'Direct Play';
+                        if (this.state.playbackMethod === 'Failed') {
+                            transcodeState = 'Playback Failed';
+                        } else if (this.state.playbackMethod === 'DirectPlay') {
+                            transcodeState = 'Direct Play';
+                        } else if (this.state.playbackMethod === 'DirectStream') {
+                            const audioCodec = (src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '').toLowerCase();
+                            const isAudioNative = ['aac', 'mp3', 'ac3', 'eac3', 'aac_latm'].includes(audioCodec);
+                            if (isAudioNative) {
+                                transcodeState = 'Direct Stream';
+                            } else {
+                                const audioLabel = { 'dts': 'DTS', 'truehd': 'TrueHD', 'opus': 'Opus', 'flac': 'FLAC', 'vorbis': 'Vorbis' }[audioCodec] || audioCodec.toUpperCase();
+                                transcodeState = `Direct Stream (${audioLabel}→AAC)`;
+                            }
+                        } else if (this.state.playbackMethod === 'Transcode' || this.state.playbackMethod === 'TranscodeStream') {
+                            transcodeState = 'Transcoding';
+                        } else {
+                            transcodeState = this.config.useStatic ? 'Direct Play' : 'Transcoding';
+                        }
 
                         this.dom.mediaInfoContent.innerHTML = `
                             <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
