@@ -656,7 +656,9 @@
                     lastReportTime: 0,
                     playSessionId: null,
                     playbackMethod: 'DirectPlay',
-                    originalVideos: []  // 随机模式下保存原始顺序列表
+                    originalVideos: [],  // 随机模式下保存原始顺序列表
+                    _capabilitiesReported: false,
+                    _hitokotoCache: null
                 };
 
                 this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false };
@@ -906,36 +908,68 @@
                 this.toggleLoading(true);
 
                 // 自动补全协议头和端口
+                let isAutoFilled = false;
                 if (server && !server.startsWith('http')) {
                     const host = server.split(':')[0];
                     const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
 
                     if (isIP && !server.includes(':')) {
-                        // 根据客户端当前网页的协议自适应（HTTPS 环境下只补全 https，HTTP 环境下只补全 http）
                         const scheme = location.protocol === 'https:' ? 'https://' : 'http://';
-                        
-                        // 步骤一：优先探测默认的 8096 端口
-                        let is8096Alive = false;
-                        try {
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2秒快速超时
-                            const testRes = await fetch(`${scheme}${server}:8096/System/Info/Public`, { signal: controller.signal });
-                            clearTimeout(timeoutId);
-                            if (testRes.ok || testRes.status === 401 || testRes.status === 403) {
-                                is8096Alive = true;
-                            }
-                        } catch (e) {}
-
-                        // 步骤二：应用探测结果（若 8096 不通，则直接补全飞牛影视的默认端口 8090）
-                        if (is8096Alive) {
-                            server = `${scheme}${server}:8096`;
-                        } else {
-                            server = `${scheme}${server}:8090`;
-                        }
+                        server = `${scheme}${server}:8096`;
+                        isAutoFilled = true;
                     } else {
                         server = (isIP ? 'http://' : 'https://') + server;
                     }
                 }
+
+                // 封装登录验证流程（8096: Emby/Jellyfin 标准端口, 8090: 飞牛影视端口）
+                const performAuth = async (targetServer) => {
+                    // Jellyfin 登录前置探测
+                    let isJellyfin = false;
+                    try {
+                        let detectRes = await fetch(`${targetServer}/System/Info/Public`);
+                        if (detectRes.ok) {
+                            const detectData = await detectRes.json();
+                            if (detectData.ProductName && detectData.ProductName.toLowerCase().includes('jellyfin')) {
+                                isJellyfin = true;
+                            }
+                        } else {
+                            detectRes = await fetch(`${targetServer}/emby/System/Info/Public`);
+                            if (detectRes.ok) {
+                                const detectData = await detectRes.json();
+                                if (detectData.ProductName && detectData.ProductName.toLowerCase().includes('jellyfin')) {
+                                    isJellyfin = true;
+                                }
+                            }
+                        }
+                    } catch (e) {}
+
+                    if (isJellyfin) {
+                        localStorage.setItem('emby_is_jellyfin', 'true');
+                        enableJellyfinFetchProxy();
+                    } else {
+                        localStorage.removeItem('emby_is_jellyfin');
+                    }
+
+                    const res = await fetch(`${targetServer}/emby/Users/AuthenticateByName`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                        },
+                        body: JSON.stringify({ Username: user, Pw: pwd })
+                    });
+
+                    if (!res.ok) {
+                        throw { status: res.status };
+                    }
+
+                    const data = await res.json();
+                    if (!data.AccessToken) {
+                        throw { status: 'NO_TOKEN' };
+                    }
+                    return data;
+                };
 
                 try {
                     // 如果是用旧 token 更新设置，跳过登录
@@ -954,100 +988,75 @@
                         return;
                     }
 
-                    // Jellyfin 登录前置探测
-                    let isJellyfin = false;
+                    let data;
                     try {
-                        let detectRes = await fetch(`${server}/System/Info/Public`);
-                        if (detectRes.ok) {
-                            const detectData = await detectRes.json();
-                            if (detectData.ProductName && detectData.ProductName.toLowerCase().includes('jellyfin')) {
-                                isJellyfin = true;
+                        data = await performAuth(server);
+                    } catch (err) {
+                        // 登录失败后，如果是自动补全的 8096 端口，自动尝试 8090 端口
+                        if (isAutoFilled && server.endsWith(':8096')) {
+                            const fallbackServer = server.replace(/:8096$/, ':8090');
+                            try {
+                                data = await performAuth(fallbackServer);
+                                server = fallbackServer; // 成功登录，更新为 8090 地址以供后续保存
+                            } catch (fallbackErr) {
+                                // 8090 也登录失败，抛出最初 8096 的登录错误
+                                throw err;
                             }
                         } else {
-                            detectRes = await fetch(`${server}/emby/System/Info/Public`);
-                            if (detectRes.ok) {
-                                const detectData = await detectRes.json();
-                                if (detectData.ProductName && detectData.ProductName.toLowerCase().includes('jellyfin')) {
-                                    isJellyfin = true;
-                                }
-                            }
+                            throw err;
                         }
-                    } catch (e) {}
-
-                    if (isJellyfin) {
-                        localStorage.setItem('emby_is_jellyfin', 'true');
-                        enableJellyfinFetchProxy();
-                    } else {
-                        localStorage.removeItem('emby_is_jellyfin');
                     }
 
-                    const res = await fetch(`${server}/emby/Users/AuthenticateByName`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
-                        },
-                        body: JSON.stringify({ Username: user, Pw: pwd })
-                    });
-                    // 先按状态码分流，再尝试解析 JSON（避免非 JSON 响应体导致 json() 报错）
-                    if (res.status === 401) {
-                        this.showToast('❌认证失败：用户名或密码错误');
-                        return;
-                    } else if (res.status === 404) {
-                        this.showToast('❌连接失败：请检查端口号');
-                        return;
-                    } else if (!res.ok) {
-                        this.showToast('❌连接失败 ' + res.status + '，请检查 Emby 日志');
-                        return;
+                    // 登录成功后的处理
+                    localStorage.setItem('emby_server', server);
+                    localStorage.setItem('emby_user', user);
+                    localStorage.setItem('emby_token', data.AccessToken);
+                    localStorage.setItem('emby_uid', data.SessionInfo.UserId);
+                    localStorage.setItem('emby_static', isStatic);
+                    localStorage.setItem('emby_autoplay', autoplay);
+                    localStorage.setItem('emby_shortdrama', shortDrama);
+                    localStorage.setItem('emby_delete_mode', deleteMode);
+
+                    this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode };
+
+                    // 将密码位数存入 localStorage，不存密码本身，空密码记为 0
+                    const pwdLen2 = pwd.length;
+                    localStorage.setItem('emby_pwd_len', pwdLen2);
+                    this.dom.configPwd.value = '*'.repeat(pwdLen2);
+                    this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
+                    if (this.dom.playModeBtn) {
+                        this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
+                        lucide.createIcons();
                     }
 
-                    const data = await res.json();
-
-                    if (data.AccessToken) {
-                        // 登录成功...
-                        localStorage.setItem('emby_server', server);
-                        localStorage.setItem('emby_user', user);
-                        localStorage.setItem('emby_token', data.AccessToken);
-                        localStorage.setItem('emby_uid', data.SessionInfo.UserId);
-                        localStorage.setItem('emby_static', isStatic);
-                        localStorage.setItem('emby_autoplay', autoplay);
-                        localStorage.setItem('emby_shortdrama', shortDrama);
-                        localStorage.setItem('emby_delete_mode', deleteMode);
-
-                        this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode };
-
-                        // 将密码位数存入 localStorage，不存密码本身，空密码记为 0
-                        const pwdLen = pwd.length;
-                        localStorage.setItem('emby_pwd_len', pwdLen);
-                        this.dom.configPwd.value = '*'.repeat(pwdLen);
-                        this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
-                        if (this.dom.playModeBtn) {
-                            this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                            lucide.createIcons();
-                        }
-
-                        // 清理数据缓存，保留核心设置并重新加载
-                        localStorage.removeItem('emby_views_cache');
-                        localStorage.removeItem('emby_favorites');
-                        localStorage.removeItem('emby_lib_id');
-                        localStorage.removeItem('emby_lib_type');
-                        location.reload();
-                    } else {
-                        this.showToast('❌ 认证失败：用户名或密码错误');
-                    }
+                    // 清理数据缓存，保留核心设置并重新加载
+                    localStorage.removeItem('emby_views_cache');
+                    localStorage.removeItem('emby_favorites');
+                    localStorage.removeItem('emby_lib_id');
+                    localStorage.removeItem('emby_lib_type');
+                    location.reload();
                 } catch (e) {
                     console.error('saveConfig error:', e);
-                    // 分辨常见错误类型
-                    const msg = e?.message || '';
-                    const isHttps = location.protocol === 'https:';
-                    const targetHttp = server.startsWith('http:');
-                    if (isHttps && targetHttp) {
-                        // HTTPS 页面请求 HTTP Emby 会被浏览器拦截（Mixed Content）
-                        this.showToast('❌ 连接失败：请求被拦截 (HTTPS -> HTTP)');
-                    } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
-                        this.showToast('❌ 无法连接服务器');
+                    // 分辨常见错误类型并规范 Toast 空格
+                    const status = e?.status;
+                    if (status === 401 || status === 'NO_TOKEN') {
+                        this.showToast('❌ 认证失败：用户名或密码错误');
+                    } else if (status === 404) {
+                        this.showToast('❌ 连接失败：请检查端口号');
+                    } else if (status) {
+                        this.showToast('❌ 连接失败 ' + status + '，请检查 Emby 日志');
                     } else {
-                        this.showToast('❌ 连接失败：' + (msg || '未知错误'));
+                        const msg = e?.message || '';
+                        const isHttps = location.protocol === 'https:';
+                        const targetHttp = server.startsWith('http:');
+                        if (isHttps && targetHttp) {
+                            // HTTPS 页面请求 HTTP Emby 会被浏览器拦截（Mixed Content）
+                            this.showToast('❌ 连接失败：请求被拦截 (HTTPS -> HTTP)');
+                        } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
+                            this.showToast('❌ 无法连接服务器');
+                        } else {
+                            this.showToast('❌ 连接失败：' + (msg || '未知错误'));
+                        }
                     }
                 } finally {
                     this.toggleLoading(false);
@@ -1270,17 +1279,10 @@
 
                 // 背景海报模糊层
                 const currentVideo = this.state.videos[this.state.currentIndex];
-                const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : '';
+                const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : this.getImageSrc(null);
                 const bgLayer = document.createElement('div');
                 bgLayer.className = 'absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
                 if (bgPosterStr) {
-                    const imgL = new Image();
-                    imgL.crossOrigin = 'anonymous';
-                    imgL.referrerPolicy = 'no-referrer';
-                    imgL.src = bgPosterStr;
-                    imgL.onerror = () => {
-                        bgLayer.style.backgroundImage = `url('${this.getImageSrc(null)}')`;
-                    };
                     bgLayer.style.backgroundImage = `url('${bgPosterStr}')`;
                 }
                 container.appendChild(bgLayer);
@@ -1461,22 +1463,30 @@
                 eggFooter.innerHTML = '<span class="opacity-40">——</span>';
                 gridWrapper.appendChild(eggFooter);
 
-                // 异步获取一言并填入尾部
-                fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
-                    .then(r => r.json())
-                    .then(data => {
-                        const text = data.hitokoto || '';
-                        // from_who 为作者，from 为来源作品
-                        const source = [data.from_who, data.from].filter(Boolean).join(' · ');
-                        eggFooter.innerHTML = `
-                            <p class="text-gray-300">“${text}”</p>
-                            ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
-                        `;
-                    })
-                    .catch(() => {
-                        // 网络失败就静默不显示
-                        eggFooter.innerHTML = '';
-                    });
+                // 异步获取一言并填入尾部 (使用内存缓存，避免重复请求)
+                if (this.state._hitokotoCache) {
+                    const data = this.state._hitokotoCache;
+                    const source = [data.from_who, data.from].filter(Boolean).join(' · ');
+                    eggFooter.innerHTML = `
+                        <p class="text-gray-300">“${data.hitokoto || ''}”</p>
+                        ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                    `;
+                } else {
+                    fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
+                        .then(r => r.json())
+                        .then(data => {
+                            this.state._hitokotoCache = data;
+                            const text = data.hitokoto || '';
+                            const source = [data.from_who, data.from].filter(Boolean).join(' · ');
+                            eggFooter.innerHTML = `
+                                <p class="text-gray-300">“${text}”</p>
+                                ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                            `;
+                        })
+                        .catch(() => {
+                            eggFooter.innerHTML = '';
+                        });
+                }
 
 
                 // 定位到当前高亮元素
@@ -2195,8 +2205,10 @@
             }
 
             reportCapabilities() {
+                if (this.state._capabilitiesReported) return;
                 const { server, token } = this.config;
                 if (!server || !token) return;
+                this.state._capabilitiesReported = true;
                 fetch(`${server}/emby/Sessions/Capabilities/Full?api_key=${token}`, {
                     method: 'POST',
                     headers: {
@@ -2274,10 +2286,122 @@
                 return fallbackUrl;
             }
 
-            async showLibraries() {
-                this.toggleLoading(true);
+            renderLibraryItems(playlistsData, viewsDataRaw) {
                 const list = document.getElementById('librariesList');
+                if (!list) return;
                 list.innerHTML = '';
+
+                const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => item.CollectionType !== 'playlists' && item.CollectionType !== 'boxsets') : [];
+
+                const favDiv = document.createElement('div');
+                const isFavSelected = this.state.currentLibraryId === 'favorites';
+                favDiv.setAttribute('tabindex', '0');
+                favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">收藏夹</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                favDiv.onclick = () => {
+                    this.state.currentLibraryId = 'favorites';
+                    this.state.currentLibraryType = 'favorites';
+                    localStorage.setItem('emby_lib_id', 'favorites');
+                    localStorage.setItem('emby_lib_type', 'favorites');
+                    this.state.currentTab = 'home';
+                    this.updateTabHighlight();
+                    if (this.state.favorites.size === 0) {
+                        this.showToast('暂无收藏');
+                        return;
+                    }
+                    this.state.startIndex = 0;
+                    this.fetchVideos(null, Array.from(this.state.favorites).join(','));
+                    this.toggleModal('libraryModal', false);
+                };
+                list.appendChild(favDiv);
+
+                if (playlistsData && playlistsData.Items && playlistsData.Items.length > 0) {
+                    const headerPl = document.createElement('div');
+                    headerPl.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
+                    headerPl.textContent = '播放列表';
+                    list.appendChild(headerPl);
+
+                    playlistsData.Items.forEach(pl => {
+                        const div = document.createElement('div');
+                        const isSelected = pl.Id === this.state.currentLibraryId;
+                        div.setAttribute('tabindex', '0');
+                        div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                        div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.onclick = () => {
+                            this.state.currentLibraryId = pl.Id;
+                            this.state.currentLibraryType = 'playlist';
+                            localStorage.setItem('emby_lib_id', pl.Id);
+                            localStorage.setItem('emby_lib_type', 'playlist');
+                            this.state.currentTab = 'home';
+                            this.updateTabHighlight();
+                            this.state.startIndex = 0;
+                            this.fetchVideos(pl.Id);
+                            this.toggleModal('libraryModal', false);
+                        };
+                        list.appendChild(div);
+                    });
+                }
+
+                if (filteredViews && filteredViews.length > 0) {
+                    const headerLib = document.createElement('div');
+                    headerLib.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
+                    headerLib.textContent = '媒体库';
+                    list.appendChild(headerLib);
+
+                    filteredViews.forEach(lib => {
+                        const div = document.createElement('div');
+                        const isSelected = lib.Id === this.state.currentLibraryId;
+                        let iconName = 'clapperboard';
+                        if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                        else if (lib.CollectionType === 'homevideos') iconName = 'video';
+                        else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
+                        else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+
+                        div.setAttribute('tabindex', '0');
+                        div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.onclick = () => {
+                            this.state.currentLibraryId = lib.Id;
+                            this.state.currentLibraryType = 'library';
+                            localStorage.setItem('emby_lib_id', lib.Id);
+                            localStorage.setItem('emby_lib_type', 'library');
+                            this.state.currentTab = 'home';
+                            this.updateTabHighlight();
+                            this.state.startIndex = 0;
+                            this.fetchVideos(lib.Id);
+                            this.toggleModal('libraryModal', false);
+                        };
+                        list.appendChild(div);
+                    });
+                }
+
+                lucide.createIcons({ nameAttr: 'data-lucide', attrs: {}, nodes: [list] });
+            }
+
+            async showLibraries() {
+                const list = document.getElementById('librariesList');
+                if (!list) return;
+
+                // 1. 先尝试读取本地缓存实现秒开
+                let hasCache = false;
+                const cachedViewsStr = localStorage.getItem('emby_views_cache');
+                if (cachedViewsStr) {
+                    try {
+                        const cached = JSON.parse(cachedViewsStr);
+                        if (cached.views && cached.playlists) {
+                            this.renderLibraryItems(cached.playlists, cached.views);
+                            this.toggleModal('libraryModal', true);
+                            hasCache = true;
+                        }
+                    } catch (e) {}
+                }
+
+                // 如果没有缓存，则显示全屏转圈
+                if (!hasCache) {
+                    this.toggleLoading(true);
+                    list.innerHTML = '';
+                    this.toggleModal('libraryModal', true);
+                }
 
                 try {
                     const userId = this.config.userId;
@@ -2304,113 +2428,11 @@
                     // 缓存完整的视图和列表数据供网格模式提取名称
                     localStorage.setItem('emby_views_cache', JSON.stringify({ playlists: playlistsData, views: viewsDataRaw }));
 
-                    // 过滤掉基于特定收集方式的视图避免重叠
-                    const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => item.CollectionType !== 'playlists' && item.CollectionType !== 'boxsets') : [];
-
-                    const favDiv = document.createElement('div');
-                    const isFavSelected = this.state.currentLibraryId === 'favorites';
-                    favDiv.setAttribute('tabindex', '0');
-                    favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                    favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4"></i><span class="flex-1 truncate">收藏夹</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5"></i>' : ''}`;
-                    favDiv.onclick = () => {
-                        this.state.currentLibraryId = 'favorites';
-                        this.state.currentLibraryType = 'favorites';
-                        localStorage.setItem('emby_lib_id', 'favorites');
-                        localStorage.setItem('emby_lib_type', 'favorites');
-                        this.state.currentTab = 'favorites';
-                        if (this.state.favorites.size === 0) {
-                            this.showToast('暂无收藏');
-                            return;
-                        }
-                        this.fetchVideos();
-                        this.toggleModal('libraryModal', false);
-                    };
-                    list.appendChild(favDiv);
-
-                    if (playlistsData && playlistsData.Items && playlistsData.Items.length > 0) {
-                        const headerPl = document.createElement('div');
-                        headerPl.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
-                        headerPl.textContent = '播放列表';
-                        list.appendChild(headerPl);
-
-                        playlistsData.Items.forEach(pl => {
-                            const div = document.createElement('div');
-                            const isSelected = pl.Id === this.state.currentLibraryId;
-                            div.setAttribute('tabindex', '0');
-                            div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                            div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
-                            div.onclick = () => {
-                                this.state.currentLibraryId = pl.Id;
-                                this.state.currentLibraryType = 'playlist';
-                                localStorage.setItem('emby_lib_id', pl.Id);
-                                localStorage.setItem('emby_lib_type', 'playlist');
-                                this.state.currentTab = 'home';
-                                this.updateTabHighlight();
-                                this.fetchVideos(pl.Id);
-                                this.toggleModal('libraryModal', false);
-                            };
-                            list.appendChild(div);
-                        });
-                    }
-
-                    if (filteredViews && filteredViews.length > 0) {
-                        const headerLib = document.createElement('div');
-                        headerLib.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
-                        headerLib.textContent = '媒体库';
-                        list.appendChild(headerLib);
-
-                        filteredViews.forEach(lib => {
-                            const div = document.createElement('div');
-                            const isSelected = lib.Id === this.state.currentLibraryId;
-                            let iconName = 'clapperboard';
-                            if (lib.CollectionType === 'tvshows') iconName = 'tv';
-                            else if (lib.CollectionType === 'homevideos') iconName = 'video';
-                            else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
-                            else if (lib.CollectionType === 'boxsets') iconName = 'archive';
-
-                            div.setAttribute('tabindex', '0');
-                            div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                            div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
-                            div.onclick = () => {
-                                this.state.currentLibraryId = lib.Id;
-                                this.state.currentLibraryType = 'library';
-                                localStorage.setItem('emby_lib_id', lib.Id);
-                                localStorage.setItem('emby_lib_type', 'library');
-                                this.state.currentTab = 'home';
-                                this.updateTabHighlight();
-                                this.fetchVideos(lib.Id);
-                                this.toggleModal('libraryModal', false);
-                            };
-                            list.appendChild(div);
-                        });
-                    }
-
-                    lucide.createIcons();
-                    this.toggleModal('libraryModal', true);
-
+                    // 静默刷新渲染
+                    this.renderLibraryItems(playlistsData, viewsDataRaw);
                 } catch (e) {
                     console.error('获取媒体库失败:', e);
                     this.showToast('获取媒体库失败');
-
-                    const favDiv = document.createElement('div');
-                    favDiv.className = 'p-3 rounded mb-2 cursor-pointer text-sm flex items-center gap-3 bg-gray-800 text-white';
-                    favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-5 h-5"></i><span class="flex-1">收藏夹</span>`;
-                    favDiv.onclick = () => {
-                        if (this.state.favorites.size === 0) {
-                            this.showToast('暂无收藏');
-                            return;
-                        }
-                        this.state.currentLibraryId = 'favorites';
-                        this.state.currentLibraryType = 'favorites';
-                        localStorage.setItem('emby_lib_id', 'favorites');
-                        localStorage.setItem('emby_lib_type', 'favorites');
-                        this.fetchVideos();
-                        this.toggleModal('libraryModal', false);
-                    };
-                    list.appendChild(favDiv);
-
-                    lucide.createIcons();
-                    this.toggleModal('libraryModal', true);
                 } finally {
                     this.toggleLoading(false);
                 }

@@ -593,7 +593,9 @@
                     lastReportTime: 0,
                     playSessionId: null,
                     playbackMethod: 'DirectPlay',
-                    originalVideos: []
+                    originalVideos: [],
+                    _capabilitiesReported: false,
+                    _hitokotoCache: null
                 };
 
                 this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false };
@@ -825,36 +827,41 @@
                 this.toggleLoading(true);
 
                 // Auto-fill protocol and port
+                let isAutoFilled = false;
                 if (server && !server.startsWith('http')) {
                     const host = server.split(':')[0];
                     const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
 
                     if (isIP && !server.includes(':')) {
-                        // Adapt automatically based on the client origin scheme
                         const scheme = location.protocol === 'https:' ? 'https://' : 'http://';
-                        
-                        // Step 1: Probe default 8096 port first
-                        let is8096Alive = false;
-                        try {
-                            const controller = new AbortController();
-                            const timeoutId = setTimeout(() => controller.abort(), 1200); // 1.2s rapid timeout
-                            const testRes = await fetch(`${scheme}${server}:8096/System/Info/Public`, { signal: controller.signal });
-                            clearTimeout(timeoutId);
-                            if (testRes.ok || testRes.status === 401 || testRes.status === 403) {
-                                is8096Alive = true;
-                            }
-                        } catch (e) {}
-
-                        // Step 2: Symmetrically fallback to Feiniu default 8090 if 8096 is offline
-                        if (is8096Alive) {
-                            server = `${scheme}${server}:8096`;
-                        } else {
-                            server = `${scheme}${server}:8090`;
-                        }
+                        server = `${scheme}${server}:8096`;
+                        isAutoFilled = true;
                     } else {
                         server = (isIP ? 'http://' : 'https://') + server;
                     }
                 }
+
+                // Encapsulate login verification process (8096: Emby/Jellyfin standard port, 8090: Feiniu OS port)
+                const performAuth = async (targetServer) => {
+                    const res = await fetch(`${targetServer}/emby/Users/AuthenticateByName`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
+                        },
+                        body: JSON.stringify({ Username: user, Pw: pwd })
+                    });
+
+                    if (!res.ok) {
+                        throw { status: res.status };
+                    }
+
+                    const data = await res.json();
+                    if (!data.AccessToken) {
+                        throw { status: 'NO_TOKEN' };
+                    }
+                    return data;
+                };
 
                 try {
                     if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
@@ -870,68 +877,71 @@
                         return;
                     }
 
-                    const res = await fetch(`${server}/emby/Users/AuthenticateByName`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
-                        },
-                        body: JSON.stringify({ Username: user, Pw: pwd })
-                    });
-                    if (res.status === 401) {
-                        this.showToast('❌ Auth failed: Invalid Username or Password');
-                        return;
-                    } else if (res.status === 404) {
-                        this.showToast('❌ Connection Failed: Check port');
-                        return;
-                    } else if (!res.ok) {
-                        this.showToast('❌ Connection Failed ' + res.status + '. Check Emby logs.');
-                        return;
-                    }
-
-                    const data = await res.json();
-
-                    if (data.AccessToken) {
-                        localStorage.setItem('emby_server', server);
-                        localStorage.setItem('emby_user', user);
-                        localStorage.setItem('emby_token', data.AccessToken);
-                        localStorage.setItem('emby_uid', data.SessionInfo.UserId);
-                        localStorage.setItem('emby_static', isStatic);
-                        localStorage.setItem('emby_autoplay', autoplay);
-                        localStorage.setItem('emby_shortdrama', shortDrama);
-                        localStorage.setItem('emby_delete_mode', deleteMode);
-
-                        this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode };
-
-                        const pwdLen = Math.max(1, pwd.length);
-                        localStorage.setItem('emby_pwd_len', pwdLen);
-                        this.dom.configPwd.value = '*'.repeat(pwdLen);
-                        this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
-                        if (this.dom.playModeBtn) {
-                            this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                            lucide.createIcons();
+                    let data;
+                    try {
+                        data = await performAuth(server);
+                    } catch (err) {
+                        // Fallback to 8090 if 8096 login fails and the port was auto-filled by system
+                        if (isAutoFilled && server.endsWith(':8096')) {
+                            const fallbackServer = server.replace(/:8096$/, ':8090');
+                            try {
+                                data = await performAuth(fallbackServer);
+                                server = fallbackServer; // Update server address to 8090 on success
+                            } catch (fallbackErr) {
+                                // Fallback fails, throw original 8096 error
+                                throw err;
+                            }
+                        } else {
+                            throw err;
                         }
-
-                        // Clear data cache, keep core settings and reload
-                        localStorage.removeItem('emby_views_cache');
-                        localStorage.removeItem('emby_favorites');
-                        localStorage.removeItem('emby_lib_id');
-                        localStorage.removeItem('emby_lib_type');
-                        location.reload();
-                    } else {
-                        this.showToast('❌ Auth failed: Invalid Username or Password');
                     }
+
+                    localStorage.setItem('emby_server', server);
+                    localStorage.setItem('emby_user', user);
+                    localStorage.setItem('emby_token', data.AccessToken);
+                    localStorage.setItem('emby_uid', data.SessionInfo.UserId);
+                    localStorage.setItem('emby_static', isStatic);
+                    localStorage.setItem('emby_autoplay', autoplay);
+                    localStorage.setItem('emby_shortdrama', shortDrama);
+                    localStorage.setItem('emby_delete_mode', deleteMode);
+
+                    this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode };
+
+                    const pwdLen = Math.max(1, pwd.length);
+                    localStorage.setItem('emby_pwd_len', pwdLen);
+                    this.dom.configPwd.value = '*'.repeat(pwdLen);
+                    this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
+                    if (this.dom.playModeBtn) {
+                        this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
+                        lucide.createIcons();
+                    }
+
+                    // Clear data cache, keep core settings and reload
+                    localStorage.removeItem('emby_views_cache');
+                    localStorage.removeItem('emby_favorites');
+                    localStorage.removeItem('emby_lib_id');
+                    localStorage.removeItem('emby_lib_type');
+                    location.reload();
                 } catch (e) {
                     console.error('saveConfig error:', e);
-                    const msg = e?.message || '';
-                    const isHttps = location.protocol === 'https:';
-                    const targetHttp = server.startsWith('http:');
-                    if (isHttps && targetHttp) {
-                        this.showToast('❌ Blocked: Mixed Content (HTTPS -> HTTP)');
-                    } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
-                        this.showToast('❌ Cannot connect to server');
+                    const status = e?.status;
+                    if (status === 401 || status === 'NO_TOKEN') {
+                        this.showToast('❌ Auth failed: Invalid Username or Password');
+                    } else if (status === 404) {
+                        this.showToast('❌ Connection Failed: Check port');
+                    } else if (status) {
+                        this.showToast('❌ Connection Failed ' + status + '. Check Emby logs.');
                     } else {
-                        this.showToast('❌ Connection Failed: ' + (msg || 'Unknown error'));
+                        const msg = e?.message || '';
+                        const isHttps = location.protocol === 'https:';
+                        const targetHttp = server.startsWith('http:');
+                        if (isHttps && targetHttp) {
+                            this.showToast('❌ Blocked: Mixed Content (HTTPS -> HTTP)');
+                        } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
+                            this.showToast('❌ Cannot connect to server');
+                        } else {
+                            this.showToast('❌ Connection Failed: ' + (msg || 'Unknown error'));
+                        }
                     }
                 } finally {
                     this.toggleLoading(false);
@@ -1124,17 +1134,10 @@
                 container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
 
                 const currentVideo = this.state.videos[this.state.currentIndex];
-                const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : '';
+                const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : this.getImageSrc(null);
                 const bgLayer = document.createElement('div');
                 bgLayer.className = 'absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
                 if (bgPosterStr) {
-                    const imgL = new Image();
-                    imgL.crossOrigin = 'anonymous';
-                    imgL.referrerPolicy = 'no-referrer';
-                    imgL.src = bgPosterStr;
-                    imgL.onerror = () => {
-                        bgLayer.style.backgroundImage = `url('${this.getImageSrc(null)}')`;
-                    };
                     bgLayer.style.backgroundImage = `url('${bgPosterStr}')`;
                 }
                 container.appendChild(bgLayer);
@@ -1303,19 +1306,29 @@
                 eggFooter.innerHTML = '<span class="opacity-40">——</span>';
                 gridWrapper.appendChild(eggFooter);
 
-                fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
-                    .then(r => r.json())
-                    .then(data => {
-                        const text = data.hitokoto || '';
-                        const source = [data.from_who, data.from].filter(Boolean).join(' · ');
-                        eggFooter.innerHTML = `
-                            <p class="text-gray-300">“${text}”</p>
-                            ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
-                        `;
-                    })
-                    .catch(() => {
-                        eggFooter.innerHTML = '';
-                    });
+                if (this.state._hitokotoCache) {
+                    const data = this.state._hitokotoCache;
+                    const source = [data.from_who, data.from].filter(Boolean).join(' · ');
+                    eggFooter.innerHTML = `
+                        <p class="text-gray-300">“${data.hitokoto || ''}”</p>
+                        ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                    `;
+                } else {
+                    fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
+                        .then(r => r.json())
+                        .then(data => {
+                            this.state._hitokotoCache = data;
+                            const text = data.hitokoto || '';
+                            const source = [data.from_who, data.from].filter(Boolean).join(' · ');
+                            eggFooter.innerHTML = `
+                                <p class="text-gray-300">“${text}”</p>
+                                ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                            `;
+                        })
+                        .catch(() => {
+                            eggFooter.innerHTML = '';
+                        });
+                }
 
 
                 const focusVideo = this.state.videos[this.state.currentIndex];
@@ -1876,8 +1889,10 @@
             }
 
             reportCapabilities() {
+                if (this.state._capabilitiesReported) return;
                 const { server, token } = this.config;
                 if (!server || !token) return;
+                this.state._capabilitiesReported = true;
                 fetch(`${server}/emby/Sessions/Capabilities/Full?api_key=${token}`, {
                     method: 'POST',
                     headers: {
@@ -1957,10 +1972,122 @@
                 return fixUrlForJellyfin(`${server}/emby/Items/${video}/Images/Primary?api_key=${token}`);
             }
 
-            async showLibraries() {
-                this.toggleLoading(true);
+            renderLibraryItems(playlistsData, viewsDataRaw) {
                 const list = document.getElementById('librariesList');
+                if (!list) return;
                 list.innerHTML = '';
+
+                const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => item.CollectionType !== 'playlists' && item.CollectionType !== 'boxsets') : [];
+
+                const favDiv = document.createElement('div');
+                const isFavSelected = this.state.currentLibraryId === 'favorites';
+                favDiv.setAttribute('tabindex', '0');
+                favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">Favorites</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                favDiv.onclick = () => {
+                    this.state.currentLibraryId = 'favorites';
+                    this.state.currentLibraryType = 'favorites';
+                    localStorage.setItem('emby_lib_id', 'favorites');
+                    localStorage.setItem('emby_lib_type', 'favorites');
+                    this.state.currentTab = 'home';
+                    this.updateTabHighlight();
+                    if (this.state.favorites.size === 0) {
+                        this.showToast('No favorites');
+                        return;
+                    }
+                    this.state.startIndex = 0;
+                    this.fetchVideos(null, Array.from(this.state.favorites).join(','));
+                    this.toggleModal('libraryModal', false);
+                };
+                list.appendChild(favDiv);
+
+                if (playlistsData && playlistsData.Items && playlistsData.Items.length > 0) {
+                    const headerPl = document.createElement('div');
+                    headerPl.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
+                    headerPl.textContent = 'Playlists';
+                    list.appendChild(headerPl);
+
+                    playlistsData.Items.forEach(pl => {
+                        const div = document.createElement('div');
+                        const isSelected = pl.Id === this.state.currentLibraryId;
+                        div.setAttribute('tabindex', '0');
+                        div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                        div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.onclick = () => {
+                            this.state.currentLibraryId = pl.Id;
+                            this.state.currentLibraryType = 'playlist';
+                            localStorage.setItem('emby_lib_id', pl.Id);
+                            localStorage.setItem('emby_lib_type', 'playlist');
+                            this.state.currentTab = 'home';
+                            this.updateTabHighlight();
+                            this.state.startIndex = 0;
+                            this.fetchVideos(pl.Id);
+                            this.toggleModal('libraryModal', false);
+                        };
+                        list.appendChild(div);
+                    });
+                }
+
+                if (filteredViews && filteredViews.length > 0) {
+                    const headerLib = document.createElement('div');
+                    headerLib.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
+                    headerLib.textContent = 'Libraries';
+                    list.appendChild(headerLib);
+
+                    filteredViews.forEach(lib => {
+                        const div = document.createElement('div');
+                        const isSelected = lib.Id === this.state.currentLibraryId;
+                        let iconName = 'clapperboard';
+                        if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                        else if (lib.CollectionType === 'homevideos') iconName = 'video';
+                        else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
+                        else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+
+                        div.setAttribute('tabindex', '0');
+                        div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.onclick = () => {
+                            this.state.currentLibraryId = lib.Id;
+                            this.state.currentLibraryType = 'library';
+                            localStorage.setItem('emby_lib_id', lib.Id);
+                            localStorage.setItem('emby_lib_type', 'library');
+                            this.state.currentTab = 'home';
+                            this.updateTabHighlight();
+                            this.state.startIndex = 0;
+                            this.fetchVideos(lib.Id);
+                            this.toggleModal('libraryModal', false);
+                        };
+                        list.appendChild(div);
+                    });
+                }
+
+                lucide.createIcons({ nameAttr: 'data-lucide', attrs: {}, nodes: [list] });
+            }
+
+            async showLibraries() {
+                const list = document.getElementById('librariesList');
+                if (!list) return;
+
+                // 1. Try to read cache for fast popup loading
+                let hasCache = false;
+                const cachedViewsStr = localStorage.getItem('emby_views_cache');
+                if (cachedViewsStr) {
+                    try {
+                        const cached = JSON.parse(cachedViewsStr);
+                        if (cached.views && cached.playlists) {
+                            this.renderLibraryItems(cached.playlists, cached.views);
+                            this.toggleModal('libraryModal', true);
+                            hasCache = true;
+                        }
+                    } catch (e) {}
+                }
+
+                // Show spinner if no cache
+                if (!hasCache) {
+                    this.toggleLoading(true);
+                    list.innerHTML = '';
+                    this.toggleModal('libraryModal', true);
+                }
 
                 try {
                     const userId = this.config.userId;
@@ -1986,108 +2113,10 @@
 
                     localStorage.setItem('emby_views_cache', JSON.stringify({ playlists: playlistsData, views: viewsDataRaw }));
 
-                    const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => item.CollectionType !== 'playlists' && item.CollectionType !== 'boxsets') : [];
-
-                    const favDiv = document.createElement('div');
-                    const isFavSelected = this.state.currentLibraryId === 'favorites';
-                    favDiv.setAttribute('tabindex', '0');
-                    favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                    favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4"></i><span class="flex-1 truncate">Favorites</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5"></i>' : ''}`;
-                    favDiv.onclick = () => {
-                        this.state.currentLibraryId = 'favorites';
-                        this.state.currentTab = 'favorites';
-                        if (this.state.favorites.size === 0) {
-                            this.showToast('No favorites');
-                            return;
-                        }
-                        this.state.currentLibraryType = 'favorites';
-                        this.fetchVideos();
-                        this.toggleModal('libraryModal', false);
-                    };
-                    list.appendChild(favDiv);
-
-                    if (playlistsData && playlistsData.Items && playlistsData.Items.length > 0) {
-                        const headerPl = document.createElement('div');
-                        headerPl.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
-                        headerPl.textContent = 'Playlists';
-                        list.appendChild(headerPl);
-
-                        playlistsData.Items.forEach(pl => {
-                            const div = document.createElement('div');
-                            const isSelected = pl.Id === this.state.currentLibraryId;
-                            div.setAttribute('tabindex', '0');
-                            div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                            div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
-                            div.onclick = () => {
-                                this.state.currentLibraryId = pl.Id;
-                                this.state.currentLibraryType = 'playlist';
-                                localStorage.setItem('emby_lib_id', pl.Id);
-                                localStorage.setItem('emby_lib_type', 'playlist');
-                                this.state.currentTab = 'home';
-                                this.updateTabHighlight();
-                                this.fetchVideos(pl.Id);
-                                this.toggleModal('libraryModal', false);
-                            };
-                            list.appendChild(div);
-                        });
-                    }
-
-                    if (filteredViews && filteredViews.length > 0) {
-                        const headerLib = document.createElement('div');
-                        headerLib.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
-                        headerLib.textContent = 'Libraries';
-                        list.appendChild(headerLib);
-
-                        filteredViews.forEach(lib => {
-                            const div = document.createElement('div');
-                            const isSelected = lib.Id === this.state.currentLibraryId;
-                            let iconName = 'clapperboard';
-                            if (lib.CollectionType === 'tvshows') iconName = 'tv';
-                            else if (lib.CollectionType === 'homevideos') iconName = 'video';
-                            else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
-                            else if (lib.CollectionType === 'boxsets') iconName = 'archive';
-
-                            div.setAttribute('tabindex', '0');
-                            div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                            div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
-                            div.onclick = () => {
-                                this.state.currentLibraryId = lib.Id;
-                                this.state.currentLibraryType = 'library';
-                                localStorage.setItem('emby_lib_id', lib.Id);
-                                localStorage.setItem('emby_lib_type', 'library');
-                                this.state.currentTab = 'home';
-                                this.updateTabHighlight();
-                                this.fetchVideos(lib.Id);
-                                this.toggleModal('libraryModal', false);
-                            };
-                            list.appendChild(div);
-                        });
-                    }
-
-                    lucide.createIcons();
-                    this.toggleModal('libraryModal', true);
-
+                    this.renderLibraryItems(playlistsData, viewsDataRaw);
                 } catch (e) {
                     console.error('Failed to fetch Libraries:', e);
                     this.showToast('Failed to fetch Libraries');
-
-                    const favDiv = document.createElement('div');
-                    favDiv.className = 'p-3 rounded mb-2 cursor-pointer text-sm flex items-center gap-3 bg-gray-800 text-white';
-                    favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-5 h-5"></i><span class="flex-1">Favorites</span>`;
-                    favDiv.onclick = () => {
-                        if (this.state.favorites.size === 0) {
-                            this.showToast('No favorites');
-                            return;
-                        }
-                        this.state.currentLibraryId = 'favorites';
-                        this.state.currentLibraryType = 'favorites';
-                        this.fetchVideos();
-                        this.toggleModal('libraryModal', false);
-                    };
-                    list.appendChild(favDiv);
-
-                    lucide.createIcons();
-                    this.toggleModal('libraryModal', true);
                 } finally {
                     this.toggleLoading(false);
                 }

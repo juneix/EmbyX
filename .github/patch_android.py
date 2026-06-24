@@ -242,14 +242,14 @@ with open(colors_path, "w", encoding="utf-8") as f:
     f.write(colors_xml)
 
 # 创建缩小的启动图辅助资源 (使用 inset 解决图标被裁切问题)
-# 核心逻辑：将原本占满 100% 的图标缩小到 60% 左右，使其落入 Google 的圆形安全区
+# 核心逻辑：使用 dp 绝对单位以向下兼容 Android 7.0/7.1 (防止百分比引起解析崩溃)
 splash_icon_xml = """<?xml version="1.0" encoding="utf-8"?>
 <inset xmlns:android="http://schemas.android.com/apk/res/android"
     android:drawable="@drawable/icon"
-    android:insetLeft="20%"
-    android:insetRight="20%"
-    android:insetTop="20%"
-    android:insetBottom="20%" />
+    android:insetLeft="48dp"
+    android:insetRight="48dp"
+    android:insetTop="48dp"
+    android:insetBottom="48dp" />
 """
 with open(f"{res_dir}/drawable/splash_icon_padded.xml", "w", encoding="utf-8") as f:
     f.write(splash_icon_xml)
