@@ -4,10 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>EmbyX - 浏览器播放能力检测</title>
-    <!-- 沿用 index.html 的 Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
+    <title>EmbyX - 视频性能检测</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="apple-touch-icon" href="icon.png">
+    <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
+    <script src="https://cdn.tailwindcss.com" data-cfasync="false"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
+    <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {
@@ -39,7 +43,7 @@
             <button onclick="history.back()" class="text-gray-400 w-10 h-10 flex items-center justify-center active:text-gray-300 rounded-full">
                 <i data-lucide="chevron-left" class="w-6 h-6"></i>
             </button>
-            <span class="font-bold text-lg">浏览器播放能力检测</span>
+            <span class="font-bold text-lg">视频性能检测</span>
             <div class="w-10"></div> <!-- 占位 -->
         </div>
     </div>
@@ -49,7 +53,7 @@
         
         <!-- 检测结果上半部分（4列网格） -->
         <div class="space-y-2">
-            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">检测结果</h2>
+            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">环境检测</h2>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
                 
                 <!-- 浏览器外壳 -->
@@ -128,7 +132,7 @@
 
         <!-- 浏览器其他参数检测（下半部分） -->
         <div class="space-y-2">
-            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">视频播放与解码能力</h2>
+            <h2 class="text-gray-400 text-xs font-bold uppercase tracking-widest ml-1">解码性能</h2>
             <div class="glass-card overflow-hidden">
                 <table class="w-full text-left text-xs border-collapse">
                     <thead class="bg-gray-700/30 text-gray-400 text-[10px] uppercase font-bold">
@@ -177,15 +181,33 @@
             if (/webkit/i.test(ua)) { kernel = "WebKit"; kernelVer = ua.match(/AppleWebKit\/([\d.]+)/)?.[1] || "-"; }
             else if (/gecko/i.test(ua) && !/webkit/i.test(ua)) { kernel = "Gecko"; kernelVer = ua.match(/rv:([\d.]+)/)?.[1] || "-"; }
 
-            // 操作系统
-            if (/macintosh|mac os x/i.test(ua)) { os = "Mac OS"; osVer = ua.match(/Mac OS X ([\d_]+)/)?.[1]?.replace(/_/g, '.') || "-"; }
-            else if (/windows/i.test(ua)) { os = "Windows"; osVer = ua.match(/Windows NT ([\d.]+)/)?.[1] || "-"; }
-            else if (/android/i.test(ua)) { 
+            // 操作系统 (调整优先级，防止 iOS 设备因 like Mac OS X 被误判为 macOS)
+            if (/iphone|ipad/i.test(ua)) {
+                os = "iOS";
+                osVer = "-";
+            } else if (/macintosh|mac os x/i.test(ua)) {
+                os = "macOS"; // 标准命名
+                osVer = "-";
+            } else if (/windows/i.test(ua)) {
+                os = "Windows";
+                osVer = ua.match(/Windows NT ([\d.]+)/)?.[1] || "-";
+            } else if (/android/i.test(ua)) { 
                 os = "Android"; 
                 osVer = ua.match(/Android ([\d.]+)/)?.[1] || "-"; 
                 if (osVer === "10") osVer = "10+";
             }
-            else if (/iphone|ipad/i.test(ua)) { os = "iOS"; osVer = ua.match(/OS ([\d_]+)/)?.[1]?.replace(/_/g, '.') || "-"; }
+
+            // 统一提取苹果系统的真实版本号 (无论 macOS 还是 iOS，均直接提取 Version/ 后面的真实大版本号)
+            if (os === "macOS" || os === "iOS") {
+                const appleVerMatch = ua.match(/Version\/([\d.]+)/);
+                if (appleVerMatch) {
+                    osVer = appleVerMatch[1];
+                } else {
+                    // 针对非 Safari 浏览器 (如 Chrome)，使用 UA 里的备用系统版本号
+                    const backupVer = ua.match(/(?:OS|Mac OS X) ([\d_.]+)/)?.[1]?.replace(/_/g, '.');
+                    if (backupVer) osVer = backupVer;
+                }
+            }
 
             $('shell-name').textContent = shell;
             $('shell-version').textContent = shellVer;
@@ -196,7 +218,7 @@
 
             // 动态更换图标
             if (shell === "Safari") $('shell-icon').setAttribute('data-lucide', 'compass');
-            if (os === "iOS" || os === "Mac OS") $('os-icon').setAttribute('data-lucide', 'apple');
+            if (os === "iOS" || os === "macOS") $('os-icon').setAttribute('data-lucide', 'apple');
             lucide.createIcons();
         }
 
@@ -217,30 +239,57 @@
         function getGPUClean() {
             const gpu = getGPU();
             if (!gpu) return null;
-            return gpu.replace('ANGLE (', '')
-                      .replace(/\(/g, '')
-                      .replace(/\)/g, '')
-                      .replace(/TM/i, '')
-                      .replace(/\s+/g, ' ')
-                      .split(',')[0]
-                      .trim();
+            
+            // 1. 去除 ANGLE ( 前缀和尾部括号
+            let clean = gpu.replace(/^ANGLE\s*\(/i, '').replace(/\)$/, '');
+            
+            // 2. 剥离厂商代理前缀 (Windows 下常见格式: Vendor, Renderer, Driver)
+            const parts = clean.split(',');
+            let gpuName = parts[0].trim();
+            if (parts.length > 1) {
+                const vendor = parts[0].trim().toLowerCase();
+                if (vendor === 'intel' || vendor === 'nvidia' || vendor === 'amd' || vendor === 'apple' || vendor === 'qualcomm') {
+                    gpuName = parts[1].trim();
+                }
+            }
+            
+            // 3. 剥离 "ANGLE Metal renderer: Apple M4" 这种浏览器特有的调试前缀，只保留核心显卡名
+            gpuName = gpuName.replace(/.*renderer\s*:\s*/i, '');
+
+            // 4. 截断驱动版本、显卡ID等物理参数后缀
+            gpuName = gpuName.split(/Direct3D|vs_|ps_|0x/i)[0].trim();
+            
+            // 5. 精确清理括号与商标注册符号，防范字母 R/r 被误删
+            gpuName = gpuName.replace(/\(/g, '')
+                             .replace(/\)/g, '')
+                             .replace(/\(R\)|\(TM\)|™|®/ig, '')
+                             .replace(/\s+/g, ' ')
+                             .trim();
+                             
+            // 6. 对 Intel 核显名称进行体验精炼 (如 Intel Iris Xe Graphics -> Intel Iris Xe)
+            if (/Intel/i.test(gpuName)) {
+                gpuName = gpuName.replace(/\s*Graphics\s*/i, ' ').replace(/\s+/g, ' ').trim();
+            }
+            
+            return gpuName;
         }
 
         async function detectDevice() {
-            let deviceName = "Unknown Device";
-            let brand = "Other";
+            // 1. 同步与异步设备保源提取（用于显卡获取失败时）
+            let fallbackName = "Unknown Device";
+            let fallbackBrand = "Other";
 
             // 1. 同步保底识别 (参考 SidePod)
-            if (/iPhone|iPad|iPod/.test(ua)) brand = 'Apple';
-            else if (/Xiaomi|Redmi|MIUI|POCO/i.test(ua) || /2312|2210|2109|2405/i.test(ua)) brand = 'Xiaomi';
-            else if (/Samsung/i.test(ua)) brand = 'Samsung';
-            else if (/Huawei/i.test(ua)) brand = 'Huawei';
-            else if (/Honor/i.test(ua)) brand = 'Honor';
-            else if (/OPPO/i.test(ua)) brand = 'OPPO';
-            else if (/vivo/i.test(ua)) brand = 'vivo';
+            if (/iPhone|iPad|iPod/.test(ua)) fallbackBrand = 'Apple';
+            else if (/Xiaomi|Redmi|MIUI|POCO/i.test(ua) || /2312|2210|2109|2405/i.test(ua)) fallbackBrand = 'Xiaomi';
+            else if (/Samsung/i.test(ua)) fallbackBrand = 'Samsung';
+            else if (/Huawei/i.test(ua)) fallbackBrand = 'Huawei';
+            else if (/Honor/i.test(ua)) fallbackBrand = 'Honor';
+            else if (/OPPO/i.test(ua)) fallbackBrand = 'OPPO';
+            else if (/vivo/i.test(ua)) fallbackBrand = 'vivo';
 
-            if (brand !== 'Other') {
-                deviceName = brand + " 设备";
+            if (fallbackBrand !== 'Other') {
+                fallbackName = fallbackBrand + " 设备";
             }
 
             // 2. 异步 Client Hints 深度识别 (SidePod 方案)
@@ -248,20 +297,20 @@
                 try {
                     const hints = await navigator.userAgentData.getHighEntropyValues(['model']);
                     if (hints.model) {
-                        deviceName = hints.model;
+                        fallbackName = hints.model;
                         // 从获取到的真实型号中二次判定品牌
-                        if (/Xiaomi|Redmi|POCO|Mi /i.test(deviceName) || /2312|2210|2109|2405/i.test(deviceName)) {
-                            brand = 'Xiaomi';
-                        } else if (/Samsung/i.test(deviceName)) {
-                            brand = 'Samsung';
-                        } else if (/Huawei/i.test(deviceName)) {
-                            brand = 'Huawei';
-                        } else if (/Honor/i.test(deviceName)) {
-                            brand = 'Honor';
-                        } else if (/OPPO/i.test(deviceName)) {
-                            brand = 'OPPO';
-                        } else if (/vivo/i.test(deviceName)) {
-                            brand = 'vivo';
+                        if (/Xiaomi|Redmi|POCO|Mi /i.test(fallbackName) || /2312|2210|2109|2405/i.test(fallbackName)) {
+                            fallbackBrand = 'Xiaomi';
+                        } else if (/Samsung/i.test(fallbackName)) {
+                            fallbackBrand = 'Samsung';
+                        } else if (/Huawei/i.test(fallbackName)) {
+                            fallbackBrand = 'Huawei';
+                        } else if (/Honor/i.test(fallbackName)) {
+                            fallbackBrand = 'Honor';
+                        } else if (/OPPO/i.test(fallbackName)) {
+                            fallbackBrand = 'OPPO';
+                        } else if (/vivo/i.test(fallbackName)) {
+                            fallbackBrand = 'vivo';
                         }
                     }
                 } catch (e) { }
@@ -275,29 +324,67 @@
                             p = p.trim();
                             // 修复：安卓 10+ 冻结 UA 会返回 "K"，必须过滤掉，否则会显示为设备名
                             if (/^linux/i.test(p) || /^u$/i.test(p) || /^android/i.test(p) || /^[a-z]{2}-[a-z]{2}$/i.test(p) || /wv/.test(p) || p === 'K') continue;
-                            deviceName = p.split('Build/')[0].trim();
+                            fallbackName = p.split('Build/')[0].trim();
                             break;
                         }
                     }
                 } else if (/iphone/i.test(ua)) {
-                    deviceName = "iPhone";
+                    fallbackName = "iPhone";
                 } else if (/ipad/i.test(ua)) {
-                    deviceName = "iPad";
+                    fallbackName = "iPad";
                 }
             }
 
-            // 4. 终极绕过：如果依然无法获取真实型号（如 HTTP 环境下 Client Hints 失效）
-            // 使用 WebGL 获取 GPU 型号作为真实设备信息的补充
-            if (deviceName === "Unknown Device" || deviceName === "K" || deviceName.includes("设备")) {
-                const gpuClean = getGPUClean();
-                if (gpuClean) {
-                    deviceName = gpuClean;
+            // 3. 读取显卡名称并进行智能精简与映射
+            const gpuClean = getGPUClean();
+            let displayName = "";
+            let displayBrand = "";
+
+            if (gpuClean) {
+                displayName = gpuClean;
+
+                // 芯片大厂极简映射
+                if (/Apple/i.test(gpuClean)) {
+                    displayBrand = "Apple";
+                } else if (/Adreno/i.test(gpuClean)) {
+                    displayBrand = "Qualcomm";
+                } else if (/Mali|Immortalis/i.test(gpuClean)) {
+                    displayBrand = "MediaTek";
+                } else if (/Xclipse/i.test(gpuClean)) {
+                    displayBrand = "Samsung";
+                } else if (/GeForce|RTX|GTX|NVIDIA/i.test(gpuClean)) {
+                    displayBrand = "NVIDIA";
+                } else if (/Radeon|AMD/i.test(gpuClean)) {
+                    displayBrand = "AMD";
+                } else if (/Intel/i.test(gpuClean)) {
+                    displayBrand = "Intel";
+                } else {
+                    displayBrand = fallbackBrand;
                 }
+
+                // 4. 剔除第一行型号中与第二行品牌重复的前缀，但加入无意义残骸名词过滤
+                if (displayBrand && displayName.toLowerCase().startsWith(displayBrand.toLowerCase())) {
+                    const candidate = displayName.substring(displayBrand.length).trim();
+                    const cleanCandidate = candidate.toLowerCase();
+                    // 如果剥离后为空，或者剥离后仅剩下 "gpu" / "graphics" 等残骸词，则不剥离
+                    if (candidate && cleanCandidate !== "gpu" && cleanCandidate !== "graphics" && cleanCandidate !== "igpu") {
+                        displayName = candidate;
+                    }
+                }
+            } else {
+                // 降级保底：无 WebGL 显卡时，显示提取出的原始设备名与品牌
+                displayName = fallbackName;
+                displayBrand = fallbackBrand;
+            }
+
+            // 5. 极强容错：如果主标题中包含了苹果硬件关键字，第二行强制映射为 Apple 芯片厂，防止显示为 Other
+            if (/Apple|M1|M2|M3|M4|iPhone|iPad/i.test(displayName)) {
+                displayBrand = "Apple";
             }
 
             // 保持与其他选项一致，只有两行
-            $('device-name').textContent = deviceName;
-            $('device-info').textContent = brand;
+            $('device-name').textContent = displayName;
+            $('device-info').textContent = displayBrand;
         }
 
         // --- 3. 视频播放与解码能力检测 ---
@@ -364,19 +451,33 @@
                 "Adreno 730": { hevc: 'full', av1: 'partial' },
                 "Adreno 740": { hevc: 'full', av1: 'full' },
                 "Adreno 750": { hevc: 'full', av1: 'full' },
+                "Adreno 732": { hevc: 'full', av1: 'full' },
+                "Adreno 735": { hevc: 'full', av1: 'full' },
+                "Adreno 830": { hevc: 'full', av1: 'full' },
                 "Apple A14": { hevc: 'full', av1: 'partial' },
                 "Apple A15": { hevc: 'full', av1: 'partial' },
                 "Apple A16": { hevc: 'full', av1: 'partial' },
                 "Apple A17 Pro": { hevc: 'full', av1: 'full' },
                 "Apple A18": { hevc: 'full', av1: 'full' },
+                "Apple M1": { hevc: 'full', av1: 'partial' },
+                "Apple M2": { hevc: 'full', av1: 'partial' },
+                "Apple M3": { hevc: 'full', av1: 'full' },
+                "Apple M4": { hevc: 'full', av1: 'full' },
                 "Mali-G78": { hevc: 'full', av1: 'full' },
                 "Mali-G710": { hevc: 'full', av1: 'full' },
                 "Mali-G715": { hevc: 'full', av1: 'full' },
-                "Mali-G720": { hevc: 'full', av1: 'full' }
+                "Mali-G720": { hevc: 'full', av1: 'full' },
+                "Mali-G610": { hevc: 'full', av1: 'full' },
+                "Mali-G615": { hevc: 'full', av1: 'full' },
+                "Mali-G925": { hevc: 'full', av1: 'full' },
+                "Xclipse 920": { hevc: 'full', av1: 'full' },
+                "Xclipse 940": { hevc: 'full', av1: 'full' }
             };
 
             const gpuName = getGPUClean();
-            const hwSpecs = gpuDatabase[gpuName] || {};
+            const matchedSpecs = gpuDatabase[gpuName];
+            const isKnownGPU = !!matchedSpecs;
+            const hwSpecs = matchedSpecs || {};
 
             const checks = [
                 {
@@ -401,6 +502,12 @@
                         if (isIPhone) return 'partial'; // 针对 iPhone 强制灰色对勾
                         
                         const browserStatus = (await getCodecStatus('video/mp4; codecs="hev1.1.6.L93.B0"') === 'full' || await getCodecStatus('video/mp4; codecs="hvc1"') === 'full') ? 'full' : 'none';
+                        
+                        // 未收录的 GPU 直接使用浏览器检测结果（针对 PC / Mac mini M4 等）
+                        if (!isKnownGPU) {
+                            return browserStatus;
+                        }
+
                         const hwStatus = hwSpecs.hevc || 'none';
 
                         // 只有两者都确认完全支持，才给绿色对勾
@@ -417,6 +524,12 @@
                         if (isIPhone) return 'partial'; // 针对 iPhone 强制灰色对勾
                         
                         const browserStatus = await getCodecStatus('video/mp4; codecs="av01.0.05M.08"');
+                        
+                        // 未收录的 GPU 直接使用浏览器检测结果（针对 PC / Mac mini M4 等）
+                        if (!isKnownGPU) {
+                            return browserStatus;
+                        }
+
                         const hwStatus = hwSpecs.av1 || 'none';
 
                         // 只有两者都确认完全支持，才给绿色对勾
@@ -432,16 +545,6 @@
                     desc: "Google高清视频格式",
                     check: async () => await getCodecStatus('video/webm; codecs="vp9"')
                 },
-                {
-                    name: "HDR 画面支持",
-                    desc: "高动态范围色彩显示",
-                    check: async () => {
-                        const isHDR = window.matchMedia('(video-dynamic-range: high)').matches || window.matchMedia('(dynamic-range: high)').matches;
-                        // 苹果设备 + P3屏幕 = 绝对支持 HDR 播放
-                        const isAppleP3 = (/macintosh|mac os x|iphone|ipad/i.test(ua) && window.matchMedia('(color-gamut: p3)').matches);
-                        return (isHDR || isAppleP3) ? 'full' : 'none';
-                    }
-                }
             ];
 
             const tbody = $('capability-table');

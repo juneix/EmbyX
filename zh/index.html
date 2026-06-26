@@ -22,10 +22,15 @@
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX</title>
-    <script src="https://cdn.tailwindcss.com" data-cfasync="false"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js" data-cfasync="false"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"></script>
+    <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
+    <script src="https://cdn.tailwindcss.com" data-cfasync="false"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
+    <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js" data-cfasync="false"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/hls.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"
+        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/mpegts.min.js';document.head.appendChild(s)"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {
@@ -1711,13 +1716,17 @@
                 }
 
                 videoEl.ontimeupdate = () => {
-                    if (videoEl.duration) {
+                    if (!videoEl.duration) return;
+                    // DOM 更新限流 250ms，避免 timeupdate 高频触发导致布局抖动
+                    const nowMs = Date.now();
+                    if (nowMs - (this._lastDomUpdate || 0) >= 250) {
+                        this._lastDomUpdate = nowMs;
                         const pct = (videoEl.currentTime / videoEl.duration) * 100;
                         this.dom.progressLine.style.width = `${pct}%`;
                         this.dom.currentTime.textContent = this.formatTime(videoEl.currentTime);
                         this.dom.totalTime.textContent = this.formatTime(videoEl.duration);
-                        this.reportPlayback('progress', videoEl);
                     }
+                    this.reportPlayback('progress', videoEl); // 内部已有 5s 节流
                 };
                 videoEl.onpause = () => this.reportPlayback('progress', videoEl);
 
@@ -2365,7 +2374,9 @@
                         const isSelected = pl.Id === this.state.currentLibraryId;
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        // pl.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
+                        div.querySelector('span').textContent = pl.Name;
                         div.onclick = () => {
                             this.state.currentLibraryId = pl.Id;
                             this.state.currentLibraryType = 'playlist';
@@ -2398,7 +2409,9 @@
 
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        // lib.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
+                        div.querySelector('span').textContent = lib.Name;
                         div.onclick = () => {
                             this.state.currentLibraryId = lib.Id;
                             this.state.currentLibraryType = 'library';
