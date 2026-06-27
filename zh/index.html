@@ -172,6 +172,13 @@
 
         <div
             class="right-toolbar absolute right-4 bottom-40 flex flex-col items-center space-y-6 z-30 transition-opacity duration-300">
+            <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-all duration-300 hidden"
+                id="personBtn">
+                <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-white/80 bg-black/40 flex items-center justify-center">
+                    <img id="personAvatar" src="avatar.webp" class="w-full h-full object-cover" onerror="this.src='avatar.webp'"/>
+                </div>
+            </div>
+
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
                 id="favoriteBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
@@ -472,7 +479,8 @@
                                     <li>入库更快：媒体库类型选「家庭视频」</li>
                                     <li>加载更顺：每个媒体库 < 1000 个视频</li>
                                     <li>管理更爽：使用多个媒体库和播放列表</li>
-                                    <li>PWA 应用：添加到主屏幕/作为应用安装 📲</li>
+                                    <li>进度更稳：拖动带加速度，双击侧边</li>
+                                    <li>PWA 应用：添加到主屏幕/作为应用安装</li>
                                 </ul>
                             </div>
 
@@ -523,6 +531,10 @@
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">E</td>
                                                 <td class="px-3 py-1.5">视图切换</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">Y</td>
+                                                <td class="px-3 py-1.5">演员作品</td>
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">R</td>
@@ -663,7 +675,11 @@
                     playbackMethod: 'DirectPlay',
                     originalVideos: [],  // 随机模式下保存原始顺序列表
                     _capabilitiesReported: false,
-                    _hitokotoCache: null
+                    _hitokotoCache: null,
+                    currentPerson: null,
+                    isFilteredByPerson: false,
+                    personVideos: [],
+                    personTotalCount: 0
                 };
 
                 this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false, fnOS: false };
@@ -1158,7 +1174,9 @@
 
                     let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources`;
 
-                    if (ids) {
+                    if (this.state.currentPerson) {
+                        url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
+                    } else if (ids) {
                         url += `&Ids=${ids}`;
                     } else if (isRandom) {
                         // 换一批模式：服务端随机取 99 个（适用于所有模式）
@@ -1324,7 +1342,9 @@
                 const safeHeader = document.createElement('div');
 
                 let libraryName = '全部视频';
-                if (this.state.currentLibraryId === 'favorites') {
+                if (this.state.currentPerson) {
+                    libraryName = this.state.currentPerson;
+                } else if (this.state.currentLibraryId === 'favorites') {
                     libraryName = '收藏夹';
                 } else if (this.state.currentLibraryId) {
                     const libIdStr = String(this.state.currentLibraryId);
@@ -1346,11 +1366,11 @@
                 }
 
                 const PAGE_SIZE = 150; // 与 fetchVideos 中保持一致
-                const totalCount = this.state.totalCount || 0;
+                const totalCount = this.state.currentPerson ? (this.state.personTotalCount || this.state.personVideos.length) : (this.state.totalCount || 0);
                 const startIndex = this.state.startIndex || 0;
                 const currentPage = Math.floor(startIndex / PAGE_SIZE) + 1;
                 const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-                const isSpecificLib = !!this.state.currentLibraryId; // 是否选了具体媒体库
+                const isSpecificLib = !!this.state.currentLibraryId || !!this.state.currentPerson; // 是否选了具体媒体库或人物
                 const showPager = isSpecificLib && totalPages > 1;
 
                 // 总数显示：真实数字（≤999）或 999+
@@ -1382,7 +1402,7 @@
                 const shuffleBtn = document.getElementById('gridShuffleBtn');
                 if (shuffleBtn) {
                     const curLibId = this.state.currentLibraryId;
-                    const libArg = (!curLibId || curLibId === 'favorites') ? null : curLibId;
+                    const libArg = (!curLibId || curLibId === 'favorites' || this.state.currentPerson) ? null : curLibId;
                     shuffleBtn.onclick = (e) => {
                         e.stopPropagation();
                         this.state.startIndex = 0;
@@ -1393,7 +1413,7 @@
                 // 分页按钮：仅指定媒体库且多页时显示
                 if (showPager) {
                     const curLibId = this.state.currentLibraryId;
-                    const libArg = curLibId === 'favorites' ? null : curLibId;
+                    const libArg = (curLibId === 'favorites' || this.state.currentPerson) ? null : curLibId;
 
                     const prevBtn = document.getElementById('gridPrevBtn');
                     if (prevBtn && currentPage > 1) {
@@ -1448,13 +1468,18 @@
                 gridWrapper.className = 'grid grid-cols-3 gap-1 content-start w-full relative z-10 px-1 pt-2';
                 scrollArea.appendChild(gridWrapper);
 
-                this.state.videos.forEach((video, index) => {
+                const listToRender = this.state.currentPerson ? this.state.personVideos : this.state.videos;
+                listToRender.forEach((video, index) => {
                     const el = document.createElement('div');
-                    const isActive = index === this.state.currentIndex;
+                    const isActive = !this.state.currentPerson && (index === this.state.currentIndex);
                     el.setAttribute('tabindex', '0');
                     el.setAttribute('data-index', index);
                     el.className = `focusable-item aspect-[3/4] relative cursor-pointer overflow-hidden rounded-sm active:scale-95 transition-transform ${isActive ? 'border-2 border-primary box-border' : 'bg-gray-800'}`;
                     el.onclick = () => {
+                        if (this.state.currentPerson) {
+                            this.state.videos = [...this.state.personVideos];
+                            this.state.isFilteredByPerson = true;
+                        }
                         this.state.currentIndex = index;
                         this.toggleViewMode();
                     };
@@ -1744,6 +1769,43 @@
                 };
 
                 videoEl.dataset.retryCount = '0';
+                this.fetchPersonInfo(videoData);
+            }
+
+            async fetchPersonInfo(videoData) {
+                const btn = document.getElementById('personBtn');
+                const img = document.getElementById('personAvatar');
+                if (!btn || !img) return;
+
+                btn.classList.add('hidden');
+                if (!videoData || !videoData.Id) return;
+
+                const currentId = String(videoData.Id);
+                btn.dataset.videoId = currentId;
+
+                try {
+                    const { server, token, userId } = this.config;
+                    if (!server || !token || !userId) return;
+
+                    const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People`, {
+                        headers: {
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                        }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        if (btn.dataset.videoId !== currentId) return;
+
+                        const person = data.People && data.People.length > 0 ? data.People[0] : null;
+                        if (person) {
+                            btn.dataset.personName = person.Name;
+                            img.src = `${server}/emby/Persons/${encodeURIComponent(person.Name)}/Images/Primary?api_key=${token}`;
+                            btn.classList.remove('hidden');
+                        }
+                    }
+                } catch (e) {
+                    console.error('加载人物元数据失败:', e);
+                }
             }
 
             playVideo(index) {
@@ -2347,6 +2409,8 @@
                 favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
                 favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">收藏夹</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
                 favDiv.onclick = () => {
+                    this.state.currentPerson = null;
+                    this.state.isFilteredByPerson = false;
                     this.state.currentLibraryId = 'favorites';
                     this.state.currentLibraryType = 'favorites';
                     localStorage.setItem('emby_lib_id', 'favorites');
@@ -2378,6 +2442,8 @@
                         // pl.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = pl.Name;
                         div.onclick = () => {
+                            this.state.currentPerson = null;
+                            this.state.isFilteredByPerson = false;
                             this.state.currentLibraryId = pl.Id;
                             this.state.currentLibraryType = 'playlist';
                             localStorage.setItem('emby_lib_id', pl.Id);
@@ -2413,6 +2479,8 @@
                         // lib.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = lib.Name;
                         div.onclick = () => {
+                            this.state.currentPerson = null;
+                            this.state.isFilteredByPerson = false;
                             this.state.currentLibraryId = lib.Id;
                             this.state.currentLibraryType = 'library';
                             localStorage.setItem('emby_lib_id', lib.Id);
@@ -2720,6 +2788,32 @@
 
             toggleViewMode() {
                 const isStream = this.state.viewMode === 'stream';
+
+                if (isStream && this.state.isFilteredByPerson) {
+                    this.state.currentPerson = null;
+                    this.state.isFilteredByPerson = false;
+                    this.state.viewMode = 'grid';
+
+                    const btn = this.dom.viewModeBtn;
+                    if (btn) {
+                        btn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
+                        lucide.createIcons();
+                    }
+
+                    const app = document.getElementById('app');
+                    if (app) {
+                        app.classList.remove('interface-hidden');
+                        app.classList.add('grid-active');
+                    }
+                    this.dom.videoContainer.style.touchAction = 'auto';
+
+                    this.state.startIndex = 0;
+                    const curLibId = this.state.currentLibraryId;
+                    const libArg = curLibId === 'favorites' ? null : curLibId;
+                    this.fetchVideos(libArg, null, false, false);
+                    return;
+                }
+
                 this.state.viewMode = isStream ? 'grid' : 'stream';
 
                 const btn = this.dom.viewModeBtn;
@@ -2747,6 +2841,7 @@
                     this.dom.videoContainer.style.touchAction = 'auto';
                     this.renderGridView();
                 } else {
+                    this.state.currentPerson = null;
                     const app = document.getElementById('app');
                     if (app) app.classList.remove('grid-active');
                     this.dom.videoContainer.style.touchAction = 'pan-y';
@@ -3013,6 +3108,52 @@
                     e.stopPropagation();
                     this.toggleDeleteMode();
                 };
+
+                const personBtn = document.getElementById('personBtn');
+                if (personBtn) {
+                    personBtn.onclick = async (e) => {
+                        e.stopPropagation();
+                        const personName = personBtn.dataset.personName;
+                        if (personName) {
+                            this.toggleLoading(true);
+                            try {
+                                const { server, token, userId } = this.config;
+                                const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources&Person=${encodeURIComponent(personName)}`;
+                                const res = await fetch(url, {
+                                    headers: {
+                                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                                    }
+                                });
+                                if (res.ok) {
+                                    const data = await res.json();
+                                    this.state.personVideos = data.Items || [];
+                                    this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
+                                    this.state.currentPerson = personName;
+                                    this.state.viewMode = 'grid';
+
+                                    const vBtn = this.dom.viewModeBtn;
+                                    if (vBtn) {
+                                        vBtn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
+                                        lucide.createIcons();
+                                    }
+
+                                    const app = document.getElementById('app');
+                                    if (app) {
+                                        app.classList.remove('interface-hidden');
+                                        app.classList.add('grid-active');
+                                    }
+                                    this.dom.videoContainer.style.touchAction = 'auto';
+                                    this.renderGridView();
+                                }
+                            } catch (err) {
+                                console.error('获取人物作品失败:', err);
+                                this.showToast('获取人物作品失败');
+                            } finally {
+                                this.toggleLoading(false);
+                            }
+                        }
+                    };
+                }
 
                 this.dom.viewModeBtn = document.getElementById('viewModeBtn');
                 this.dom.viewModeBtn.onclick = () => this.toggleViewMode();
@@ -3297,10 +3438,17 @@
                                     this.showMediaInfo();
                                 }
                             }
-                        } else if (lowKey === 'u') {
                             this.handleDoubleTap(window.innerWidth / 2, window.innerHeight / 2);
                         } else if (lowKey === 'm') {
                             this.dom.muteBtn.click();
+                        } else if (lowKey === 'y' ) {
+                            // Y: toggle person filter - enter if person, exit if already filtering
+                            if (this.state.isFilteredByPerson) {
+                                this.toggleViewMode();
+                            } else {
+                                const btn = document.getElementById('personBtn');
+                                if (btn && btn.dataset.personName) btn.click();
+                            }
                         }
                     }
                 });
