@@ -1398,7 +1398,7 @@
 
                 scrollArea.innerHTML = '';
                 const gridWrapper = document.createElement('div');
-                gridWrapper.className = 'grid grid-cols-3 gap-1 content-start w-full relative z-10 px-1 pt-2';
+                gridWrapper.className = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 content-start w-full relative z-10 px-1 pt-2';
                 scrollArea.appendChild(gridWrapper);
 
                 const listToRender = this.state.currentPerson ? this.state.personVideos : this.state.videos;
@@ -2789,7 +2789,7 @@
                 if ((document.fullscreenElement || app.classList.contains('ios-pwa-fullscreen')) && !app.classList.contains('interface-hidden')) {
                     this.csTimer = setTimeout(() => {
                         app.classList.add('interface-hidden');
-                    }, 5000);
+                    }, 3000);
                 }
             }
 
@@ -3183,7 +3183,7 @@
                     if ((isIOS && isStandalone) || isEmbedded) {
                         if (!app.classList.contains('ios-pwa-fullscreen')) {
                             app.classList.add('ios-pwa-fullscreen');
-                            this.showInterfaceTemp();
+                            app.classList.add('interface-hidden');
                             const fullscreenBtn = this.dom.fullscreenBtn;
                             fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="minimize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                             lucide.createIcons();
@@ -3205,7 +3205,7 @@
 
                     if (!document.fullscreenElement) {
                         document.documentElement.requestFullscreen().then(() => {
-                            this.showInterfaceTemp();
+                            app.classList.add('interface-hidden');
                         }).catch(() => { });
                     } else {
                         if (app.classList.contains('interface-hidden')) {

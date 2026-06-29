@@ -21,7 +21,7 @@
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
 
-    <title>EmbyX</title>
+    <title>EmbyX - 画册模式</title>
     <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
     <script src="https://cdn.tailwindcss.com" data-cfasync="false"
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
@@ -283,7 +283,7 @@
         </div>
 
         <div
-            class="bottom-info absolute bottom-20 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
+            class="bottom-info absolute bottom-4 left-4 right-4 z-30 transition-opacity duration-300 pointer-events-none">
             <div class="mb-3 w-[85%] pr-4">
                 <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate pointer-events-auto cursor-pointer hover:underline inline-block max-w-full">正在初始化...</h3>
                 <div id="videoDescriptionArea" class="pointer-events-auto cursor-pointer">
@@ -292,11 +292,11 @@
                 </div>
             </div>
 
-            <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1" id="progressBarContainer">
+            <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1 hidden" id="progressBarContainer">
                 <div id="progressLine" class="progress-line w-0"></div>
             </div>
 
-            <div class="flex justify-between text-xs text-gray-300 drop-shadow">
+            <div class="flex justify-between text-xs text-gray-300 drop-shadow hidden">
                 <span id="currentTime">00:00</span>
                 <span id="totalTime">00:00</span>
             </div>
@@ -386,6 +386,14 @@
                                 <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1">短剧模式
                                 </label>
                                 <input type="checkbox" id="configShortDrama"
+                                    class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
+                            </div>
+                            <div id="rowLiveAutoplay" tabindex="0"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                onclick="document.getElementById('configLiveAutoplay').click();">
+                                <label for="configLiveAutoplay" class="text-gray-300 text-sm cursor-pointer flex-1">自动播放 Live Photo
+                                </label>
+                                <input type="checkbox" id="configLiveAutoplay"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
@@ -874,7 +882,7 @@
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
                     'syncConfirmModal', 'confirmSyncBtn', 'cancelSyncBtn', 'syncFileName',
-                    'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configShortDrama', 'configDeleteMode'
+                    'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configShortDrama', 'configDeleteMode', 'configLiveAutoplay'
                 ];
                 ids.forEach(id => this.dom[id] = document.getElementById(id));
                 this.dom.rightToolbar = document.querySelector('.right-toolbar');
@@ -890,6 +898,7 @@
                 this.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
                 this.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
                 this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
+                this.config.liveAutoplay = localStorage.getItem('emby_live_autoplay') !== 'false';
                 this.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
 
                 // 生成或读取设备唯一 ID，解决多设备识别冲突问题
@@ -932,6 +941,7 @@
                 if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
                 if (this.dom.configShortDrama) this.dom.configShortDrama.checked = this.config.shortDrama;
                 if (this.dom.configDeleteMode) this.dom.configDeleteMode.checked = this.config.deleteMode;
+                if (this.dom.configLiveAutoplay) this.dom.configLiveAutoplay.checked = this.config.liveAutoplay;
 
                 // 基于配置同步UI
                 this.dom.deleteBtn.style.display = this.config.deleteMode ? 'flex' : 'none';
@@ -969,6 +979,7 @@
                 const autoplay = this.dom.configAutoplay.checked;
                 const shortDrama = this.dom.configShortDrama.checked;
                 const deleteMode = this.dom.configDeleteMode.checked;
+                const liveAutoplay = this.dom.configLiveAutoplay ? this.dom.configLiveAutoplay.checked : true;
 
                 if (!server || !user) return this.showToast('请填写完整信息');
 
@@ -1046,6 +1057,7 @@
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_shortdrama', shortDrama);
                         localStorage.setItem('emby_delete_mode', deleteMode);
+                        localStorage.setItem('emby_live_autoplay', liveAutoplay);
                         if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                         else localStorage.removeItem('emby_fnOS');
 
@@ -1094,6 +1106,7 @@
                     localStorage.setItem('emby_autoplay', autoplay);
                     localStorage.setItem('emby_shortdrama', shortDrama);
                     localStorage.setItem('emby_delete_mode', deleteMode);
+                    localStorage.setItem('emby_live_autoplay', liveAutoplay);
                     if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                     else localStorage.removeItem('emby_fnOS');
 
@@ -1237,7 +1250,7 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
+                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo,PhotoAlbum,Video&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
 
                     if (searchTerm) {
                         const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
@@ -1248,11 +1261,6 @@
                     } else if (this.state.currentPerson) {
                         url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
                     } else if (ids) {
-                        url += `&Ids=${ids}`;
-                    } else if (isRandom) {
-                        // 换一批模式：服务端随机取 99 个（适用于所有模式）
-                        url += `&SortBy=Random`;
-                        if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
                         if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
                     } else if (libraryId === 'favorites') {
                         url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
@@ -1350,7 +1358,7 @@
                 this.dom.videoContainer.className = 'relative w-full h-full transition-transform duration-300 ease-out';
                 // 暂时剥夺动画权限，执行无缝硬切瞬移
                 this.dom.videoContainer.style.transition = 'none';
-                this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
+                this.dom.videoContainer.style.transform = `translateX(-${this.state.currentIndex * 100}%)`;
                 // 强制浏览器重绘，应用上面的瞬移坐标
                 void this.dom.videoContainer.offsetHeight;
                 // 复原过渡动画，供后续手指上下滑动使用
@@ -1611,17 +1619,21 @@
                     gridWrapper.appendChild(el);
                 });
 
-                const eggFooter = document.createElement('div');
-                eggFooter.className = 'col-span-3 pt-8 pb-24 px-4 text-center text-gray-600 text-[11px] leading-relaxed select-none';
-                eggFooter.innerHTML = '<span class="opacity-40">——</span>';
-                gridWrapper.appendChild(eggFooter);
+                let eggFooter = document.getElementById('gridHitokotoFooter');
+                if (!eggFooter) {
+                    eggFooter = document.createElement('div');
+                    eggFooter.id = 'gridHitokotoFooter';
+                    eggFooter.className = 'absolute bottom-16 left-0 right-0 z-30 pointer-events-none text-center text-gray-400 text-xs px-4 drop-shadow-md select-none transition-opacity duration-300';
+                    scrollArea.parentNode.appendChild(eggFooter);
+                }
+                eggFooter.style.display = 'block';
 
                 if (this.state._hitokotoCache) {
                     const data = this.state._hitokotoCache;
                     const source = [data.from_who, data.from].filter(Boolean).join(' · ');
                     eggFooter.innerHTML = `
                         <p class="text-gray-300">“${data.hitokoto || ''}”</p>
-                        ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                        ${source ? `<p class="mt-1 text-gray-500 italic text-[11px]">- ${source} -</p>` : ''}
                     `;
                 } else {
                     fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
@@ -1632,7 +1644,7 @@
                             const source = [data.from_who, data.from].filter(Boolean).join(' · ');
                             eggFooter.innerHTML = `
                                 <p class="text-gray-300">“${text}”</p>
-                                ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                                ${source ? `<p class="mt-1 text-gray-500 italic text-[11px]">- ${source} -</p>` : ''}
                             `;
                         })
                         .catch(() => {
@@ -1702,7 +1714,7 @@
             renderBuffer() {
                 if (this.state.viewMode !== 'stream' || !this.dom.slides) return;
 
-                this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
+                this.dom.videoContainer.style.transform = `translateX(-${this.state.currentIndex * 100}%)`;
 
                 const offsets = [-1, 0, 1];
                 offsets.forEach((offset) => {
@@ -1713,23 +1725,29 @@
                     const slideEl = this.dom.slides[slideIdx];
                     const videoData = this.state.videos[videoIdx];
 
-                    slideEl.style.transform = `translateY(${videoIdx * 100}%)`;
+                    slideEl.style.transform = `translateX(${videoIdx * 100}%)`;
                     slideEl.style.display = 'block';
 
                     if (slideEl.dataset.id !== videoData.Id) {
                         slideEl.dataset.id = videoData.Id;
                         const posterSrc = this.getImageSrc(videoData);
 
-                        // 《修复点②》 封面图层：直接赋値，密集型封面直接服务于动画过度
+                        // 纯图片/画册模式：图片 thumb 保持全屏可见，并自适应应用缩放/填充类名
                         const thumbEl = document.getElementById(`thumb-${slideIdx}`);
                         if (thumbEl) {
                             thumbEl.src = posterSrc;
+                            thumbEl.style.opacity = '1';
+                            thumbEl.classList.remove('object-cover', 'object-contain');
+                            thumbEl.classList.add(this.state.isScaleFill ? 'object-cover' : 'object-contain');
                             thumbEl.onerror = () => { thumbEl.src = this.getImageSrc(null); };
                         }
 
                         // 模糊背景（contain 模式下用）
                         const posterEl = document.getElementById(`poster-${slideIdx}`);
-                        if (posterEl) posterEl.style.backgroundImage = `url('${posterSrc}')`;
+                        if (posterEl) {
+                            posterEl.style.backgroundImage = `url('${posterSrc}')`;
+                            posterEl.style.opacity = this.state.isScaleFill ? '0' : '0.7';
+                        }
 
                         // 《修复点①》 视频重置为透明（封面图作为占位）
                         const videoEl = document.getElementById(`video-p${slideIdx}`);
@@ -1747,16 +1765,23 @@
                                 videoEl.load();
                             }
                         } else {
-                            // 非 iOS 设备，或当前正在播放的视频：正常预加载
-                            const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
-                            if (videoEl.src !== preloadSrc) {
-                                if (isIOS) {
-                                    // iOS 当前视频加载前做一次干净的置空，防旧连接残留
+                            // 非 iOS 设备，或当前正在播放的项目：如果有 LivePhoto 特例或视频，加载视频源
+                            const targetItem = videoData.liveVideoItem || (videoData.Type === 'Video' ? videoData : null);
+                            if (targetItem) {
+                                const preloadSrc = this.getVideoSrc(targetItem.Id, targetItem, false);
+                                if (videoEl.src !== preloadSrc) {
+                                    if (isIOS) {
+                                        videoEl.removeAttribute('src');
+                                        videoEl.load();
+                                    }
+                                    videoEl.src = preloadSrc;
+                                    videoEl.load();
+                                }
+                            } else {
+                                if (videoEl.src) {
                                     videoEl.removeAttribute('src');
                                     videoEl.load();
                                 }
-                                videoEl.src = preloadSrc;
-                                videoEl.load();
                             }
                         }
 
@@ -1819,8 +1844,23 @@
                     }
                 }
 
-                // renderBuffer 已赋值 src，处理未匹配时的修正
-                const src = this.getVideoSrc(videoData.Id, videoData, true);
+                const targetItem = videoData.liveVideoItem || (videoData.Type === 'Video' ? videoData : null);
+                if (!targetItem) {
+                    videoEl.pause();
+                    if (videoEl.src) {
+                        videoEl.removeAttribute('src');
+                        videoEl.load();
+                    }
+                    videoEl.style.opacity = '0';
+                    this.toggleLoading(false);
+                    this.fetchPersonInfo(videoData);
+                    return;
+                }
+
+                // 取消自动连播时，Live 视频开启单曲循环
+                videoEl.loop = !this.state.isAutoplay;
+
+                const src = this.getVideoSrc(targetItem.Id, targetItem, true);
                 if (videoEl.src !== src) {
                     videoEl.pause();
                     const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
@@ -2249,7 +2289,7 @@
                     const destSlide = this.dom.slides[destSlideIdx];
                     if (destSlide) {
                         // 预就位：让 slide 在动画帧前就已经在正确位置
-                        destSlide.style.transform = `translateY(${newIndex * 100}%)`;
+                        destSlide.style.transform = `translateX(${newIndex * 100}%)`;
                         destSlide.style.display = 'block';
                     }
                 }
@@ -2266,7 +2306,7 @@
 
                 if (this.dom.videoContainer) {
 
-                    this.dom.videoContainer.style.transform = `translateY(-${newIndex * 100}%)`;
+                    this.dom.videoContainer.style.transform = `translateX(-${newIndex * 100}%)`;
                 }
 
                 requestAnimationFrame(() => {
@@ -2536,7 +2576,12 @@
                 if (!list) return;
                 list.innerHTML = '';
 
-                const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => item.CollectionType !== 'playlists' && item.CollectionType !== 'boxsets') : [];
+                const allowedTypes = ['homevideos', 'photos'];
+                const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => {
+                    if (!item.CollectionType) return true;
+                    const cType = item.CollectionType.toLowerCase();
+                    return allowedTypes.includes(cType);
+                }) : [];
 
                 const favDiv = document.createElement('div');
                 const isFavSelected = this.state.currentLibraryId === 'favorites';
@@ -3300,14 +3345,20 @@
                     const thumb = document.getElementById(`thumb-${index}`);
                     const poster = document.getElementById(`poster-${index}`);
                     const overlay = document.getElementById(`overlay-${index}`);
+
+                    // 纯图片/画册模式：图片 thumb 永远保持可见，只在 contain 与 cover 类名间切换
+                    if (thumb) {
+                        thumb.style.opacity = '1';
+                        thumb.classList.remove('object-cover', 'object-contain');
+                        thumb.classList.add(this.state.isScaleFill ? 'object-cover' : 'object-contain');
+                    }
+
                     if (this.state.isScaleFill) {
-                        // cover 模式：显示封面缩略图，隐藏模糊背景
-                        if (thumb) thumb.style.opacity = '1';
+                        // cover 模式：全屏裁剪填充，隐藏背后的模糊背景
                         if (poster) poster.style.opacity = '0';
                         if (overlay) overlay.style.opacity = '0';
                     } else {
-                        // contain 模式：隐藏封面缩略图，显示模糊背景
-                        if (thumb) thumb.style.opacity = '0';
+                        // contain 模式：原始比例自适应完整显示，显示底层高颜值毛玻璃模糊背景
                         if (poster) poster.style.opacity = '0.7';
                         if (overlay) overlay.style.opacity = '1';
                     }
@@ -3857,24 +3908,18 @@
                     // 1. 上下方向键 / WS：切换视频 (Keyboard & Remote)
                     if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) {
                         e.preventDefault();
-                        this.prevVideo();
+                        this.toggleModal('libraryModal', true);
                     } else if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) {
                         e.preventDefault();
-                        this.nextVideo();
+                        this.toggleModal('libraryModal', true);
                     }
-                    // 2. 左右方向键 / AD：快进快退 15 秒 (Keyboard & Remote)
+                    // 2. 左右方向键 / AD：在画册模式下切换上一张 / 下一张照片 (符合看图直觉)
                     else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) {
                         e.preventDefault();
-                        const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                        const v = document.getElementById(`video-p${slideIdx}`);
-                        if (v) v.currentTime = Math.max(0, v.currentTime - 15);
-                        this.showInterfaceTemp();
+                        this.prevVideo();
                     } else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) {
                         e.preventDefault();
-                        const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                        const v = document.getElementById(`video-p${slideIdx}`);
-                        if (v && v.duration) v.currentTime = Math.min(v.duration, v.currentTime + 15);
-                        this.showInterfaceTemp();
+                        this.nextVideo();
                     }
                     // 3. 确认逻辑：空格键 (Keyboard) & OK键 (Remote)
                     else if (key === ' ' || key === 'Enter' || keyCode === 13) {
@@ -4065,23 +4110,8 @@
                             resetSpeed();
                         }
 
-                        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
-                            state = 'DRAG';
-                        }
-                    }
-
-                    if (state === 'DRAG') {
-                        if (e.cancelable) e.preventDefault();
-                        const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                        const v = document.getElementById(`video-p${slideIdx}`);
-                        if (v && v.duration) {
-                            const ratio = diffX / (window.innerWidth / 2);
-                            targetTime = originalTime + (ratio * v.duration);
-                            targetTime = Math.max(0, Math.min(targetTime, v.duration));
-
-                            const progressEl = document.getElementById('progressLine');
-                            if (progressEl) progressEl.style.width = `${(targetTime / v.duration) * 100}%`;
-                        }
+                        // pic 画册模式禁用滑动拖拽进度条，将水平手势完整释放给左右划切照片
+                        /* DRAG 状态已禁用 */
                     }
                 };
 
@@ -4092,32 +4122,20 @@
                     }
                     gestureActive = false;
                     clearTimeout(longPressTimer);
-
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const v = document.getElementById(`video-p${slideIdx}`);
-
-                    if (state === 'SPEED') {
-                        resetSpeed();
-                        state = 'IDLE';
-                        this.showInterfaceTemp();
-                        return;
-                    }
-
-                    if (state === 'DRAG') {
-                        if (v) v.currentTime = targetTime;
-                        state = 'IDLE';
-                        this.showInterfaceTemp();
-                        return;
-                    }
-
-                    state = 'IDLE';
                     const t = e.changedTouches ? e.changedTouches[0] : e;
                     const diffX = t.clientX - x0;
                     const diffY = t.clientY - y0;
                     const time = Date.now() - t0;
 
+                    // 默认左右滑动：切换上一张 / 下一张照片 (符合画册看图直觉)
+                    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
+                        diffX < 0 ? this.nextVideo() : this.prevVideo();
+                        return;
+                    }
+
+                    // 次手势上下滑动：切换播放列表 / 媒体源相册弹窗
                     if (Math.abs(diffY) > 50 && Math.abs(diffY) > Math.abs(diffX)) {
-                        diffY < 0 ? this.nextVideo() : this.prevVideo();
+                        this.toggleModal('libraryModal', true);
                         return;
                     }
 

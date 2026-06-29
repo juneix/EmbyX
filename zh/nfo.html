@@ -22,7 +22,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 
 #sidebar{width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;transition:width .25s ease;position:relative;z-index:10;flex-shrink:0}
 #sidebar.collapsed{width:56px}
-#sidebar .logo{padding:16px 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);min-height:56px}
+#sidebar .logo{padding:0 14px;display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--border);height:48px;min-height:48px}
 #sidebar .logo img{width:28px;height:28px;border-radius:7px;flex-shrink:0}
 #sidebar .logo span{font-weight:700;font-size:.9rem;white-space:nowrap;overflow:hidden;transition:opacity .2s}
 #sidebar.collapsed .logo span{opacity:0;width:0}
@@ -41,7 +41,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 
 #main{flex:1;display:flex;overflow:hidden}
 #tree-panel{width:33.33%;min-width:260px;max-width:420px;border-right:1px solid var(--border);display:flex;flex-direction:column;background:var(--surface2)}
-#tree-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;min-height:48px}
+#tree-header{padding:0 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;height:48px;min-height:48px}
 #tree-header h3{font-size:.85rem;font-weight:600;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #tree-search{width:100%;padding:6px 8px 6px 28px;border-radius:7px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:.78rem;outline:none;transition:border .2s}
 #tree-search:focus{border-color:var(--primary)}
@@ -68,7 +68,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 @keyframes spin{to{transform:rotate(360deg)}}
 
 #edit-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
-#edit-header{padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;min-height:48px}
+#edit-header{padding:0 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;height:48px;min-height:48px}
 #edit-header h3{font-size:.85rem;font-weight:600;flex:1}
 .edit-body{flex:1;overflow-y:auto;padding:18px}
 .ep{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:var(--text2);gap:10px;font-size:.82rem}
@@ -78,7 +78,34 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 .fl{font-size:.7rem;font-weight:600;color:var(--text2);margin-bottom:5px;text-transform:uppercase;letter-spacing:.04em}
 .fi{width:100%;padding:8px 10px;border-radius:7px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:.82rem;outline:none;transition:border .2s,box-shadow .2s;font-family:inherit}
 .fi:focus{border-color:var(--primary);box-shadow:0 0 0 2px rgba(82,181,75,.15)}
-textarea.fi{resize:vertical;min-height:72px}
+
+/* People UI */
+.person-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:8px}
+.person-card{display:flex;flex-direction:column;align-items:center;padding:8px 4px;border-radius:8px;border:1px solid var(--border);transition:background .1s;position:relative}
+.person-card:hover{background:var(--hover)}
+.person-card .avatar-wrap{position:relative;width:56px;height:56px;margin-bottom:6px}
+.person-card .avatar{width:56px;height:56px;border-radius:50%;object-fit:cover;background:var(--border);border:2px solid var(--border);transition:border-color .15s}
+.person-card .avatar.uploadable{cursor:pointer;border-color:transparent}
+.person-card .avatar.uploadable:hover{border-color:var(--primary)}
+.person-card .avatar-upload{position:absolute;inset:0;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.45);opacity:0;transition:opacity .15s;cursor:pointer}
+.person-card .avatar-wrap:hover .avatar-upload{opacity:1}
+.person-card .pname{font-size:.75rem;font-weight:500;text-align:center;line-height:1.2;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.person-card .ptype{font-size:.65rem;color:var(--text2);text-align:center;line-height:1.2}
+.person-card .pdel{position:absolute;top:2px;right:2px;width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;opacity:0;transition:opacity .12s;background:var(--surface);border:1px solid var(--border)}
+.person-card:hover .pdel{opacity:.7}
+.person-card .pdel:hover{opacity:1;background:rgba(239,68,68,.15);color:#ef4444;border-color:rgba(239,68,68,.3)}
+.person-add-row{display:flex;gap:6px;margin-top:6px;position:relative}
+.person-add-input{flex:1;padding:7px 10px;border-radius:7px;border:1px solid var(--border);background:var(--input-bg);color:var(--text);font-size:.82rem;outline:none}
+.person-add-input:focus{border-color:var(--primary)}
+.person-dropdown{position:absolute;top:100%;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 20px rgba(0,0,0,.2);z-index:50;max-height:200px;overflow-y:auto;display:none}
+.person-dropdown.show{display:block}
+.person-dd-item{padding:8px 12px;cursor:pointer;font-size:.8rem;display:flex;align-items:center;gap:8px;transition:background .1s}
+.person-dd-item:hover{background:var(--hover)}
+.person-dd-avatar{width:28px;height:28px;border-radius:50%;object-fit:cover;background:var(--border)}
+.person-dd-name{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.person-dd-type{font-size:.68rem;color:var(--text2)}
+.person-dd-hint{padding:8px 12px;font-size:.75rem;color:var(--text2);text-align:center}
+textarea.fi{resize:vertical;min-height:36px;line-height:1.5;overflow:hidden}
 .fh{font-size:.68rem;color:var(--text2);margin-top:3px;opacity:.65}
 
 .btn{display:inline-flex;align-items:center;gap:5px;padding:6px 14px;border-radius:7px;font-size:.78rem;font-weight:500;cursor:pointer;border:none;transition:all .12s}
@@ -116,6 +143,22 @@ textarea.fi{resize:vertical;min-height:72px}
 .lbx .fg{margin-bottom:12px}
 .lbx .btn{width:100%;justify-content:center;padding:9px;margin-top:6px}
 .le{font-size:.72rem;color:#ef4444;margin-top:3px;display:none}
+
+/* === Mobile === */
+@media(max-width:768px){
+    #sidebar{display:none!important}
+    #main{flex-direction:column!important}
+    #tree-panel{width:100%!important;max-width:none!important;border-right:none!important;border-bottom:1px solid var(--border);max-height:45vh;overflow-y:auto;transition:max-height .25s ease}
+    #tree-panel.shut{max-height:0!important;overflow:hidden!important;border-bottom:none!important}
+    .mobile-toggle{display:flex!important}
+    .mobile-lib-select{display:block!important}
+    #tree-title{display:none}
+    .person-grid{grid-template-columns:repeat(3,1fr)!important}
+    .edit-body{padding:12px}
+    #batch-bar{flex-wrap:wrap}
+    .bf{width:100%}
+    .bf input{width:100%}
+}
 </style>
 </head>
 <body>
@@ -144,7 +187,19 @@ textarea.fi{resize:vertical;min-height:72px}
 <div id="main">
     <div id="tree-panel">
         <div id="tree-header">
+            <div class="mobile-lib-select" style="display:none;position:relative">
+                <div class="mobile-lib-trigger" onclick="toggleMobileLibs()" style="display:flex;align-items:center;gap:6px;cursor:pointer;padding:4px 8px;border-radius:6px;border:1px solid var(--border);font-size:.82rem">
+                    <i data-lucide="database" class="w-4 h-4" style="opacity:.6"></i>
+                    <span id="mobile-lib-name">选择媒体库</span>
+                    <i data-lucide="chevron-down" class="w-3 h-3" style="opacity:.4"></i>
+                </div>
+                <div id="mobile-lib-dropdown" class="person-dropdown" style="min-width:160px"></div>
+            </div>
             <h3 id="tree-title">选择媒体库</h3>
+            <button class="btn btn-s" id="refresh-btn" style="display:none;padding:4px 8px;font-size:.7rem" onclick="refreshTree()" title="刷新当前层级">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+            </button>
+            <button class="btn btn-s mobile-toggle" style="display:none;padding:4px 8px;font-size:.7rem" onclick="toggleTreePanel()"><i data-lucide="list" class="w-3.5 h-3.5"></i></button>
             <div style="position:relative;flex:1;max-width:180px">
                 <i data-lucide="search" class="w-3 h-3" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);opacity:.35;pointer-events:none"></i>
                 <input type="text" id="tree-search" placeholder="搜索..." oninput="filterTree(this.value)">
@@ -199,8 +254,14 @@ const C={server:'',token:'',userId:'',deviceId:'',deviceName:'EmbyX-NFO',appVers
 const S={views:[],curView:null,tree:new Map(),sel:new Set(),edit:null,changes:{},batching:false,ac:null};
 
 window.addEventListener('DOMContentLoaded',()=>{lucide.createIcons();loadCfg();
-    if(!C.server||!C.token)document.getElementById('login-modal').classList.remove('hidden');
-    else initApp()});
+    console.log('[NFO] DOMContentLoaded, server:', C.server, 'hasToken:', !!C.token);
+    if(!C.server||!C.token){
+        console.log('[NFO] Not logged in, showing login modal');
+        document.getElementById('login-modal').classList.remove('hidden');
+    }else{
+        console.log('[NFO] Has login state, calling initApp');
+        initApp();
+    }});
 
 function loadCfg(){
     C.server=localStorage.getItem('emby_server')||'';
@@ -208,13 +269,16 @@ function loadCfg(){
     C.userId=localStorage.getItem('emby_uid')||'';
     C.deviceId=localStorage.getItem('emby_device_id')||'EmbyX-NFO-'+Math.random().toString(36).slice(2,8);
     if(!localStorage.getItem('emby_device_id'))localStorage.setItem('emby_device_id',C.deviceId);
+    console.log('[NFO] loadCfg:', {server:C.server, hasToken:!!C.token, userId:C.userId, user:localStorage.getItem('emby_user')});
 }
 
 async function initApp(){
+    console.log('[NFO] initApp called, server:', C.server);
     document.getElementById('login-modal').classList.add('hidden');
     lucide.createIcons();
     const userName = localStorage.getItem('emby_user') || '已登录';
     document.getElementById('user-name').textContent = userName;
+    document.getElementById('perm-dot').style.background = '#6b7280';
     await loadViews();
 }
 
@@ -247,6 +311,8 @@ function selectView(v){
     document.getElementById('edit-form').style.display='none';
     document.getElementById('edit-ph').style.display='flex';
     document.getElementById('batch-bar').classList.remove('show');
+    document.getElementById('refresh-btn').style.display='inline-flex';
+    const mln=document.getElementById('mobile-lib-name');if(mln)mln.textContent=v.Name;
     loadRoot(v.Id);
 }
 
@@ -260,7 +326,7 @@ async function loadRoot(pid){
 }
 
 async function fetchKids(pid){
-    const r=await api(`/Users/${C.userId}/Items?ParentId=${pid}&Limit=500&Fields=IsFolder,ChildCount,IndexNumber,ProductionYear,Type&SortBy=SortName&SortOrder=Ascending`);
+    const r=await api(`/Users/${C.userId}/Items?ParentId=${pid}&Limit=500&Fields=IsFolder,ChildCount,IndexNumber,ProductionYear,Type,People,Overview,Tags,TagItems&SortBy=SortName&SortOrder=Ascending`);
     const d=await r.json();return d.Items||[];
 }
 
@@ -300,8 +366,11 @@ async function toggleExp(nd,it,arr){
     if(!ch.classList.contains('shut')){ch.classList.add('shut');arr.classList.remove('open');return}
     const cached=S.tree.get(it.Id);
     if(cached&&cached.loaded){ch.classList.remove('shut');arr.classList.add('open');return}
-    ch.innerHTML='<div class="tl"><div class="sp"></div></div>';ch.classList.remove('shut');arr.classList.add('open');
+    ch.innerHTML='';ch.classList.remove('shut');arr.classList.add('open');
+    const loading=document.createElement('div');loading.className='tl';loading.innerHTML='<div class="sp"></div>';
+    ch.appendChild(loading);
     try{const items=await fetchKids(it.Id);
+        ch.innerHTML='';
         S.tree.set(it.Id,{item:it,kids:items,open:true,loaded:true});
         renderNodes(ch,items,it.Id,1);
     }catch(e){ch.innerHTML='<div class="tl" style="color:var(--text2)">加载失败</div>'}
@@ -325,14 +394,24 @@ function updBar(){
     else bar.classList.remove('show');
 }
 
-function pickItem(it){
+async function pickItem(it){
     document.querySelectorAll('.tn.sel').forEach(e=>e.classList.remove('sel'));
     const nd=document.querySelector(`.tn[data-id="${it.Id}"]`);if(nd)nd.classList.add('sel');
-    S.edit=it;S.changes={};
     document.getElementById('edit-title').textContent=it.Name||'编辑';
     document.getElementById('save-btn').style.display='inline-flex';
     document.getElementById('edit-ph').style.display='none';
-    renderForm(it);
+    // Fetch full item with People data
+    try{
+        const r=await api(`/Users/${C.userId}/Items/${it.Id}?Fields=Tags,TagItems,People,Overview,ProviderIds,Path,ProductionYear,DateCreated`);
+        const full=await r.json();
+        S.edit=full;S.changes={};
+        renderForm(full);
+        renderPeopleList(full.People||[]);
+    }catch(e){
+        S.edit=it;S.changes={};
+        renderForm(it);
+        renderPeopleList(it.People||[]);
+    }
 }
 
 function renderForm(it){
@@ -340,16 +419,19 @@ function renderForm(it){
     let h='';
     if(it.Path)h+=`<div class="fg"><div class="fl">路径</div><div style="font-size:.72rem;color:var(--text2);padding:7px 10px;background:var(--hover);border-radius:5px;word-break:break-all;font-family:monospace;user-select:text;-webkit-user-select:text">${esc(it.Path)}</div></div>`;
 
-    h+=`<div class="fg"><div class="fl">标题</div><input class="fi" data-f="Name" value="${esc(it.Name||'')}" oninput="onChg('Name',this.value)"></div>`;
+    h+=`<div class="fg"><div class="fl">标题</div><textarea class="fi" rows="1" data-f="Name" oninput="onChg('Name',this.value);autoResize(this)">${esc(it.Name||'')}</textarea></div>`;
 
     h+=`<div class="fg"><div class="fl">概要</div><textarea class="fi" data-f="Overview" oninput="onChg('Overview',this.value)">${esc(it.Overview||'')}</textarea></div>`;
 
-    const tags=Array.isArray(it.Tags)?it.Tags:[];
-    h+=`<div class="fg"><div class="fl">标签</div><input class="fi" data-f="Tags" value="${esc(tags.join(', '))}" oninput="onChg('Tags',this.value)" placeholder="逗号分隔"><div class="fh">多个标签用逗号分隔</div></div>`;
+    const tags=normalizeTags(it);
+    h+=`<div class="fg"><div class="fl">标签</div><textarea class="fi" rows="1" data-f="Tags" oninput="onChg('Tags',this.value);autoResize(this)" placeholder="逗号分隔">${esc(tags.join(', '))}</textarea><div class="fh">多个标签用逗号分隔</div></div>`;
 
     const people=Array.isArray(it.People)?it.People:[];
-    const pnames=people.map(p=>p.Name).join(', ');
-    h+=`<div class="fg"><div class="fl">人物</div><input class="fi" data-f="People" value="${esc(pnames)}" oninput="onChg('People',this.value)" placeholder="逗号分隔"><div class="fh">多人用逗号分隔，格式: 张三, 李四</div></div>`;
+    h+=`<div class="fg"><div class="fl">人物</div><div id="people-list"></div>
+        <div class="person-add-row">
+            <input class="person-add-input" id="person-input" placeholder="输入人物名搜索..." autocomplete="off">
+            <div class="person-dropdown" id="person-dropdown"></div>
+        </div></div>`;
 
     h+=`<div class="fg"><div class="fl">信息</div><div style="font-size:.78rem;color:var(--text2);line-height:1.7">
         <div>ID: ${it.Id}</div><div>类型: ${it.Type||'-'}</div>
@@ -358,23 +440,40 @@ function renderForm(it){
     </div></div>`;
 
     f.innerHTML=h;
+    setTimeout(autoResizeAll,0);
 }
 
 function onChg(k,v){S.changes[k]=v}
+// Person input listeners - attached after renderForm
+setTimeout(()=>{
+    const pi=document.getElementById('person-input');
+    const pd=document.getElementById('person-dropdown');
+    if(pi){
+        pi.addEventListener('input',()=>onPersonInput(pi.value));
+        pi.addEventListener('keydown',e=>{
+            if(e.key==='Enter'){e.preventDefault();addPersonManual(pi.value.trim());pi.value=''}
+            if(e.key==='Escape'){pd.classList.remove('show')}
+        });
+    }
+    if(pd){document.addEventListener('click',e=>{if(!e.target.closest('.person-add-row'))pd.classList.remove('show')})}
+},0);
 
 async function saveSingle(){
     if(!S.edit||!Object.keys(S.changes).length)return;
     const btn=document.getElementById('save-btn');btn.disabled=true;
     btn.innerHTML='<i data-lucide="loader-2" class="w-3.5 h-3.5" style="animation:spin .8s linear infinite"></i> 保存中...';lucide.createIcons();
     try{
-        const payload=buildPayload(S.changes);
-        await updateItem(S.edit.Id,payload);
+        // GET full item first, merge changes, POST back
+        const fullRes=await api(`/Users/${C.userId}/Items/${S.edit.Id}?Fields=Tags,TagItems,People,ProviderIds`);
+        const full=await fullRes.json();
+        const merged={...full,...buildPayload(S.changes)};
+        await updateItem(S.edit.Id,merged);
         Object.assign(S.edit,S.changes);S.changes={};
-        if(payload.Name){const nd=document.querySelector(`.tn[data-id="${S.edit.Id}"] .nm`);if(nd)nd.textContent=payload.Name}
+        if(S.changes.Name){const nd=document.querySelector(`.tn[data-id="${S.edit.Id}"] .nm`);if(nd)nd.textContent=S.changes.Name}
         toast('保存成功','ok');document.getElementById('perm-dot').style.background='#52B54B';
     }catch(e){toast('保存失败: '+(e.message||''),'err');console.error('[NFO] save error:',e);
         if(e.message&&e.message.includes('403')){document.getElementById('perm-dot').style.background='#ef4444';toast('权限不足，请使用管理员账号','err')}
-    finally{btn.disabled=false;btn.innerHTML='<i data-lucide="check" class="w-3.5 h-3.5"></i> 保存';lucide.createIcons()}
+    }finally{btn.disabled=false;btn.innerHTML='<i data-lucide="check" class="w-3.5 h-3.5"></i> 保存';lucide.createIcons()}
 }
 
 function buildPayload(ch){
@@ -382,11 +481,119 @@ function buildPayload(ch){
     if(ch.Name!==undefined)p.Name=ch.Name;
     if(ch.Overview!==undefined)p.Overview=ch.Overview;
     if(ch.Tags!==undefined)p.Tags=parseList(ch.Tags);
-    if(ch.People!==undefined)p.People=ch.People.split(',').map(s=>s.trim()).filter(Boolean).map(n=>({Name:n,Type:'Unknown'}));
+    if(ch.People!==undefined){
+        const inputNames=ch.People.split(',').map(s=>s.trim()).filter(Boolean);
+        const existing=S.edit&&Array.isArray(S.edit.People)?S.edit.People:[];
+        const existingMap={};existing.forEach(p=>{existingMap[p.Name]={Type:p.Type,Id:p.Id}});
+        p.People=inputNames.map(n=>{
+            const info=existingMap[n];
+            const obj={Name:n,Type:info?info.Type:'Unknown'};
+            if(info&&info.Id)obj.Id=info.Id;
+            return obj;
+        });
+    }
     return p;
 }
 
 function parseList(s){return s.split(',').map(x=>x.trim()).filter(Boolean)}
+function autoResize(el){el.style.height='auto';el.style.height=el.scrollHeight+'px'}
+function autoResizeAll(){document.querySelectorAll('textarea.fi').forEach(autoResize)}
+function normalizeTags(item){
+    const raw=item.Tags||item.TagItems||[];
+    if(!Array.isArray(raw))return[];
+    return raw.map(t=>typeof t==='string'?t:(t.Name||'')).filter(Boolean);
+}
+
+let _personTimer=null;
+const PERSON_TYPE_CN={Actor:'演员',Director:'Director',Writer:'编剧',Composer:'配乐',Producer:'制片',GuestStar:'客串',Animator:'动画',Assistant:'助手',Unknown:'未知'};
+function cnType(t){return PERSON_TYPE_CN[t]||t||''}
+function renderPeopleList(people){
+    const el=document.getElementById('people-list');if(!el)return;
+    el.innerHTML='';
+    const grid=document.createElement('div');grid.className='person-grid';
+    people.forEach((p,i)=>{
+        const imgUrl=p.Name?`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`:'avatar.webp';
+        const card=document.createElement('div');card.className='person-card';
+        card.innerHTML=`<div class="avatar-wrap"><img class="avatar uploadable" src="${imgUrl}" onerror="this.src='avatar.webp'" onclick="uploadPersonImage(${i})">
+            <div class="avatar-upload" onclick="uploadPersonImage(${i})"><i data-lucide="camera" style="width:16px;height:16px;color:#fff"></i></div></div>
+            <div class="pname" title="${esc(p.Name)}">${esc(p.Name)}</div>
+            <div class="ptype">${esc(cnType(p.Type))}</div>
+            <div class="pdel" onclick="removePerson(${i})"><i data-lucide="x" style="width:12px;height:12px"></i></div>`;
+        grid.appendChild(card);
+    });
+    el.appendChild(grid);lucide.createIcons();
+}
+
+function removePerson(idx){
+    if(!S.edit||!Array.isArray(S.edit.People))return;
+    S.edit.People.splice(idx,1);
+    S.changes.People=S.edit.People.map(p=>p.Name).join(', ');
+    renderPeopleList(S.edit.People);
+}
+
+function onPersonInput(val){
+    clearTimeout(_personTimer);
+    const dd=document.getElementById('person-dropdown');
+    if(!val.trim()){dd.classList.remove('show');return}
+    _personTimer=setTimeout(()=>searchPersons(val.trim(),dd),300);
+}
+
+async function searchPersons(term,dd){
+    try{
+        const r=await api(`/Persons?SearchTerm=${encodeURIComponent(term)}&Limit=10&Fields=PrimaryImageTag`);
+        const d=await r.json();
+        const items=d.Items||[];
+        dd.innerHTML='';
+        if(!items.length){dd.innerHTML='<div class="person-dd-hint">无匹配结果，回车添加</div>';dd.classList.add('show');return}
+        items.forEach(p=>{
+            const el=document.createElement('div');el.className='person-dd-item';
+            const imgUrl=p.Name?`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`:'avatar.webp';
+            el.innerHTML=`<img class="person-dd-avatar" src="${imgUrl}" onerror="this.src='avatar.webp'">
+                <span class="person-dd-name">${esc(p.Name)}</span>
+                <span class="person-dd-type">${esc(p.Type||'')}</span>`;
+            el.onclick=()=>addPersonFromSearch(p);
+            dd.appendChild(el);
+        });dd.classList.add('show');
+    }catch(e){dd.innerHTML='<div class="person-dd-hint">搜索失败</div>';dd.classList.add('show')}
+}
+
+function addPersonFromSearch(p){
+    if(!S.edit)return;
+    if(!Array.isArray(S.edit.People))S.edit.People=[];
+    if(S.edit.People.some(x=>x.Name===p.Name))return;
+    S.edit.People.push({Name:p.Name,Type:p.Type||'Unknown',Id:p.Id,ImageTag:p.PrimaryImageTag});
+    S.changes.People=S.edit.People.map(x=>x.Name).join(', ');
+    renderPeopleList(S.edit.People);
+    const inp=document.getElementById('person-input');if(inp)inp.value='';
+    const dd=document.getElementById('person-dropdown');if(dd)dd.classList.remove('show');
+}
+
+function addPersonManual(name){
+    if(!S.edit||!name.trim())return;
+    if(!Array.isArray(S.edit.People))S.edit.People=[];
+    if(S.edit.People.some(x=>x.Name===name))return;
+    S.edit.People.push({Name:name,Type:'Unknown'});
+    S.changes.People=S.edit.People.map(x=>x.Name).join(', ');
+    renderPeopleList(S.edit.People);
+    const inp=document.getElementById('person-input');if(inp)inp.value='';
+    const dd=document.getElementById('person-dropdown');if(dd)dd.classList.remove('show');
+}
+
+async function uploadPersonImage(idx){
+    if(!S.edit||!Array.isArray(S.edit.People))return;
+    const p=S.edit.People[idx];if(!p||!p.Id){toast('该人物无 Emby Id，无法上传图片','err');return}
+    const input=document.createElement('input');input.type='file';input.accept='image/*';
+    input.onchange=async()=>{
+        const file=input.files[0];if(!file)return;
+        try{
+            const url=`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`;
+            const r=await fetch(url,{method:'POST',headers:{'X-Emby-Authorization':C.hdr,'Content-Type':file.type||'image/jpeg'},body:file});
+            if(!r.ok)throw new Error(r.status);
+            renderPeopleList(S.edit.People);
+            toast('图片上传成功','ok');
+        }catch(e){toast('上传失败: '+e.message,'err')}
+    };input.click();
+}
 
 async function runBatch(){
     if(!S.sel.size||S.batching)return;
@@ -406,16 +613,20 @@ async function runBatch(){
         if(!S.batching)break;
         const payload={};
         if(tagVal){
-            const cur=Array.isArray(it.Tags)?it.Tags:[];
+            const cur=normalizeTags(it);
             if(!cur.includes(tagVal))payload.Tags=[...cur,tagVal];
         }
         if(personVal){
             const cur=Array.isArray(it.People)?it.People:[];
             const names=cur.map(p=>p.Name);
-            if(!names.includes(personVal))payload.People=[...cur,{Name:personVal,Type:'Unknown'}];
+            if(!names.includes(personVal))payload.People=[...cur,{Name:personVal,Type:'Actor'}];
         }
         if(Object.keys(payload).length){
-            try{await updateItem(it.Id,payload);done++;
+            try{
+                const fullRes=await api(`/Users/${C.userId}/Items/${it.Id}?Fields=Tags,TagItems,People,ProviderIds`);
+                const full=await fullRes.json();
+                const merged={...full,...payload};
+                await updateItem(it.Id,merged);done++;
                 if(payload.Tags){const nd=document.querySelector(`.tn[data-id="${it.Id}"]`);if(nd){/* tag icon glow */}}
             }catch(e){fail++;console.error('[NFO] batch item',it.Id,'error:',e.message)}
         }else done++;
@@ -436,12 +647,67 @@ function findNode(id){for(const[,n]of S.tree){const f=n.kids.find(c=>String(c.Id
 async function api(path,opt={}){
     const url=`${C.base}${path}${path.includes('?')?'&':'?'}api_key=${C.token}`;
     const r=await fetch(url,{...opt,headers:{'X-Emby-Authorization':C.hdr,...opt.headers},signal:S.ac?.signal});
-    if(!r.ok)throw new Error(`API ${r.status}`);return r;
+    if(!r.ok){const body=await r.text().catch(()=>'');console.error('[NFO] API',r.status,body.slice(0,500));throw new Error(`API ${r.status}: ${body.slice(0,200)}`)}
+    return r;
 }
 
 async function updateItem(id,payload){
     const r=await api(`/Items/${id}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)});return r;
 }
+
+function refreshTree(){
+    // Find the deepest expanded node
+    let deepestId=null;
+    let deepestEl=null;
+    document.querySelectorAll('.tn .arr.open').forEach(arr=>{
+        const node=arr.closest('.tn');
+        if(!node)return;
+        const id=node.dataset.id;
+        const ch=document.getElementById('ch-'+id);
+        if(ch&&!ch.classList.contains('shut')){deepestId=id;deepestEl=node}
+    });
+    if(!deepestId){toast('没有展开的文件夹','info');return}
+
+    const ch=document.getElementById('ch-'+deepestId);
+    const arrow=deepestEl.querySelector('.arr');
+    // Show loading
+    ch.innerHTML='<div class="tl"><div class="sp"></div></div>';
+
+    fetchKids(deepestId).then(items=>{
+        // Update tree data
+        const cached=S.tree.get(deepestId);
+        if(cached){cached.kids=items;cached.loaded=true}
+        // Re-render children, preserving selection
+        ch.innerHTML='';
+        renderNodes(ch,items,deepestId,1);
+        // Restore selection marks
+        S.sel.forEach(id=>{
+            const nd=ch.querySelector(`.tn[data-id="${id}"] .ck`);
+            if(nd)nd.classList.add('on');
+        });
+        toast('已刷新','ok');
+    }).catch(e=>{
+        ch.innerHTML='<div class="tl" style="color:var(--text2)">刷新失败</div>';
+        toast('刷新失败','err');
+    });
+}
+
+function toggleMobileLibs(){
+    const dd=document.getElementById('mobile-lib-dropdown');
+    if(dd.classList.contains('show')){dd.classList.remove('show');return}
+    dd.innerHTML='';
+    S.views.forEach(v=>{
+        const el=document.createElement('div');el.className='person-dd-item';
+        el.textContent=v.Name;
+        if(S.curView&&S.curView.Id===v.Id)el.style.color='var(--primary)';
+        el.onclick=()=>{selectView(v);dd.classList.remove('show');document.getElementById('mobile-lib-name').textContent=v.Name};
+        dd.appendChild(el);
+    });
+    dd.classList.add('show');
+}
+document.addEventListener('click',e=>{
+    if(!e.target.closest('.mobile-lib-select'))document.getElementById('mobile-lib-dropdown')?.classList.remove('show');
+});
 
 function filterTree(q){
     const ql=q.toLowerCase().trim();
