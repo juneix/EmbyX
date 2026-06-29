@@ -174,6 +174,13 @@
                 </div>
             </div>
 
+            <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
+                id="addToPlaylistBtn">
+                <div class="w-12 h-12 flex items-center justify-center">
+                    <i data-lucide="star" class="stroke-white w-6 h-6 drop-shadow-md"></i>
+                </div>
+            </div>
+
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="scaleBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
                     <i data-lucide="maximize-2" class="stroke-white w-6 h-6 drop-shadow-md"></i>
@@ -245,12 +252,12 @@
 
         <div
             class="bottom-info absolute bottom-20 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
-            <div id="videoInfoArea"
-                class="mb-3 pointer-events-auto w-[85%] pr-4 cursor-pointer active:opacity-75 transition-opacity">
-                <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate">Initializing...
-                </h3>
-                <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90">
-                    Click the 'Profile' button at bottom right to configure server.</p>
+            <div class="mb-3 w-[85%] pr-4">
+                <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate pointer-events-auto cursor-pointer hover:underline inline-block max-w-full">Initializing...</h3>
+                <div id="videoDescriptionArea" class="pointer-events-auto cursor-pointer">
+                    <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90 transition-all">
+                        Click the 'Profile' button at bottom right to configure server.</p>
+                </div>
             </div>
 
             <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1" id="progressBarContainer">
@@ -576,6 +583,22 @@
             </div>
         </div>
 
+        <div id="addToPlaylistModal"
+            class="fixed inset-0 bg-black/20 z-50 flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+            <div
+                class="bg-black/50 rounded-xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                <div class="relative flex items-center justify-center mb-4 min-h-[2rem]">
+                    <h3 class="text-white text-lg font-bold text-center">Playlists</h3>
+                    <button id="modalCreatePlaylistBtn" title="Create Playlist" class="focusable-item absolute right-0 p-1 rounded-full text-primary hover:bg-primary/20 active:scale-95 transition-all">
+                        <i data-lucide="list-plus" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                <div id="playlistAddList" class="grid grid-cols-2 gap-2"></div>
+                <button id="closeAddToPlaylistBtn"
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+            </div>
+        </div>
+
         <div id="toast"
             class="fixed top-16 left-1/2 -translate-x-1/2 bg-black/50 px-4 py-2 rounded-2xl text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-sm">
             Message
@@ -617,7 +640,13 @@
                     currentPerson: null,
                     isFilteredByPerson: false,
                     personVideos: [],
-                    personTotalCount: 0
+                    personTotalCount: 0,
+                    searchTerm: '',
+                    preSearchState: null,
+                    lastSelectedPlaylist: null,
+                    itemPlaylistsMap: {},
+                    currentTag: null,
+                    isFilteredByTag: false
                 };
 
                 this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false };
@@ -657,7 +686,7 @@
             }
 
             isAnyModalOpen() {
-                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'profilePage', 'libraryModal'];
+                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'profilePage', 'libraryModal', 'addToPlaylistModal'];
                 return modals.some(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
@@ -675,6 +704,7 @@
                 this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
 
                 this.loadFavorites();
+                this.initGlobalPlaylistIndex();
                 this.bindEvents();
 
                 this.state.isAutoplay = this.config.autoplay !== false;
@@ -767,9 +797,9 @@
             cacheDOM() {
                 const ids = [
                     'videoContainer', 'clickToPlayOverlay', 'loading', 'toast',
-                    'videoInfoArea', 'videoTitle', 'videoDescription', 'progressLine', 'currentTime', 'totalTime',
+                    'videoDescriptionArea', 'videoTitle', 'videoDescription', 'progressLine', 'currentTime', 'totalTime',
                     'playModeBtn', 'viewModeBtn', 'libraryBtn', 'myBtn',
-                    'favoriteBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
+                    'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
                     'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configShortDrama', 'configDeleteMode'
@@ -1005,7 +1035,41 @@
                 }
             }
 
-            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false) {
+            async initGlobalPlaylistIndex() {
+                const { server, token, userId } = this.config;
+                if (!server || !token || !userId) return;
+                try {
+                    const res = await fetch(`${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`, {
+                        headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                    });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const playlists = data.Items || [];
+                    
+                    const map = {};
+                    await Promise.all(playlists.map(async pl => {
+                        try {
+                            const cRes = await fetch(`${server}/emby/Playlists/${pl.Id}/Items?UserId=${userId}&api_key=${token}&Limit=10000&Fields=Id`, {
+                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            });
+                            if (cRes.ok) {
+                                const cData = await cRes.json();
+                                if (cData.Items) {
+                                    cData.Items.forEach(item => {
+                                        const itemIdStr = String(item.Id);
+                                        if (!map[itemIdStr]) map[itemIdStr] = new Set();
+                                        map[itemIdStr].add(String(pl.Id));
+                                    });
+                                }
+                            }
+                        } catch(e) {}
+                    }));
+                    this.state.itemPlaylistsMap = map;
+                    this.updateUI();
+                } catch(e) {}
+            }
+
+            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false, searchTerm = '') {
                 this.toggleLoading(!isAppend);
                 try {
                     const { server, token, userId } = this.config;
@@ -1028,9 +1092,15 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources`;
+                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
 
-                    if (this.state.currentPerson) {
+                    if (searchTerm) {
+                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
+                    } else if (this.state.currentTag) {
+                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
+                    } else if (this.state.currentPerson) {
                         url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
                     } else if (ids) {
                         url += `&Ids=${ids}`;
@@ -1057,39 +1127,53 @@
                         throw new Error(`Server Error: ${res.status}`);
                     }
                     let data = await res.json();
+                    const items = data.Items || [];
 
-                    if (data && data.Items && data.Items.length > 0) {
-                        if (isAppend) {
-                            this.state.videos.push(...data.Items);
+                    if (isAppend) {
+                        if (items.length > 0) {
+                            this.state.videos.push(...items);
                             if (this.state.playMode === 'random' && this.state.originalVideos) {
-                                this.state.originalVideos.push(...data.Items);
+                                this.state.originalVideos.push(...items);
                             }
-                            return;
                         } else {
-                            this.state.videos = data.Items;
-                            this.state.currentIndex = 0;
-                            this.state.totalCount = data.TotalRecordCount || 0;
-
-                            if (this.state.playMode === 'random') {
-                                this.state.originalVideos = [...this.state.videos];
-                                this._shuffleAroundCurrent();
-                            }
-
-                            if (this.state.viewMode === 'grid') {
-                                this.renderGridView();
-                            } else {
-                                this.renderSlides();
-                                this.loadVideo(0);
-                            }
+                            if (!isAppend) this.showToast('No more videos');
                         }
-                    } else if (isLoadMore || isAppend) {
-                        if (!isAppend) this.showToast('No more videos');
+                        return;
+                    }
+
+                    if (isLoadMore && items.length === 0) {
+                        this.showToast('No more videos');
                         this.state.startIndex = Math.max(0, (this.state.startIndex || 0));
                         this.toggleLoading(false);
                         return;
-                    } else {
+                    }
+
+                    this.state.videos = items;
+                    this.state.currentIndex = 0;
+                    const fetchedTotal = typeof data.TotalRecordCount === 'number' ? data.TotalRecordCount : items.length;
+                    this.state.totalCount = fetchedTotal;
+                    if (searchTerm) {
+                        this.state.searchTotalCount = fetchedTotal;
+                    }
+
+                    if (items.length === 0) {
                         this.showToast('No videos found');
-                        this.dom.videoContainer.innerHTML = '';
+                    }
+
+                    if (this.state.playMode === 'random' && items.length > 0) {
+                        this.state.originalVideos = [...this.state.videos];
+                        this._shuffleAroundCurrent();
+                    }
+
+                    if (this.state.viewMode === 'grid') {
+                        this.renderGridView();
+                    } else {
+                        if (items.length > 0) {
+                            this.renderSlides();
+                            this.loadVideo(0);
+                        } else {
+                            this.renderGridView();
+                        }
                     }
                 } catch (e) {
                     console.error('Failed to fetch videos:', e);
@@ -1148,30 +1232,69 @@
             renderGridView() {
                 this.dom.slides = null;
                 const container = this.dom.videoContainer;
-                // Reset page scroll (scrollIntoView can pollute html.scrollTop causing header misalignment)
                 document.documentElement.scrollTop = 0;
-                // Disable transition + force reflow before clearing transform, prevents stream offset flickering
                 container.style.transition = 'none';
                 void container.offsetHeight;
                 container.style.transform = 'none';
-                container.innerHTML = '';
-                container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
+
+                let bgLayer = container.querySelector('.bg-poster-layer');
+                let safeHeader = document.getElementById('gridSafeHeader');
+                let searchBar = document.getElementById('gridSearchBar');
+                let scrollArea = document.getElementById('gridScrollArea');
+
+                if (!safeHeader || !searchBar || !scrollArea) {
+                    container.innerHTML = '';
+                    container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
+
+                    bgLayer = document.createElement('div');
+                    bgLayer.className = 'bg-poster-layer absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
+                    container.appendChild(bgLayer);
+
+                    safeHeader = document.createElement('div');
+                    safeHeader.id = 'gridSafeHeader';
+                    container.appendChild(safeHeader);
+
+                    searchBar = document.createElement('div');
+                    searchBar.id = 'gridSearchBar';
+                    container.appendChild(searchBar);
+
+                    scrollArea = document.createElement('div');
+                    scrollArea.id = 'gridScrollArea';
+                    scrollArea.className = 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative w-full overscroll-contain';
+                    scrollArea.style.WebkitOverflowScrolling = 'touch';
+                    container.appendChild(scrollArea);
+
+                    let isDown = false, startY, scrollTop;
+                    scrollArea.addEventListener('mousedown', (e) => {
+                        isDown = true;
+                        scrollArea.style.cursor = 'grabbing';
+                        startY = e.pageY - scrollArea.offsetTop;
+                        scrollTop = scrollArea.scrollTop;
+                    });
+                    scrollArea.addEventListener('mouseleave', () => { isDown = false; scrollArea.style.cursor = ''; });
+                    scrollArea.addEventListener('mouseup', () => { isDown = false; scrollArea.style.cursor = ''; });
+                    scrollArea.addEventListener('mousemove', (e) => {
+                        if (!isDown) return;
+                        e.preventDefault();
+                        const y = e.pageY - scrollArea.offsetTop;
+                        const walk = (y - startY) * 2;
+                        scrollArea.scrollTop = scrollTop - walk;
+                    });
+                }
 
                 const currentVideo = this.state.videos[this.state.currentIndex];
                 const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : this.getImageSrc(null);
-                const bgLayer = document.createElement('div');
-                bgLayer.className = 'absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
                 if (bgPosterStr) {
                     bgLayer.style.backgroundImage = `url('${bgPosterStr}')`;
                 }
-                container.appendChild(bgLayer);
-
-                const gridWrapper = document.createElement('div');
-                const safeHeader = document.createElement('div');
 
                 let libraryName = 'All Videos';
-                if (this.state.currentPerson) {
-                    libraryName = this.state.currentPerson;
+                if (this.state.searchTerm) {
+                    libraryName = `Search: ${this.state.searchTerm}`;
+                } else if (this.state.isFilteredByTag && this.state.currentTag) {
+                    libraryName = `Tag: ${this.state.currentTag}`;
+                } else if (this.state.currentPerson) {
+                    libraryName = `Actor: ${this.state.currentPerson}`;
                 } else if (this.state.currentLibraryId === 'favorites') {
                     libraryName = 'Favorites';
                 } else if (this.state.currentLibraryId) {
@@ -1193,21 +1316,25 @@
                 }
 
                 const PAGE_SIZE = 150;
-                // Use personTotalCount when viewing person works, otherwise library totalCount
-                const totalCount = this.state.currentPerson ? (this.state.personTotalCount || this.state.personVideos.length) : (this.state.totalCount || 0);
+                let totalCount = 0;
+                if (this.state.searchTerm) {
+                    totalCount = typeof this.state.searchTotalCount === 'number' ? this.state.searchTotalCount : (this.state.totalCount || this.state.videos.length);
+                } else if (this.state.currentPerson || this.state.isFilteredByTag) {
+                    totalCount = typeof this.state.personTotalCount === 'number' ? this.state.personTotalCount : this.state.personVideos.length;
+                } else {
+                    totalCount = this.state.totalCount || this.state.videos.length;
+                }
                 const startIndex = this.state.startIndex || 0;
                 const currentPage = Math.floor(startIndex / PAGE_SIZE) + 1;
                 const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-                const isSpecificLib = !!this.state.currentLibraryId || !!this.state.currentPerson;
-                const showPager = isSpecificLib && totalPages > 1;
-
                 const countStr = totalCount > 999 ? '999+' : String(totalCount);
 
                 safeHeader.className = 'w-full flex items-center gap-2 bg-black/50 backdrop-blur-sm border-b border-gray-800/50 px-3 pb-3';
                 safeHeader.style.paddingTop = 'max(8px, env(safe-area-inset-top, 8px))';
 
+                const isSearchActive = !!this.state.searchTerm;
                 safeHeader.innerHTML = `
-                    <span class="text-sm font-bold text-gray-200">${libraryName}</span>
+                    <span class="text-sm font-bold text-gray-200 truncate max-w-[40%]">${libraryName}</span>
                     <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                         ${countStr}
                         <span class="w-1.5"></span>
@@ -1216,18 +1343,32 @@
                         </button>
                     </span>
                     <span class="flex-1"></span>
-                    ${showPager ? `
-                        <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
-                        <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
-                        <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
-                    ` : ''}
+                    <button id="gridFolderSearchBtn" title="Search"
+                        class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-gray-400 hover:text-white'}">
+                        <i data-lucide="folder-search" class="w-4 h-4"></i>
+                    </button>
+                    <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
+                    <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
+                    <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
                 `;
-                container.appendChild(safeHeader);
+
+                searchBar.className = `w-full bg-black/50 border-b border-gray-800/50 px-3 py-2 ${this.state.searchTerm ? '' : 'hidden'}`;
+                if (!searchBar.innerHTML) {
+                    searchBar.innerHTML = `
+                        <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
+                            <i data-lucide="search" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
+                            <input id="gridSearchInput" type="search"
+                                   value="${this.state.searchTerm}"
+                                   placeholder="Search title, actor, overview..."
+                                   class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500 min-w-0">
+                        </div>
+                    `;
+                }
 
                 const shuffleBtn = document.getElementById('gridShuffleBtn');
                 if (shuffleBtn) {
                     const curLibId = this.state.currentLibraryId;
-                    const libArg = (!curLibId || curLibId === 'favorites' || this.state.currentPerson) ? null : curLibId;
+                    const libArg = (!curLibId || curLibId === 'favorites' || this.state.currentPerson || this.state.searchTerm) ? null : curLibId;
                     shuffleBtn.onclick = (e) => {
                         e.stopPropagation();
                         this.state.startIndex = 0;
@@ -1235,59 +1376,28 @@
                     };
                 }
 
-                if (showPager) {
-                    const curLibId = this.state.currentLibraryId;
-                    const libArg = (curLibId === 'favorites' || this.state.currentPerson) ? null : curLibId;
+                const curLibId = this.state.currentLibraryId;
+                const libArg = (curLibId === 'favorites' || this.state.currentPerson || this.state.searchTerm) ? null : curLibId;
 
-                    const prevBtn = document.getElementById('gridPrevBtn');
-                    if (prevBtn && currentPage > 1) {
-                        prevBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            this.state.startIndex = Math.max(0, startIndex - PAGE_SIZE);
-                            this.fetchVideos(libArg, null, true, false);
-                        };
-                    }
-                    const nextBtn = document.getElementById('gridNextBtn');
-                    if (nextBtn && currentPage < totalPages) {
-                        nextBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            this.state.startIndex = startIndex + PAGE_SIZE;
-                            this.fetchVideos(libArg, null, true, false);
-                        };
-                    }
+                const prevBtn = document.getElementById('gridPrevBtn');
+                if (prevBtn && currentPage > 1) {
+                    prevBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.state.startIndex = Math.max(0, startIndex - PAGE_SIZE);
+                        this.fetchVideos(libArg, null, true, false, false, this.state.searchTerm);
+                    };
+                }
+                const nextBtn = document.getElementById('gridNextBtn');
+                if (nextBtn && currentPage < totalPages) {
+                    nextBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.state.startIndex = startIndex + PAGE_SIZE;
+                        this.fetchVideos(libArg, null, true, false, false, this.state.searchTerm);
+                    };
                 }
 
-                const scrollArea = document.createElement('div');
-                scrollArea.className = 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative w-full overscroll-contain';
-                scrollArea.style.WebkitOverflowScrolling = 'touch';
-                container.appendChild(scrollArea);
-
-                // MOUSE DRAG SUPPORT FOR GRID
-                let isDown = false;
-                let startY;
-                let scrollTop;
-                scrollArea.addEventListener('mousedown', (e) => {
-                    isDown = true;
-                    scrollArea.style.cursor = 'grabbing';
-                    startY = e.pageY - scrollArea.offsetTop;
-                    scrollTop = scrollArea.scrollTop;
-                });
-                scrollArea.addEventListener('mouseleave', () => {
-                    isDown = false;
-                    scrollArea.style.cursor = '';
-                });
-                scrollArea.addEventListener('mouseup', () => {
-                    isDown = false;
-                    scrollArea.style.cursor = '';
-                });
-                scrollArea.addEventListener('mousemove', (e) => {
-                    if (!isDown) return;
-                    e.preventDefault();
-                    const y = e.pageY - scrollArea.offsetTop;
-                    const walk = (y - startY) * 2;
-                    scrollArea.scrollTop = scrollTop - walk;
-                });
-
+                scrollArea.innerHTML = '';
+                const gridWrapper = document.createElement('div');
                 gridWrapper.className = 'grid grid-cols-3 gap-1 content-start w-full relative z-10 px-1 pt-2';
                 scrollArea.appendChild(gridWrapper);
 
@@ -1363,11 +1473,7 @@
                 }
 
 
-                const focusVideo = this.state.videos[this.state.currentIndex];
-                if (focusVideo) {
-                    this.dom.videoTitle.textContent = focusVideo.Name || 'Unknown Video';
-                    this.dom.videoDescription.textContent = focusVideo.Overview || 'No Description...';
-                }
+                this.updateUI();
 
                 // Scroll to active card (direct scrollArea op, avoids scrollIntoView polluting html.scrollTop)
                 requestAnimationFrame(() => {
@@ -1379,6 +1485,49 @@
                         scrollArea.scrollTop = elTop - (areaHeight / 2) + (elHeight / 2);
                     }
                 });
+
+                const fsBtn = document.getElementById('gridFolderSearchBtn');
+                if (fsBtn) {
+                    fsBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (this.state.searchTerm) {
+                            this.searchVideos('');
+                        } else {
+                            const bar = document.getElementById('gridSearchBar');
+                            if (bar) {
+                                bar.classList.toggle('hidden');
+                                if (!bar.classList.contains('hidden')) {
+                                    document.getElementById('gridSearchInput')?.focus();
+                                }
+                            }
+                        }
+                    };
+                }
+
+                const searchInput = document.getElementById('gridSearchInput');
+                if (searchInput && !searchInput.dataset.bound) {
+                    searchInput.dataset.bound = 'true';
+                    let isComposing = false;
+                    let debounce = null;
+
+                    searchInput.addEventListener('compositionstart', () => {
+                        isComposing = true;
+                    });
+                    searchInput.addEventListener('compositionend', (e) => {
+                        isComposing = false;
+                        const val = e.target.value.trim();
+                        this.searchVideos(val);
+                    });
+                    searchInput.addEventListener('input', (e) => {
+                        if (isComposing) return;
+                        clearTimeout(debounce);
+                        const val = e.target.value.trim();
+                        debounce = setTimeout(() => this.searchVideos(val), 500);
+                    });
+                    searchInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape') this.searchVideos('');
+                    });
+                }
 
                 lucide.createIcons();
             }
@@ -1563,7 +1712,7 @@
                     const { server, token, userId } = this.config;
                     if (!server || !token || !userId) return;
 
-                    const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People`, {
+                    const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People,Tags,TagItems`, {
                         headers: {
                             'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
                         }
@@ -1571,6 +1720,11 @@
                     if (res.ok) {
                         const data = await res.json();
                         if (btn.dataset.videoId !== currentId) return;
+
+                        let hasNewTags = false;
+                        if (data.Tags && data.Tags.length > 0) { videoData.Tags = data.Tags; hasNewTags = true; }
+                        if (data.TagItems && data.TagItems.length > 0) { videoData.TagItems = data.TagItems; hasNewTags = true; }
+                        if (hasNewTags) this.updateUI();
 
                         const person = data.People && data.People.length > 0 ? data.People[0] : null;
                         if (person) {
@@ -2052,7 +2206,7 @@
                 const isFavSelected = this.state.currentLibraryId === 'favorites';
                 favDiv.setAttribute('tabindex', '0');
                 favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">Favorites</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                favDiv.innerHTML = `<i data-lucide="${isFavSelected ? 'check-circle' : 'folder-heart'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">Favorites</span>`;
                 favDiv.onclick = () => {
                     this.state.currentPerson = null;
                     this.state.isFilteredByPerson = false;
@@ -2083,7 +2237,7 @@
                         const isSelected = pl.Id === this.state.currentLibraryId;
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.innerHTML = `<i data-lucide="${isSelected ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>`;
                         div.onclick = () => {
                             this.state.currentPerson = null;
                             this.state.isFilteredByPerson = false;
@@ -2110,15 +2264,17 @@
                     filteredViews.forEach(lib => {
                         const div = document.createElement('div');
                         const isSelected = lib.Id === this.state.currentLibraryId;
-                        let iconName = 'clapperboard';
-                        if (lib.CollectionType === 'tvshows') iconName = 'tv';
-                        else if (lib.CollectionType === 'homevideos') iconName = 'video';
-                        else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
-                        else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+                        let iconName = isSelected ? 'check-circle' : 'clapperboard';
+                        if (!isSelected) {
+                            if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                            else if (lib.CollectionType === 'homevideos') iconName = 'video';
+                            else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
+                            else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+                        }
 
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>`;
                         div.onclick = () => {
                             this.state.currentPerson = null;
                             this.state.isFilteredByPerson = false;
@@ -2236,17 +2392,312 @@
                 }
             }
 
+            async searchVideos(term) {
+                if (!this.state.searchTerm && term) {
+                    this.state.preSearchState = {
+                        videos: [...this.state.videos],
+                        currentIndex: this.state.currentIndex,
+                        totalCount: this.state.totalCount,
+                        startIndex: this.state.startIndex || 0,
+                    };
+                }
+                this.state.searchTerm = term;
+                if (!term) {
+                    this.restorePreSearch();
+                    return;
+                }
+                this.state.startIndex = 0;
+                await this.fetchVideos(null, null, false, false, false, term);
+            }
+
+            restorePreSearch() {
+                if (this.state.preSearchState) {
+                    Object.assign(this.state, this.state.preSearchState);
+                    this.state.preSearchState = null;
+                }
+                this.state.searchTerm = '';
+                this.renderGridView();
+            }
+
+            async showAddToPlaylist() {
+                const item = this.state.videos[this.state.currentIndex];
+                if (!item) return;
+
+                const list = document.getElementById('playlistAddList');
+                if (!list) return;
+
+                let playlists = [];
+                const cachedStr = localStorage.getItem('emby_views_cache');
+                if (cachedStr) {
+                    try {
+                        const cached = JSON.parse(cachedStr);
+                        playlists = cached.playlists?.Items || [];
+                    } catch (e) {}
+                }
+
+                if (playlists.length === 0) {
+                    try {
+                        this.toggleLoading(true);
+                        const { server, token, userId } = this.config;
+                        const res = await fetch(
+                            `${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`,
+                            { headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` } }
+                        );
+                        if (res.ok) playlists = (await res.json()).Items || [];
+                    } catch (e) {
+                        this.showToast('Failed to get playlists');
+                    } finally {
+                        this.toggleLoading(false);
+                    }
+                }
+
+                const itemIdStr = String(item.Id);
+                const containedSet = this.state.itemPlaylistsMap[itemIdStr] || new Set();
+
+                if (this.state.lastSelectedPlaylist) {
+                    const lastIdStr = String(this.state.lastSelectedPlaylist.id);
+                    playlists.sort((a, b) => {
+                        if (String(a.Id) === lastIdStr) return -1;
+                        if (String(b.Id) === lastIdStr) return 1;
+                        return 0;
+                    });
+                }
+
+                list.innerHTML = '';
+                const headerCreateBtn = document.getElementById('modalCreatePlaylistBtn');
+                if (headerCreateBtn) headerCreateBtn.onclick = () => this.createNewPlaylist(item.Id);
+
+                if (playlists.length === 0) {
+                    const emptyTip = document.createElement('div');
+                    emptyTip.className = 'col-span-2 p-3 text-center text-gray-400 text-xs';
+                    emptyTip.textContent = 'No playlists available';
+                    list.appendChild(emptyTip);
+                } else {
+                    playlists.forEach(pl => {
+                        const plIdStr = String(pl.Id);
+                        const isContained = containedSet.has(plIdStr);
+                        const isLastSelected = this.state.lastSelectedPlaylist && String(this.state.lastSelectedPlaylist.id) === plIdStr;
+
+                        const div = document.createElement('div');
+                        div.setAttribute('tabindex', '0');
+                        div.className = `focusable-item p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 transition-all active:scale-95 ${
+                            isContained 
+                                ? 'bg-primary/20 text-primary font-bold border border-primary/40' 
+                                : isLastSelected
+                                    ? 'bg-white/20 text-white border border-primary/40'
+                                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                        }`;
+                        
+                        div.innerHTML = `
+                            <i data-lucide="${isContained ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0 ${isContained ? 'text-primary' : ''}"></i>
+                            <span class="flex-1 truncate">${pl.Name}</span>
+                            ${isLastSelected ? '<span class="text-[10px] bg-primary/30 text-primary px-1.5 py-0.5 rounded">Last</span>' : ''}
+                        `;
+                        div.onclick = () => this.toggleItemPlaylist(pl.Id, pl.Name, item.Id, isContained);
+                        list.appendChild(div);
+                    });
+                }
+                lucide.createIcons({ nameAttr: 'data-lucide', nodes: [document.getElementById('addToPlaylistModal')] });
+                this.toggleModal('addToPlaylistModal', true);
+            }
+
+            async createNewPlaylist(itemId) {
+                const name = prompt('Enter new playlist name:');
+                if (!name || !name.trim()) return;
+                const playlistName = name.trim();
+                const { server, token, userId } = this.config;
+                try {
+                    this.toggleLoading(true);
+                    const res = await fetch(
+                        `${server}/emby/Playlists?Name=${encodeURIComponent(playlistName)}&Ids=${itemId}&UserId=${userId}&api_key=${token}`,
+                        {
+                            method: 'POST',
+                            headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                        }
+                    );
+                    if (res.ok) {
+                        const data = await res.json();
+                        const plId = data.Id;
+                        this.showToast(`✅ Created & added to "${playlistName}"`);
+                        localStorage.removeItem('emby_views_cache');
+                        
+                        const itemIdStr = String(itemId);
+                        if (!this.state.itemPlaylistsMap[itemIdStr]) this.state.itemPlaylistsMap[itemIdStr] = new Set();
+                        if (plId) this.state.itemPlaylistsMap[itemIdStr].add(String(plId));
+                        if (plId) this.state.lastSelectedPlaylist = { id: plId, name: playlistName };
+                        
+                        this.updateUI();
+                        this.toggleModal('addToPlaylistModal', false);
+                    } else {
+                        this.showToast('Failed to create playlist');
+                    }
+                } catch (e) {
+                    this.showToast('Network error');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
+            async removeAllPlaylistsFromItem(itemId) {
+                const itemIdStr = String(itemId);
+                const set = this.state.itemPlaylistsMap[itemIdStr];
+                if (!set || set.size === 0) return;
+                const playlistIds = Array.from(set);
+                const { server, token } = this.config;
+                try {
+                    this.toggleLoading(true);
+                    await Promise.all(playlistIds.map(async plId => {
+                        try {
+                            await fetch(
+                                `${server}/emby/Playlists/${plId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
+                                {
+                                    method: 'DELETE',
+                                    headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                }
+                            );
+                        } catch(e) {}
+                    }));
+                    this.state.itemPlaylistsMap[itemIdStr].clear();
+                    this.showToast('Removed from all playlists');
+                    this.updateUI();
+                } catch(e) {
+                    this.showToast('Failed to remove');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
+            async toggleItemPlaylist(playlistId, playlistName, itemId, isRemove, isQuickAdd = false) {
+                const { server, token, userId } = this.config;
+                const itemIdStr = String(itemId);
+                const plIdStr = String(playlistId);
+
+                try {
+                    if (isQuickAdd) this.toggleLoading(true);
+                    
+                    let res;
+                    if (isRemove) {
+                        res = await fetch(
+                            `${server}/emby/Playlists/${playlistId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
+                            {
+                                method: 'DELETE',
+                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            }
+                        );
+                    } else {
+                        res = await fetch(
+                            `${server}/emby/Playlists/${playlistId}/Items?Ids=${itemId}&UserId=${userId}&api_key=${token}`,
+                            {
+                                method: 'POST',
+                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            }
+                        );
+                    }
+
+                    if (res.ok) {
+                        if (!this.state.itemPlaylistsMap[itemIdStr]) this.state.itemPlaylistsMap[itemIdStr] = new Set();
+                        
+                        if (isRemove) {
+                            this.state.itemPlaylistsMap[itemIdStr].delete(plIdStr);
+                            this.showToast(`Removed from "${playlistName}"`);
+                        } else {
+                            this.state.itemPlaylistsMap[itemIdStr].add(plIdStr);
+                            this.state.lastSelectedPlaylist = { id: playlistId, name: playlistName };
+                            this.showToast(`✅ Added to "${playlistName}"`);
+                        }
+
+                        this.updateUI();
+                        if (!isQuickAdd) {
+                            this.showAddToPlaylist();
+                        }
+                    } else {
+                        this.showToast(isRemove ? 'Failed to remove' : 'Failed to add');
+                    }
+                } catch (e) {
+                    this.showToast('Network error');
+                } finally {
+                    if (isQuickAdd) this.toggleLoading(false);
+                }
+            }
+
+
+            async filterByTag(tagName) {
+                if (!tagName) return;
+                this.toggleLoading(true);
+                try {
+                    const { server, token, userId } = this.config;
+                    const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                    const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
+                    const res = await fetch(url, {
+                        headers: {
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                        }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.state.personVideos = data.Items || [];
+                        this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
+                        this.state.currentTag = tagName;
+                        this.state.isFilteredByTag = true;
+                        this.state.currentPerson = null;
+                        this.state.viewMode = 'grid';
+
+                        const vBtn = this.dom.viewModeBtn;
+                        if (vBtn) {
+                            vBtn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
+                            lucide.createIcons();
+                        }
+
+                        const app = document.getElementById('app');
+                        if (app) {
+                            app.classList.remove('interface-hidden');
+                            app.classList.add('grid-active');
+                        }
+                        this.dom.videoContainer.style.touchAction = 'auto';
+                        this.renderGridView();
+                    }
+                } catch (e) {
+                    this.showToast('Failed to filter tag');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
 
             updateUI() {
                 const item = this.state.videos[this.state.currentIndex];
                 if (item) {
                     this.dom.videoTitle.textContent = item.Name;
-                    this.dom.videoDescription.textContent = item.Overview || 'No Description';
+                    this.dom.videoTitle.classList.add('truncate');
+                    this.dom.videoTitle.classList.remove('whitespace-normal', 'break-all');
+                    this.dom.videoDescription.classList.add('line-clamp-2');
+                    
+                    let overviewText = item.Overview || 'No Description';
+                    let rawTags = [];
+                    if (Array.isArray(item.Tags) && item.Tags.length > 0) {
+                        rawTags = item.Tags.map(t => typeof t === 'string' ? t : (t.Name || ''));
+                    } else if (Array.isArray(item.TagItems) && item.TagItems.length > 0) {
+                        rawTags = item.TagItems.map(t => typeof t === 'string' ? t : (t.Name || ''));
+                    }
+                    rawTags = rawTags.filter(Boolean);
+
+                    let tagsHtml = '';
+                    if (rawTags.length > 0) {
+                        tagsHtml = ' ' + rawTags.map(tag => `<span class="tag-item font-bold text-primary hover:underline cursor-pointer mr-1.5 inline break-all" data-tag="${this.escapeHtml(tag)}">#${this.escapeHtml(tag)}</span>`).join(' ');
+                    }
+                    this.dom.videoDescription.innerHTML = this.escapeHtml(overviewText) + tagsHtml;
 
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = item.UserData?.IsFavorite === true;
                     favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons({ nameAttr: 'data-lucide', nodes: [favBtn] });
+
+                    const starBtn = document.getElementById('addToPlaylistBtn');
+                    if (starBtn) {
+                        const set = this.state.itemPlaylistsMap[String(item.Id)];
+                        const inPlaylist = set && set.size > 0;
+                        starBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="star" class="${inPlaylist ? 'text-yellow-400 fill-yellow-400' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                        lucide.createIcons({ nameAttr: 'data-lucide', nodes: [starBtn] });
+                    }
                 }
             }
 
@@ -2400,9 +2851,11 @@
             toggleViewMode() {
                 const isStream = this.state.viewMode === 'stream';
 
-                if (isStream && this.state.isFilteredByPerson) {
+                if (isStream && (this.state.isFilteredByPerson || this.state.isFilteredByTag)) {
                     this.state.currentPerson = null;
                     this.state.isFilteredByPerson = false;
+                    this.state.currentTag = null;
+                    this.state.isFilteredByTag = false;
                     this.state.viewMode = 'grid';
 
                     const btn = this.dom.viewModeBtn;
@@ -2593,17 +3046,89 @@
                     this.showInterfaceTemp();
                 };
 
+                let starPressTimer = null;
+                let isStarLongPress = false;
+
+                const cancelStarPress = () => {
+                    clearTimeout(starPressTimer);
+                };
+
+                this.dom.addToPlaylistBtn.onpointerdown = (e) => {
+                    isStarLongPress = false;
+                    clearTimeout(starPressTimer);
+                    starPressTimer = setTimeout(() => {
+                        isStarLongPress = true;
+                        const item = this.state.videos[this.state.currentIndex];
+                        if (!item) return;
+                        const itemIdStr = String(item.Id);
+                        const set = this.state.itemPlaylistsMap[itemIdStr];
+                        if (set && set.size > 0) {
+                            this.removeAllPlaylistsFromItem(item.Id);
+                        } else if (this.state.lastSelectedPlaylist) {
+                            const lastPl = this.state.lastSelectedPlaylist;
+                            this.toggleItemPlaylist(lastPl.id, lastPl.name, item.Id, false, true);
+                        } else {
+                            this.showAddToPlaylist();
+                        }
+                    }, 450);
+                };
+
+                this.dom.addToPlaylistBtn.onpointerup = cancelStarPress;
+                this.dom.addToPlaylistBtn.onpointercancel = cancelStarPress;
+                this.dom.addToPlaylistBtn.onpointerleave = cancelStarPress;
+
+                this.dom.addToPlaylistBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (isStarLongPress) {
+                        isStarLongPress = false;
+                        return;
+                    }
+                    this.showAddToPlaylist();
+                    this.showInterfaceTemp();
+                };
+
+                const closePlaylistBtn = document.getElementById('closeAddToPlaylistBtn');
+                if (closePlaylistBtn) {
+                    closePlaylistBtn.onclick = () => this.toggleModal('addToPlaylistModal', false);
+                }
+                const playlistModal = document.getElementById('addToPlaylistModal');
+                if (playlistModal) {
+                    playlistModal.onclick = (e) => {
+                        if (e.target === e.currentTarget) this.toggleModal('addToPlaylistModal', false);
+                    };
+                }
+
                 this.dom.scaleBtn.onclick = (e) => {
                     e.stopPropagation();
                     this.toggleScaleMode();
                     this.showInterfaceTemp();
                 };
 
-                this.dom.videoInfoArea.onclick = (e) => {
+                this.dom.videoTitle.onclick = (e) => {
                     e.stopPropagation();
                     const app = document.getElementById('app');
                     if (app.classList.contains('interface-hidden') || app.classList.contains('grid-active')) return;
                     this.showMediaInfo();
+                };
+
+                this.dom.videoDescriptionArea.onclick = (e) => {
+                    e.stopPropagation();
+                    const tagEl = e.target.closest('.tag-item');
+                    if (tagEl && tagEl.dataset.tag) {
+                        this.filterByTag(tagEl.dataset.tag);
+                        return;
+                    }
+                    const descEl = this.dom.videoDescription;
+                    const titleEl = this.dom.videoTitle;
+                    if (descEl.classList.contains('line-clamp-2')) {
+                        descEl.classList.remove('line-clamp-2');
+                        titleEl.classList.remove('truncate');
+                        titleEl.classList.add('whitespace-normal', 'break-all');
+                    } else {
+                        descEl.classList.add('line-clamp-2');
+                        titleEl.classList.add('truncate');
+                        titleEl.classList.remove('whitespace-normal', 'break-all');
+                    }
                 };
 
                 this.dom.closeMediaInfoBtn.onclick = (e) => {
@@ -2719,7 +3244,7 @@
                             this.toggleLoading(true);
                             try {
                                 const { server, token, userId } = this.config;
-                                const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources&Person=${encodeURIComponent(personName)}`;
+                                const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Person=${encodeURIComponent(personName)}`;
                                 const res = await fetch(url, {
                                     headers: {
                                         'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
@@ -3035,21 +3560,40 @@
                 document.getElementById('app').appendChild(speedToast);
                 lucide.createIcons();
 
+                const resetSpeed = () => {
+                    clearTimeout(longPressTimer);
+                    speedToast.classList.add('opacity-0');
+                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                    const v = document.getElementById(`video-p${slideIdx}`);
+                    if (v && v.playbackRate !== 1.0) v.playbackRate = 1.0;
+                };
+
                 const startHandler = (e) => {
-                    if (this.state.viewMode !== 'stream') { gestureActive = false; return; }
+                    if (this.state.viewMode !== 'stream') { gestureActive = false; resetSpeed(); return; }
+                    if (this.isAnyModalOpen()) { gestureActive = false; resetSpeed(); return; }
+
                     const excluded = [
                         '.bottom-nav',
                         '.bottom-info',
                         '.right-toolbar',
+                        '#favoriteBtn',
+                        '#addToPlaylistBtn',
+                        '#scaleBtn',
+                        '#muteBtn',
+                        '#personBtn',
                         '#fullscreenBtn',
                         '#deleteBtn',
+                        'header',
+                        '.safe-header',
                         '#libraryModal',
+                        '#addToPlaylistModal',
                         '#mediaInfoModal',
                         '#deleteConfirmModal',
                         '.profile-layer',
                     ];
                     if (excluded.some(sel => e.target.closest(sel))) {
                         gestureActive = false;
+                        resetSpeed();
                         return;
                     }
 
@@ -3066,7 +3610,7 @@
 
                     clearTimeout(longPressTimer);
                     longPressTimer = setTimeout(() => {
-                        if (state === 'IDLE') {
+                        if (state === 'IDLE' && gestureActive && !this.isAnyModalOpen()) {
                             state = 'SPEED';
                             if (v) v.playbackRate = 2.0;
                             speedToast.classList.remove('opacity-0');
@@ -3075,7 +3619,10 @@
                 };
 
                 const moveHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') return;
+                    if (!gestureActive || this.state.viewMode !== 'stream' || this.isAnyModalOpen()) {
+                        if (state === 'SPEED') resetSpeed();
+                        return;
+                    }
                     const t = e.touches ? e.touches[0] : e;
                     const diffX = t.clientX - x0;
                     const diffY = t.clientY - y0;
@@ -3088,10 +3635,7 @@
                         clearTimeout(longPressTimer);
 
                         if (state === 'SPEED') {
-                            speedToast.classList.add('opacity-0');
-                            const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                            const v = document.getElementById(`video-p${slideIdx}`);
-                            if (v) v.playbackRate = 1.0;
+                            resetSpeed();
                         }
 
                         if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
@@ -3115,7 +3659,10 @@
                 };
 
                 const endHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') return;
+                    if (!gestureActive || this.state.viewMode !== 'stream') {
+                        resetSpeed();
+                        return;
+                    }
                     gestureActive = false;
                     clearTimeout(longPressTimer);
 
@@ -3123,8 +3670,7 @@
                     const v = document.getElementById(`video-p${slideIdx}`);
 
                     if (state === 'SPEED') {
-                        if (v) v.playbackRate = 1.0;
-                        speedToast.classList.add('opacity-0');
+                        resetSpeed();
                         state = 'IDLE';
                         this.showInterfaceTemp();
                         return;
@@ -3193,7 +3739,11 @@
                     lastTouchEnd = Date.now();
                     endHandler(e);
                 });
-                container.addEventListener('touchcancel', () => { gestureActive = false; state = 'IDLE'; clearTimeout(longPressTimer); speedToast.classList.add('opacity-0'); });
+                container.addEventListener('touchcancel', () => { 
+                    gestureActive = false; 
+                    state = 'IDLE'; 
+                    resetSpeed();
+                });
 
                 let isMouseDown = false;
                 container.addEventListener('mousedown', (e) => {
@@ -3215,7 +3765,11 @@
                     endHandler(e);
                 };
                 container.addEventListener('mouseup', mouseEndHandler);
-                container.addEventListener('mouseleave', mouseEndHandler);
+                container.addEventListener('mouseleave', (e) => {
+                    mouseEndHandler(e);
+                    resetSpeed();
+                });
+                window.addEventListener('blur', resetSpeed);
             }
 
             async handleDoubleTapSkip(direction, x, y) {
@@ -3363,6 +3917,16 @@
                 const m = Math.floor(s / 60);
                 const sec = Math.floor(s % 60);
                 return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            }
+
+            escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
             }
         }
 

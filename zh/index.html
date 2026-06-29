@@ -186,6 +186,13 @@
                 </div>
             </div>
 
+            <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
+                id="addToPlaylistBtn">
+                <div class="w-12 h-12 flex items-center justify-center">
+                    <i data-lucide="star" class="stroke-white w-6 h-6 drop-shadow-md"></i>
+                </div>
+            </div>
+
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="scaleBtn">
                 <div class="w-12 h-12 flex items-center justify-center">
                     <i data-lucide="maximize-2" class="stroke-white w-6 h-6 drop-shadow-md"></i>
@@ -277,11 +284,12 @@
 
         <div
             class="bottom-info absolute bottom-20 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
-            <div id="videoInfoArea"
-                class="mb-3 pointer-events-auto w-[85%] pr-4 cursor-pointer active:opacity-75 transition-opacity">
-                <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate">正在初始化...</h3>
-                <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90">
-                    请点击右下角“我的”进行服务器配置</p>
+            <div class="mb-3 w-[85%] pr-4">
+                <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate pointer-events-auto cursor-pointer hover:underline inline-block max-w-full">正在初始化...</h3>
+                <div id="videoDescriptionArea" class="pointer-events-auto cursor-pointer">
+                    <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90 transition-all">
+                        请点击右下角“我的”进行服务器配置</p>
+                </div>
             </div>
 
             <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1" id="progressBarContainer">
@@ -411,12 +419,12 @@
                             <div class="flex items-center">
                                 <h3 class="text-white font-bold text-2xl tracking-tight">📱 EmbyX</h3>
                                 <span id="appVersionBadge"
-                                    class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v1.2</span>
+                                    class="ml-2 px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v2.0</span>
                             </div>
 
                             <div>
                                 <p class="text-gray-300">👋 Hi～我叫<a href="https://juneix.github.io" target="_blank"
-                                        class="text-primary hover:underline">@谢週五</a>，EmbyX 是一款专为 Emby / Jellyfin 打造的
+                                        class="text-primary hover:underline">@谢週五</a>，EmbyX 是一款专为 Emby / Jellyfin（兼容飞牛影视🔥）打造的
                                     Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉</p>
                             </div>
 
@@ -567,7 +575,7 @@
                                         class="flex items-center justify-center text-[#FB7299] bg-[#FB7299]/10 hover:bg-[#FB7299]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FB7299]/20 text-[10px] whitespace-nowrap active:scale-95">
                                         <img src="https://cdn.simpleicons.org/bilibili/FB7299"
                                             class="w-3.5 h-3.5 mr-1.5" alt="Bilibili" /> B 站·教程</a>
-                                    <a href="https://xhslink.com/m/XSWtx7YRfI" target="_blank"
+                                    <a href="https://xhslink.com/m/7JytoZm2Rpl" target="_blank"
                                         class="flex items-center justify-center text-[#FF2442] bg-[#FF2442]/10 hover:bg-[#FF2442]/20 px-3 py-1.5 rounded-full transition-colors border border-[#FF2442]/20 text-[10px] whitespace-nowrap active:scale-95">
                                         <img src="https://cdn.simpleicons.org/xiaohongshu/FF2442"
                                             class="w-3.5 h-3.5 mr-1.5" alt="Xiaohongshu" /> 小红书·攻略</a>
@@ -618,6 +626,22 @@
                 <h3 class="text-white text-lg font-bold mb-4 text-center">选择媒体源</h3>
                 <div id="librariesList" class="grid grid-cols-2 gap-2"></div>
                 <button id="closeLibraryBtn"
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">关闭</button>
+            </div>
+        </div>
+
+        <div id="addToPlaylistModal"
+            class="fixed inset-0 bg-black/20 z-50 flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+            <div
+                class="bg-black/50 rounded-xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                <div class="relative flex items-center justify-center mb-4 min-h-[2rem]">
+                    <h3 class="text-white text-lg font-bold text-center">播放列表</h3>
+                    <button id="modalCreatePlaylistBtn" title="新建播放列表" class="focusable-item absolute right-0 p-1 rounded-full text-primary hover:bg-primary/20 active:scale-95 transition-all">
+                        <i data-lucide="list-plus" class="w-6 h-6"></i>
+                    </button>
+                </div>
+                <div id="playlistAddList" class="grid grid-cols-2 gap-2"></div>
+                <button id="closeAddToPlaylistBtn"
                     class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">关闭</button>
             </div>
         </div>
@@ -679,7 +703,13 @@
                     currentPerson: null,
                     isFilteredByPerson: false,
                     personVideos: [],
-                    personTotalCount: 0
+                    personTotalCount: 0,
+                    searchTerm: '',
+                    preSearchState: null,
+                    lastSelectedPlaylist: null,
+                    itemPlaylistsMap: {},
+                    currentTag: null,
+                    isFilteredByTag: false
                 };
 
                 this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false, fnOS: false };
@@ -721,7 +751,7 @@
             // 检查当前是否有任何弹窗/面板处于打开状态
             // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
-                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'syncConfirmModal', 'profilePage', 'libraryModal'];
+                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'syncConfirmModal', 'profilePage', 'libraryModal', 'addToPlaylistModal'];
                 return modals.some(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
@@ -741,6 +771,7 @@
                 this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
 
                 this.loadFavorites();
+                this.initGlobalPlaylistIndex();
                 this.bindEvents();
 
                 this.state.isAutoplay = this.config.autoplay !== false;
@@ -837,9 +868,9 @@
             cacheDOM() {
                 const ids = [
                     'videoContainer', 'clickToPlayOverlay', 'loading', 'toast',
-                    'videoInfoArea', 'videoTitle', 'videoDescription', 'progressLine', 'currentTime', 'totalTime',
+                    'videoDescriptionArea', 'videoTitle', 'videoDescription', 'progressLine', 'currentTime', 'totalTime',
                     'playModeBtn', 'viewModeBtn', 'libraryBtn', 'myBtn',
-                    'favoriteBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
+                    'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
                     'syncConfirmModal', 'confirmSyncBtn', 'cancelSyncBtn', 'syncFileName',
@@ -1147,8 +1178,42 @@
                 }
             }
 
+            async initGlobalPlaylistIndex() {
+                const { server, token, userId } = this.config;
+                if (!server || !token || !userId) return;
+                try {
+                    const res = await fetch(`${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`, {
+                        headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                    });
+                    if (!res.ok) return;
+                    const data = await res.json();
+                    const playlists = data.Items || [];
+                    
+                    const map = {};
+                    await Promise.all(playlists.map(async pl => {
+                        try {
+                            const cRes = await fetch(`${server}/emby/Playlists/${pl.Id}/Items?UserId=${userId}&api_key=${token}&Limit=10000&Fields=Id`, {
+                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            });
+                            if (cRes.ok) {
+                                const cData = await cRes.json();
+                                if (cData.Items) {
+                                    cData.Items.forEach(item => {
+                                        const itemIdStr = String(item.Id);
+                                        if (!map[itemIdStr]) map[itemIdStr] = new Set();
+                                        map[itemIdStr].add(String(pl.Id));
+                                    });
+                                }
+                            }
+                        } catch(e) {}
+                    }));
+                    this.state.itemPlaylistsMap = map;
+                    this.updateUI();
+                } catch(e) {}
+            }
+
             // --- 核心播放逻辑 ---
-            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false) {
+            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false, searchTerm = '') {
                 this.toggleLoading(!isAppend); // 追加时不显示全屏 loading
                 try {
                     const { server, token, userId } = this.config;
@@ -1172,9 +1237,15 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources`;
+                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
 
-                    if (this.state.currentPerson) {
+                    if (searchTerm) {
+                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
+                    } else if (this.state.currentTag) {
+                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
+                    } else if (this.state.currentPerson) {
                         url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
                     } else if (ids) {
                         url += `&Ids=${ids}`;
@@ -1202,58 +1273,68 @@
                         throw new Error(`服务器错误: ${res.status}`);
                     }
                     let data = await res.json();
+                    const items = data.Items || [];
 
-                    if (data && data.Items && data.Items.length > 0) {
-                        if (isAppend) {
-                            this.state.videos.push(...data.Items);
+                    if (isAppend) {
+                        if (items.length > 0) {
+                            this.state.videos.push(...items);
                             if (this.state.playMode === 'random' && this.state.originalVideos) {
-                                this.state.originalVideos.push(...data.Items);
+                                this.state.originalVideos.push(...items);
                             }
-                            return; // 追加状态静默退出，不重置数据和 UI
                         } else {
-                            this.state.videos = data.Items;
-                            this.state.currentIndex = 0;
-
-                            // 短剧模式：尝试从本地恢复进度
-                            if (this.config.shortDrama && !isAppend && this.state.currentLibraryId) {
-                                const lastId = localStorage.getItem(`emby_last_id_${this.state.currentLibraryId}`);
-                                if (lastId) {
-                                    const savedIndex = this.state.videos.findIndex(v => v.Id === lastId);
-                                    if (savedIndex !== -1) {
-                                        this.state.currentIndex = savedIndex;
-                                    }
-                                }
-                            }
-
-                            // 保存媒体库真实总数（API 返回，不受 Limit 影响）供分页显示
-                            this.state.totalCount = data.TotalRecordCount || 0;
-
-                            // 随机模式下加载完，直接原地洗牌（保持第一个视频在首位）
-                            if (this.state.playMode === 'random') {
-                                this.state.originalVideos = [...this.state.videos];
-                                this._shuffleAroundCurrent();
-                            }
-
-                            if (this.state.viewMode === 'grid') {
-                                this.renderGridView();
-                            } else {
-                                this.renderSlides();
-                                this.loadVideo(this.state.currentIndex);
-                                // 短剧模式：异步检查云端是否有更新的进度
-                                if (this.config.shortDrama && !isAppend) {
-                                    setTimeout(() => this.checkCloudSync(), 1500);
-                                }
-                            }
+                            if (!isAppend) this.showToast('没有更多视频了');
                         }
-                    } else if (isLoadMore || isAppend) {
-                        if (!isAppend) this.showToast('没有更多视频了');
-                        // 已到最后一页，不循环
+                        return;
+                    }
+
+                    if (isLoadMore && items.length === 0) {
+                        this.showToast('没有更多视频了');
                         this.state.startIndex = Math.max(0, (this.state.startIndex || 0));
                         this.toggleLoading(false);
                         return;
-                    } else {
+                    }
+
+                    this.state.videos = items;
+                    this.state.currentIndex = 0;
+                    const fetchedTotal = typeof data.TotalRecordCount === 'number' ? data.TotalRecordCount : items.length;
+                    this.state.totalCount = fetchedTotal;
+                    if (searchTerm) {
+                        this.state.searchTotalCount = fetchedTotal;
+                    }
+
+                    if (items.length === 0) {
                         this.showToast('没有找到视频');
-                        this.dom.videoContainer.innerHTML = '';
+                    }
+
+                    // 短剧模式：尝试从本地恢复进度
+                    if (this.config.shortDrama && items.length > 0 && this.state.currentLibraryId) {
+                        const lastId = localStorage.getItem(`emby_last_id_${this.state.currentLibraryId}`);
+                        if (lastId) {
+                            const savedIndex = this.state.videos.findIndex(v => v.Id === lastId);
+                            if (savedIndex !== -1) {
+                                this.state.currentIndex = savedIndex;
+                            }
+                        }
+                    }
+
+                    // 随机模式下加载完，直接原地洗牌（保持第一个视频在首位）
+                    if (this.state.playMode === 'random' && items.length > 0) {
+                        this.state.originalVideos = [...this.state.videos];
+                        this._shuffleAroundCurrent();
+                    }
+
+                    if (this.state.viewMode === 'grid') {
+                        this.renderGridView();
+                    } else {
+                        if (items.length > 0) {
+                            this.renderSlides();
+                            this.loadVideo(this.state.currentIndex);
+                            if (this.config.shortDrama) {
+                                setTimeout(() => this.checkCloudSync(), 1500);
+                            }
+                        } else {
+                            this.renderGridView(); // 瀑布流播放模式下无搜索结果时，退回网格视图展示 0 统计
+                        }
                     }
                 } catch (e) {
                     console.error('获取视频失败:', e);
@@ -1318,37 +1399,74 @@
             renderGridView() {
                 this.dom.slides = null;
                 const container = this.dom.videoContainer;
-                // 重置页面滚动（防止 scrollIntoView 污染 html.scrollTop 导致标题栏错位）
                 document.documentElement.scrollTop = 0;
-                // 禁用过渡 + 强制回流，再清零 transform，防止 stream 模式的偏移残留
                 container.style.transition = 'none';
                 void container.offsetHeight;
                 container.style.transform = 'none';
-                container.innerHTML = '';
-                // 完全重置为绝对定位的、可滚动的原生网格层
-                container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
 
-                // 背景海报模糊层
+                let bgLayer = container.querySelector('.bg-poster-layer');
+                let safeHeader = document.getElementById('gridSafeHeader');
+                let searchBar = document.getElementById('gridSearchBar');
+                let scrollArea = document.getElementById('gridScrollArea');
+
+                if (!safeHeader || !searchBar || !scrollArea) {
+                    container.innerHTML = '';
+                    container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
+
+                    bgLayer = document.createElement('div');
+                    bgLayer.className = 'bg-poster-layer absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
+                    container.appendChild(bgLayer);
+
+                    safeHeader = document.createElement('div');
+                    safeHeader.id = 'gridSafeHeader';
+                    container.appendChild(safeHeader);
+
+                    searchBar = document.createElement('div');
+                    searchBar.id = 'gridSearchBar';
+                    container.appendChild(searchBar);
+
+                    scrollArea = document.createElement('div');
+                    scrollArea.id = 'gridScrollArea';
+                    scrollArea.className = 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative w-full overscroll-contain';
+                    scrollArea.style.WebkitOverflowScrolling = 'touch';
+                    container.appendChild(scrollArea);
+
+                    let isDown = false, startY, scrollTop;
+                    scrollArea.addEventListener('mousedown', (e) => {
+                        isDown = true;
+                        scrollArea.style.cursor = 'grabbing';
+                        startY = e.pageY - scrollArea.offsetTop;
+                        scrollTop = scrollArea.scrollTop;
+                    });
+                    scrollArea.addEventListener('mouseleave', () => { isDown = false; scrollArea.style.cursor = ''; });
+                    scrollArea.addEventListener('mouseup', () => { isDown = false; scrollArea.style.cursor = ''; });
+                    scrollArea.addEventListener('mousemove', (e) => {
+                        if (!isDown) return;
+                        e.preventDefault();
+                        const y = e.pageY - scrollArea.offsetTop;
+                        const walk = (y - startY) * 2;
+                        scrollArea.scrollTop = scrollTop - walk;
+                    });
+                }
+
+                // 背景海报模糊层更新
                 const currentVideo = this.state.videos[this.state.currentIndex];
                 const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : this.getImageSrc(null);
-                const bgLayer = document.createElement('div');
-                bgLayer.className = 'absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
                 if (bgPosterStr) {
                     bgLayer.style.backgroundImage = `url('${bgPosterStr}')`;
                 }
-                container.appendChild(bgLayer);
-
-                const gridWrapper = document.createElement('div');
-                const safeHeader = document.createElement('div');
 
                 let libraryName = '全部视频';
-                if (this.state.currentPerson) {
-                    libraryName = this.state.currentPerson;
+                if (this.state.searchTerm) {
+                    libraryName = `搜索：${this.state.searchTerm}`;
+                } else if (this.state.isFilteredByTag && this.state.currentTag) {
+                    libraryName = `标签：${this.state.currentTag}`;
+                } else if (this.state.currentPerson) {
+                    libraryName = `演员：${this.state.currentPerson}`;
                 } else if (this.state.currentLibraryId === 'favorites') {
                     libraryName = '收藏夹';
                 } else if (this.state.currentLibraryId) {
                     const libIdStr = String(this.state.currentLibraryId);
-                    // 尝试从视图/播放列表数据缓存中寻找库名
                     const cachedViewsStr = localStorage.getItem('emby_views_cache');
                     if (cachedViewsStr) {
                         try {
@@ -1365,23 +1483,26 @@
                     }
                 }
 
-                const PAGE_SIZE = 150; // 与 fetchVideos 中保持一致
-                const totalCount = this.state.currentPerson ? (this.state.personTotalCount || this.state.personVideos.length) : (this.state.totalCount || 0);
+                const PAGE_SIZE = 150;
+                let totalCount = 0;
+                if (this.state.searchTerm) {
+                    totalCount = typeof this.state.searchTotalCount === 'number' ? this.state.searchTotalCount : (this.state.totalCount || this.state.videos.length);
+                } else if (this.state.currentPerson || this.state.isFilteredByTag) {
+                    totalCount = typeof this.state.personTotalCount === 'number' ? this.state.personTotalCount : this.state.personVideos.length;
+                } else {
+                    totalCount = this.state.totalCount || this.state.videos.length;
+                }
                 const startIndex = this.state.startIndex || 0;
                 const currentPage = Math.floor(startIndex / PAGE_SIZE) + 1;
                 const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-                const isSpecificLib = !!this.state.currentLibraryId || !!this.state.currentPerson; // 是否选了具体媒体库或人物
-                const showPager = isSpecificLib && totalPages > 1;
-
-                // 总数显示：真实数字（≤999）或 999+
                 const countStr = totalCount > 999 ? '999+' : String(totalCount);
 
                 safeHeader.className = 'w-full flex items-center gap-2 bg-black/50 backdrop-blur-sm border-b border-gray-800/50 px-3 pb-3';
                 safeHeader.style.paddingTop = 'max(8px, env(safe-area-inset-top, 8px))';
 
-                // 全局统一布局： [媒体库名] [count ✨] (若有多页则右侧添加 [❮ x/n ❯])
+                const isSearchActive = !!this.state.searchTerm;
                 safeHeader.innerHTML = `
-                    <span class="text-sm font-bold text-gray-200">${libraryName}</span>
+                    <span class="text-sm font-bold text-gray-200 truncate max-w-[40%]">${libraryName}</span>
                     <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                         ${countStr}
                         <span class="w-1.5"></span>
@@ -1390,81 +1511,62 @@
                         </button>
                     </span>
                     <span class="flex-1"></span>
-                    ${showPager ? `
-                        <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
-                        <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
-                        <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
-                    ` : ''}
+                    <button id="gridFolderSearchBtn" title="搜索"
+                        class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-gray-400 hover:text-white'}">
+                        <i data-lucide="folder-search" class="w-4 h-4"></i>
+                    </button>
+                    <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
+                    <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
+                    <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
                 `;
-                container.appendChild(safeHeader);
 
-                // 换一批按钮：所有模式都有，随机获取  150 个
+                searchBar.className = `w-full bg-black/50 border-b border-gray-800/50 px-3 py-2 ${this.state.searchTerm ? '' : 'hidden'}`;
+                if (!searchBar.innerHTML) {
+                    searchBar.innerHTML = `
+                        <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
+                            <i data-lucide="search" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
+                            <input id="gridSearchInput" type="search"
+                                   value="${this.state.searchTerm}"
+                                   placeholder="视频名、演员、描述…"
+                                   class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500 min-w-0">
+                        </div>
+                    `;
+                }
+
                 const shuffleBtn = document.getElementById('gridShuffleBtn');
                 if (shuffleBtn) {
                     const curLibId = this.state.currentLibraryId;
-                    const libArg = (!curLibId || curLibId === 'favorites' || this.state.currentPerson) ? null : curLibId;
+                    const libArg = (!curLibId || curLibId === 'favorites' || this.state.currentPerson || this.state.searchTerm) ? null : curLibId;
                     shuffleBtn.onclick = (e) => {
                         e.stopPropagation();
                         this.state.startIndex = 0;
-                        this.fetchVideos(libArg, null, false, true); // isRandom=true
+                        this.fetchVideos(libArg, null, false, true);
                     };
                 }
 
-                // 分页按钮：仅指定媒体库且多页时显示
-                if (showPager) {
-                    const curLibId = this.state.currentLibraryId;
-                    const libArg = (curLibId === 'favorites' || this.state.currentPerson) ? null : curLibId;
+                const curLibId = this.state.currentLibraryId;
+                const libArg = (curLibId === 'favorites' || this.state.currentPerson || this.state.searchTerm) ? null : curLibId;
 
-                    const prevBtn = document.getElementById('gridPrevBtn');
-                    if (prevBtn && currentPage > 1) {
-                        prevBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            this.state.startIndex = Math.max(0, startIndex - PAGE_SIZE);
-                            this.fetchVideos(libArg, null, true, false);
-                        };
-                    }
-                    const nextBtn = document.getElementById('gridNextBtn');
-                    if (nextBtn && currentPage < totalPages) {
-                        nextBtn.onclick = (e) => {
-                            e.stopPropagation();
-                            this.state.startIndex = startIndex + PAGE_SIZE;
-                            this.fetchVideos(libArg, null, true, false);
-                        };
-                    }
+                const prevBtn = document.getElementById('gridPrevBtn');
+                if (prevBtn && currentPage > 1) {
+                    prevBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.state.startIndex = Math.max(0, startIndex - PAGE_SIZE);
+                        this.fetchVideos(libArg, null, true, false, false, this.state.searchTerm);
+                    };
+                }
+                const nextBtn = document.getElementById('gridNextBtn');
+                if (nextBtn && currentPage < totalPages) {
+                    nextBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        this.state.startIndex = startIndex + PAGE_SIZE;
+                        this.fetchVideos(libArg, null, true, false, false, this.state.searchTerm);
+                    };
                 }
 
-                // 创建专门的内部滚动容器
-                const scrollArea = document.createElement('div');
-                scrollArea.className = 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative w-full overscroll-contain';
-                scrollArea.style.WebkitOverflowScrolling = 'touch';
-                container.appendChild(scrollArea);
-
-                // MOUSE DRAG SUPPORT FOR GRID
-                let isDown = false;
-                let startY;
-                let scrollTop;
-                scrollArea.addEventListener('mousedown', (e) => {
-                    isDown = true;
-                    scrollArea.style.cursor = 'grabbing';
-                    startY = e.pageY - scrollArea.offsetTop;
-                    scrollTop = scrollArea.scrollTop;
-                });
-                scrollArea.addEventListener('mouseleave', () => {
-                    isDown = false;
-                    scrollArea.style.cursor = '';
-                });
-                scrollArea.addEventListener('mouseup', () => {
-                    isDown = false;
-                    scrollArea.style.cursor = '';
-                });
-                scrollArea.addEventListener('mousemove', (e) => {
-                    if (!isDown) return;
-                    e.preventDefault();
-                    const y = e.pageY - scrollArea.offsetTop;
-                    const walk = (y - startY) * 2;
-                    scrollArea.scrollTop = scrollTop - walk;
-                });
-
+                // 清空并重新构建滚动列表内容
+                scrollArea.innerHTML = '';
+                const gridWrapper = document.createElement('div');
                 gridWrapper.className = 'grid grid-cols-3 gap-1 content-start w-full relative z-10 px-1 pt-2';
                 scrollArea.appendChild(gridWrapper);
 
@@ -1492,7 +1594,6 @@
                     img.loading = 'lazy';
                     img.onerror = () => {
                         img.onerror = null;
-                        // poster.webp 也不存在时，用内联 SVG 兜底，避免显示破损图标
                         img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1" height="1"%3E%3Crect width="1" height="1" fill="%23333"%2F%3E%3C%2Fsvg%3E';
                     };
                     el.appendChild(img);
@@ -1510,18 +1611,11 @@
                     gridWrapper.appendChild(el);
                 });
 
-                // --- 彩蛋尾部文案：一言 API ---
-                // 修改说明：
-                //   基础 URL: https://v1.hitokoto.cn/
-                //   常用参数: ?c=a (动画) | ?c=b (漫画) | ?c=d (文学) | ?c=i (诗词)
-                //   不传参数则随机全类型
-                //   如不需要彩蛋，移除下方代码块即可
                 const eggFooter = document.createElement('div');
                 eggFooter.className = 'col-span-3 pt-8 pb-24 px-4 text-center text-gray-600 text-[11px] leading-relaxed select-none';
                 eggFooter.innerHTML = '<span class="opacity-40">——</span>';
                 gridWrapper.appendChild(eggFooter);
 
-                // 异步获取一言并填入尾部 (使用内存缓存，避免重复请求)
                 if (this.state._hitokotoCache) {
                     const data = this.state._hitokotoCache;
                     const source = [data.from_who, data.from].filter(Boolean).join(' · ');
@@ -1546,15 +1640,8 @@
                         });
                 }
 
+                this.updateUI();
 
-                // 定位到当前高亮元素
-                const focusVideo = this.state.videos[this.state.currentIndex];
-                if (focusVideo) {
-                    this.dom.videoTitle.textContent = focusVideo.Name || '未知视频';
-                    this.dom.videoDescription.textContent = focusVideo.Overview || '没有简介...';
-                }
-
-                // 滚动到当前高亮的卡片（直接操作 scrollArea，避免 scrollIntoView 污染 html.scrollTop）
                 requestAnimationFrame(() => {
                     const activeEl = gridWrapper.children[this.state.currentIndex];
                     if (activeEl && scrollArea) {
@@ -1564,6 +1651,49 @@
                         scrollArea.scrollTop = elTop - (areaHeight / 2) + (elHeight / 2);
                     }
                 });
+
+                const fsBtn = document.getElementById('gridFolderSearchBtn');
+                if (fsBtn) {
+                    fsBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (this.state.searchTerm) {
+                            this.searchVideos('');
+                        } else {
+                            const bar = document.getElementById('gridSearchBar');
+                            if (bar) {
+                                bar.classList.toggle('hidden');
+                                if (!bar.classList.contains('hidden')) {
+                                    document.getElementById('gridSearchInput')?.focus();
+                                }
+                            }
+                        }
+                    };
+                }
+
+                const searchInput = document.getElementById('gridSearchInput');
+                if (searchInput && !searchInput.dataset.bound) {
+                    searchInput.dataset.bound = 'true';
+                    let isComposing = false;
+                    let debounce = null;
+
+                    searchInput.addEventListener('compositionstart', () => {
+                        isComposing = true;
+                    });
+                    searchInput.addEventListener('compositionend', (e) => {
+                        isComposing = false;
+                        const val = e.target.value.trim();
+                        this.searchVideos(val);
+                    });
+                    searchInput.addEventListener('input', (e) => {
+                        if (isComposing) return;
+                        clearTimeout(debounce);
+                        const val = e.target.value.trim();
+                        debounce = setTimeout(() => this.searchVideos(val), 500);
+                    });
+                    searchInput.addEventListener('keydown', (e) => {
+                        if (e.key === 'Escape') this.searchVideos('');
+                    });
+                }
 
                 lucide.createIcons();
             }
@@ -1787,7 +1917,7 @@
                     const { server, token, userId } = this.config;
                     if (!server || !token || !userId) return;
 
-                    const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People`, {
+                    const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People,Tags,TagItems`, {
                         headers: {
                             'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
                         }
@@ -1795,6 +1925,11 @@
                     if (res.ok) {
                         const data = await res.json();
                         if (btn.dataset.videoId !== currentId) return;
+
+                        let hasNewTags = false;
+                        if (data.Tags && data.Tags.length > 0) { videoData.Tags = data.Tags; hasNewTags = true; }
+                        if (data.TagItems && data.TagItems.length > 0) { videoData.TagItems = data.TagItems; hasNewTags = true; }
+                        if (hasNewTags) this.updateUI();
 
                         const person = data.People && data.People.length > 0 ? data.People[0] : null;
                         if (person) {
@@ -2407,7 +2542,7 @@
                 const isFavSelected = this.state.currentLibraryId === 'favorites';
                 favDiv.setAttribute('tabindex', '0');
                 favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                favDiv.innerHTML = `<i data-lucide="folder-heart" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">收藏夹</span>${isFavSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                favDiv.innerHTML = `<i data-lucide="${isFavSelected ? 'check-circle' : 'folder-heart'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">收藏夹</span>`;
                 favDiv.onclick = () => {
                     this.state.currentPerson = null;
                     this.state.isFilteredByPerson = false;
@@ -2438,7 +2573,7 @@
                         const isSelected = pl.Id === this.state.currentLibraryId;
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="list-video" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.innerHTML = `<i data-lucide="${isSelected ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>`;
                         // pl.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = pl.Name;
                         div.onclick = () => {
@@ -2467,15 +2602,17 @@
                     filteredViews.forEach(lib => {
                         const div = document.createElement('div');
                         const isSelected = lib.Id === this.state.currentLibraryId;
-                        let iconName = 'clapperboard';
-                        if (lib.CollectionType === 'tvshows') iconName = 'tv';
-                        else if (lib.CollectionType === 'homevideos') iconName = 'video';
-                        else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
-                        else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+                        let iconName = isSelected ? 'check-circle' : 'clapperboard';
+                        if (!isSelected) {
+                            if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                            else if (lib.CollectionType === 'homevideos') iconName = 'video';
+                            else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
+                            else if (lib.CollectionType === 'boxsets') iconName = 'archive';
+                        }
 
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>${isSelected ? '<i data-lucide="check" class="w-3.5 h-3.5 flex-shrink-0"></i>' : ''}`;
+                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>`;
                         // lib.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = lib.Name;
                         div.onclick = () => {
@@ -2605,20 +2742,317 @@
                 }
             }
 
+            async searchVideos(term) {
+                if (!this.state.searchTerm && term) {
+                    this.state.preSearchState = {
+                        videos: [...this.state.videos],
+                        currentIndex: this.state.currentIndex,
+                        totalCount: this.state.totalCount,
+                        startIndex: this.state.startIndex || 0,
+                    };
+                }
+                this.state.searchTerm = term;
+                if (!term) {
+                    this.restorePreSearch();
+                    return;
+                }
+                this.state.startIndex = 0;
+                await this.fetchVideos(null, null, false, false, false, term);
+            }
+
+            restorePreSearch() {
+                if (this.state.preSearchState) {
+                    Object.assign(this.state, this.state.preSearchState);
+                    this.state.preSearchState = null;
+                }
+                this.state.searchTerm = '';
+                this.renderGridView();
+            }
+
+            async showAddToPlaylist() {
+                const item = this.state.videos[this.state.currentIndex];
+                if (!item) return;
+
+                const list = document.getElementById('playlistAddList');
+                if (!list) return;
+
+                let playlists = [];
+                const cachedStr = localStorage.getItem('emby_views_cache');
+                if (cachedStr) {
+                    try {
+                        const cached = JSON.parse(cachedStr);
+                        playlists = cached.playlists?.Items || [];
+                    } catch (e) {}
+                }
+
+                if (playlists.length === 0) {
+                    try {
+                        this.toggleLoading(true);
+                        const { server, token, userId } = this.config;
+                        const res = await fetch(
+                            `${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`,
+                            { headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` } }
+                        );
+                        if (res.ok) playlists = (await res.json()).Items || [];
+                    } catch (e) {
+                        this.showToast('获取播放列表失败');
+                    } finally {
+                        this.toggleLoading(false);
+                    }
+                }
+
+                // 直接从全量内存反向索引中读取当前视频所在的播放列表
+                const itemIdStr = String(item.Id);
+                const containedSet = this.state.itemPlaylistsMap[itemIdStr] || new Set();
+
+                // 排序：上次选择的播放列表优先置顶
+                if (this.state.lastSelectedPlaylist) {
+                    const lastIdStr = String(this.state.lastSelectedPlaylist.id);
+                    playlists.sort((a, b) => {
+                        if (String(a.Id) === lastIdStr) return -1;
+                        if (String(b.Id) === lastIdStr) return 1;
+                        return 0;
+                    });
+                }
+
+                list.innerHTML = '';
+                const headerCreateBtn = document.getElementById('modalCreatePlaylistBtn');
+                if (headerCreateBtn) headerCreateBtn.onclick = () => this.createNewPlaylist(item.Id);
+
+                // 2. 渲染已有播放列表
+                if (playlists.length === 0) {
+                    const emptyTip = document.createElement('div');
+                    emptyTip.className = 'col-span-2 p-3 text-center text-gray-400 text-xs';
+                    emptyTip.textContent = '暂无已有播放列表';
+                    list.appendChild(emptyTip);
+                } else {
+                    playlists.forEach(pl => {
+                        const plIdStr = String(pl.Id);
+                        const isContained = containedSet.has(plIdStr);
+                        const isLastSelected = this.state.lastSelectedPlaylist && String(this.state.lastSelectedPlaylist.id) === plIdStr;
+
+                        const div = document.createElement('div');
+                        div.setAttribute('tabindex', '0');
+                        div.className = `focusable-item p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 transition-all active:scale-95 ${
+                            isContained 
+                                ? 'bg-primary/20 text-primary font-bold border border-primary/40' 
+                                : isLastSelected
+                                    ? 'bg-white/20 text-white border border-primary/40'
+                                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                        }`;
+                        
+                        div.innerHTML = `
+                            <i data-lucide="${isContained ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0 ${isContained ? 'text-primary' : ''}"></i>
+                            <span class="flex-1 truncate">${pl.Name}</span>
+                            ${isLastSelected ? '<span class="text-[10px] bg-primary/30 text-primary px-1.5 py-0.5 rounded">上次</span>' : ''}
+                        `;
+                        div.onclick = () => this.toggleItemPlaylist(pl.Id, pl.Name, item.Id, isContained);
+                        list.appendChild(div);
+                    });
+                }
+                lucide.createIcons({ nameAttr: 'data-lucide', nodes: [document.getElementById('addToPlaylistModal')] });
+                this.toggleModal('addToPlaylistModal', true);
+            }
+
+            async createNewPlaylist(itemId) {
+                const name = prompt('请输入新播放列表名称：');
+                if (!name || !name.trim()) return;
+                const playlistName = name.trim();
+                const { server, token, userId } = this.config;
+                try {
+                    this.toggleLoading(true);
+                    const res = await fetch(
+                        `${server}/emby/Playlists?Name=${encodeURIComponent(playlistName)}&Ids=${itemId}&UserId=${userId}&api_key=${token}`,
+                        {
+                            method: 'POST',
+                            headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                        }
+                    );
+                    if (res.ok) {
+                        const data = await res.json();
+                        const plId = data.Id;
+                        this.showToast(`✅ 已创建并加入「${playlistName}」`);
+                        localStorage.removeItem('emby_views_cache');
+                        
+                        // 关联记录
+                        const itemIdStr = String(itemId);
+                        if (!this.state.itemPlaylistsMap[itemIdStr]) this.state.itemPlaylistsMap[itemIdStr] = new Set();
+                        if (plId) this.state.itemPlaylistsMap[itemIdStr].add(String(plId));
+                        if (plId) this.state.lastSelectedPlaylist = { id: plId, name: playlistName };
+                        
+                        this.updateUI();
+                        this.toggleModal('addToPlaylistModal', false);
+                    } else {
+                        this.showToast('创建播放列表失败');
+                    }
+                } catch (e) {
+                    this.showToast('网络错误');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
+            async removeAllPlaylistsFromItem(itemId) {
+                const itemIdStr = String(itemId);
+                const set = this.state.itemPlaylistsMap[itemIdStr];
+                if (!set || set.size === 0) return;
+                const playlistIds = Array.from(set);
+                const { server, token } = this.config;
+                try {
+                    this.toggleLoading(true);
+                    await Promise.all(playlistIds.map(async plId => {
+                        try {
+                            await fetch(
+                                `${server}/emby/Playlists/${plId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
+                                {
+                                    method: 'DELETE',
+                                    headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                }
+                            );
+                        } catch(e) {}
+                    }));
+                    this.state.itemPlaylistsMap[itemIdStr].clear();
+                    this.showToast('已清空所有归类播放列表');
+                    this.updateUI();
+                } catch(e) {
+                    this.showToast('移除失败');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
+            async toggleItemPlaylist(playlistId, playlistName, itemId, isRemove, isQuickAdd = false) {
+                const { server, token, userId } = this.config;
+                const itemIdStr = String(itemId);
+                const plIdStr = String(playlistId);
+
+                try {
+                    if (isQuickAdd) this.toggleLoading(true);
+                    
+                    let res;
+                    if (isRemove) {
+                        res = await fetch(
+                            `${server}/emby/Playlists/${playlistId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
+                            {
+                                method: 'DELETE',
+                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            }
+                        );
+                    } else {
+                        res = await fetch(
+                            `${server}/emby/Playlists/${playlistId}/Items?Ids=${itemId}&UserId=${userId}&api_key=${token}`,
+                            {
+                                method: 'POST',
+                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            }
+                        );
+                    }
+
+                    if (res.ok) {
+                        if (!this.state.itemPlaylistsMap[itemIdStr]) this.state.itemPlaylistsMap[itemIdStr] = new Set();
+                        
+                        if (isRemove) {
+                            this.state.itemPlaylistsMap[itemIdStr].delete(plIdStr);
+                            this.showToast(`已从「${playlistName}」中移除`);
+                        } else {
+                            this.state.itemPlaylistsMap[itemIdStr].add(plIdStr);
+                            this.state.lastSelectedPlaylist = { id: playlistId, name: playlistName };
+                            this.showToast(`✅ 已添加到「${playlistName}」`);
+                        }
+
+                        this.updateUI();
+                        if (!isQuickAdd) {
+                            this.showAddToPlaylist(); // 重新洗牌渲染弹窗列表状态
+                        }
+                    } else {
+                        this.showToast(isRemove ? '移除失败' : '添加失败');
+                    }
+                } catch (e) {
+                    this.showToast('网络错误');
+                } finally {
+                    if (isQuickAdd) this.toggleLoading(false);
+                }
+            }
+
+            async filterByTag(tagName) {
+                if (!tagName) return;
+                this.toggleLoading(true);
+                try {
+                    const { server, token, userId } = this.config;
+                    const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                    const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
+                    const res = await fetch(url, {
+                        headers: {
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                        }
+                    });
+                    if (res.ok) {
+                        const data = await res.json();
+                        this.state.personVideos = data.Items || [];
+                        this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
+                        this.state.currentTag = tagName;
+                        this.state.isFilteredByTag = true;
+                        this.state.currentPerson = null;
+                        this.state.viewMode = 'grid';
+
+                        const vBtn = this.dom.viewModeBtn;
+                        if (vBtn) {
+                            vBtn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
+                            lucide.createIcons();
+                        }
+
+                        const app = document.getElementById('app');
+                        if (app) {
+                            app.classList.remove('interface-hidden');
+                            app.classList.add('grid-active');
+                        }
+                        this.dom.videoContainer.style.touchAction = 'auto';
+                        this.renderGridView();
+                    }
+                } catch (e) {
+                    this.showToast('筛选标签失败');
+                } finally {
+                    this.toggleLoading(false);
+                }
+            }
+
             // --- UI 更新与交互 ---
 
             updateUI() {
                 const item = this.state.videos[this.state.currentIndex];
                 if (item) {
                     this.dom.videoTitle.textContent = item.Name;
-                    this.dom.videoDescription.textContent = item.Overview || '暂无简介';
+                    this.dom.videoTitle.classList.add('truncate');
+                    this.dom.videoTitle.classList.remove('whitespace-normal', 'break-all');
+                    this.dom.videoDescription.classList.add('line-clamp-2');
+                    
+                    let overviewText = item.Overview || '暂无简介';
+                    let rawTags = [];
+                    if (Array.isArray(item.Tags) && item.Tags.length > 0) {
+                        rawTags = item.Tags.map(t => typeof t === 'string' ? t : (t.Name || ''));
+                    } else if (Array.isArray(item.TagItems) && item.TagItems.length > 0) {
+                        rawTags = item.TagItems.map(t => typeof t === 'string' ? t : (t.Name || ''));
+                    }
+                    rawTags = rawTags.filter(Boolean);
+
+                    let tagsHtml = '';
+                    if (rawTags.length > 0) {
+                        tagsHtml = ' ' + rawTags.map(tag => `<span class="tag-item font-bold text-primary hover:underline cursor-pointer mr-1.5 inline break-all" data-tag="${this.escapeHtml(tag)}">#${this.escapeHtml(tag)}</span>`).join(' ');
+                    }
+                    this.dom.videoDescription.innerHTML = this.escapeHtml(overviewText) + tagsHtml;
 
                     const favBtn = document.getElementById('favoriteBtn');
-                    // 以 Emby API 返回的 UserData.IsFavorite 为单一数据源
                     const isFav = item.UserData?.IsFavorite === true;
                     favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
-                    // 定向更新：只扫描 favBtn 内部，不全局扫描 DOM
                     lucide.createIcons({ nameAttr: 'data-lucide', nodes: [favBtn] });
+
+                    const starBtn = document.getElementById('addToPlaylistBtn');
+                    if (starBtn) {
+                        const set = this.state.itemPlaylistsMap[String(item.Id)];
+                        const inPlaylist = set && set.size > 0;
+                        starBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="star" class="${inPlaylist ? 'text-yellow-400 fill-yellow-400' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                        lucide.createIcons({ nameAttr: 'data-lucide', nodes: [starBtn] });
+                    }
                 }
             }
 
@@ -2789,9 +3223,11 @@
             toggleViewMode() {
                 const isStream = this.state.viewMode === 'stream';
 
-                if (isStream && this.state.isFilteredByPerson) {
+                if (isStream && (this.state.isFilteredByPerson || this.state.isFilteredByTag)) {
                     this.state.currentPerson = null;
                     this.state.isFilteredByPerson = false;
+                    this.state.currentTag = null;
+                    this.state.isFilteredByTag = false;
                     this.state.viewMode = 'grid';
 
                     const btn = this.dom.viewModeBtn;
@@ -2989,18 +3425,91 @@
                     this.showInterfaceTemp();
                 };
 
+                let starPressTimer = null;
+                let isStarLongPress = false;
+
+                const cancelStarPress = () => {
+                    clearTimeout(starPressTimer);
+                };
+
+                this.dom.addToPlaylistBtn.onpointerdown = (e) => {
+                    isStarLongPress = false;
+                    clearTimeout(starPressTimer);
+                    starPressTimer = setTimeout(() => {
+                        isStarLongPress = true;
+                        const item = this.state.videos[this.state.currentIndex];
+                        if (!item) return;
+                        const itemIdStr = String(item.Id);
+                        const set = this.state.itemPlaylistsMap[itemIdStr];
+                        if (set && set.size > 0) {
+                            // 已添加过播放列表：长按取消加入的所有播放列表
+                            this.removeAllPlaylistsFromItem(item.Id);
+                        } else if (this.state.lastSelectedPlaylist) {
+                            // 未添加过播放列表：快捷加入上次选择的列表
+                            const lastPl = this.state.lastSelectedPlaylist;
+                            this.toggleItemPlaylist(lastPl.id, lastPl.name, item.Id, false, true);
+                        } else {
+                            this.showAddToPlaylist();
+                        }
+                    }, 450);
+                };
+
+                this.dom.addToPlaylistBtn.onpointerup = cancelStarPress;
+                this.dom.addToPlaylistBtn.onpointercancel = cancelStarPress;
+                this.dom.addToPlaylistBtn.onpointerleave = cancelStarPress;
+
+                this.dom.addToPlaylistBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    if (isStarLongPress) {
+                        isStarLongPress = false;
+                        return;
+                    }
+                    this.showAddToPlaylist();
+                    this.showInterfaceTemp();
+                };
+
+                const closePlaylistBtn = document.getElementById('closeAddToPlaylistBtn');
+                if (closePlaylistBtn) {
+                    closePlaylistBtn.onclick = () => this.toggleModal('addToPlaylistModal', false);
+                }
+                const playlistModal = document.getElementById('addToPlaylistModal');
+                if (playlistModal) {
+                    playlistModal.onclick = (e) => {
+                        if (e.target === e.currentTarget) this.toggleModal('addToPlaylistModal', false);
+                    };
+                }
+
                 this.dom.scaleBtn.onclick = (e) => {
                     e.stopPropagation();
                     this.toggleScaleMode();
                     this.showInterfaceTemp();
                 };
 
-                this.dom.videoInfoArea.onclick = (e) => {
+                this.dom.videoTitle.onclick = (e) => {
                     e.stopPropagation();
                     const app = document.getElementById('app');
-                    // 清屏状态或格子视图均不触发流媒体详情
                     if (app.classList.contains('interface-hidden') || app.classList.contains('grid-active')) return;
                     this.showMediaInfo();
+                };
+
+                this.dom.videoDescriptionArea.onclick = (e) => {
+                    e.stopPropagation();
+                    const tagEl = e.target.closest('.tag-item');
+                    if (tagEl && tagEl.dataset.tag) {
+                        this.filterByTag(tagEl.dataset.tag);
+                        return;
+                    }
+                    const descEl = this.dom.videoDescription;
+                    const titleEl = this.dom.videoTitle;
+                    if (descEl.classList.contains('line-clamp-2')) {
+                        descEl.classList.remove('line-clamp-2');
+                        titleEl.classList.remove('truncate');
+                        titleEl.classList.add('whitespace-normal', 'break-all');
+                    } else {
+                        descEl.classList.add('line-clamp-2');
+                        titleEl.classList.add('truncate');
+                        titleEl.classList.remove('whitespace-normal', 'break-all');
+                    }
                 };
 
                 this.dom.closeMediaInfoBtn.onclick = (e) => {
@@ -3118,7 +3627,7 @@
                             this.toggleLoading(true);
                             try {
                                 const { server, token, userId } = this.config;
-                                const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources&Person=${encodeURIComponent(personName)}`;
+                                const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Person=${encodeURIComponent(personName)}`;
                                 const res = await fetch(url, {
                                     headers: {
                                         'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
@@ -3477,30 +3986,46 @@
                 document.getElementById('app').appendChild(speedToast);
                 lucide.createIcons();
 
+                const resetSpeed = () => {
+                    clearTimeout(longPressTimer);
+                    speedToast.classList.add('opacity-0');
+                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                    const v = document.getElementById(`video-p${slideIdx}`);
+                    if (v && v.playbackRate !== 1.0) v.playbackRate = 1.0;
+                };
+
                 const startHandler = (e) => {
-                    if (this.state.viewMode !== 'stream') { gestureActive = false; return; }
-                    // 黑名单：点击这些 UI 元素时不触发手势（播放/暂停/滑动）
+                    if (this.state.viewMode !== 'stream') { gestureActive = false; resetSpeed(); return; }
+                    if (this.isAnyModalOpen()) { gestureActive = false; resetSpeed(); return; }
+
+                    // 黑名单：点击这些 UI 元素时不触发手势（播放/暂停/倍速/滑动）
                     const excluded = [
                         '.bottom-nav',    // 底部导航栏
                         '.bottom-info',   // 底部进度条+标题区域
-                        '.right-toolbar', // 右侧收藏/缩放/静音
+                        '.right-toolbar', // 右侧侧边栏整块区域
+                        '#favoriteBtn',
+                        '#addToPlaylistBtn',
+                        '#scaleBtn',
+                        '#muteBtn',
+                        '#personBtn',
                         '#fullscreenBtn', // 右上角全屏按钮
                         '#deleteBtn',     // 左上角删除按钮
+                        'header',         // 顶部 safe header 栏
+                        '.safe-header',
                         '#libraryModal',  // 媒体源选择弹窗
+                        '#addToPlaylistModal', // 播放列表弹窗
                         '#mediaInfoModal',// 流媒体信息弹窗
                         '#deleteConfirmModal', // 删除确认弹窗
                         '.profile-layer', // 个人中心全屏面板
                     ];
                     if (excluded.some(sel => e.target.closest(sel))) {
                         gestureActive = false;
+                        resetSpeed();
                         return;
                     }
 
                     gestureActive = true;
                     state = 'IDLE';
-                    // 注释：用户触摸屏幕开始手势时不再重置计时器，
-                    // 只有在 endHandler 中确认为有效交互（点击/进度拖拽）才重置。
-                    // 这样可以避免“上下滑动切换视频”也会不间断刷新清屏计时。
                     const t = e.touches ? e.touches[0] : e;
                     x0 = t.clientX;
                     y0 = t.clientY;
@@ -3512,7 +4037,7 @@
 
                     clearTimeout(longPressTimer);
                     longPressTimer = setTimeout(() => {
-                        if (state === 'IDLE') {
+                        if (state === 'IDLE' && gestureActive && !this.isAnyModalOpen()) {
                             state = 'SPEED';
                             if (v) v.playbackRate = 2.0;
                             speedToast.classList.remove('opacity-0');
@@ -3521,12 +4046,14 @@
                 };
 
                 const moveHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') return;
+                    if (!gestureActive || this.state.viewMode !== 'stream' || this.isAnyModalOpen()) {
+                        if (state === 'SPEED') resetSpeed();
+                        return;
+                    }
                     const t = e.touches ? e.touches[0] : e;
                     const diffX = t.clientX - x0;
                     const diffY = t.clientY - y0;
 
-                    // 如果横向滑动大于纵向滑动，拦截系统返回手势
                     if (Math.abs(diffX) > Math.abs(diffY)) {
                         if (e.cancelable) e.preventDefault();
                     }
@@ -3535,10 +4062,7 @@
                         clearTimeout(longPressTimer);
 
                         if (state === 'SPEED') {
-                            speedToast.classList.add('opacity-0');
-                            const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                            const v = document.getElementById(`video-p${slideIdx}`);
-                            if (v) v.playbackRate = 1.0;
+                            resetSpeed();
                         }
 
                         if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
@@ -3555,7 +4079,6 @@
                             targetTime = originalTime + (ratio * v.duration);
                             targetTime = Math.max(0, Math.min(targetTime, v.duration));
 
-                            // 仅更新UI预览，不修改 currentTime 防止卡顿
                             const progressEl = document.getElementById('progressLine');
                             if (progressEl) progressEl.style.width = `${(targetTime / v.duration) * 100}%`;
                         }
@@ -3563,7 +4086,10 @@
                 };
 
                 const endHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') return;
+                    if (!gestureActive || this.state.viewMode !== 'stream') {
+                        resetSpeed();
+                        return;
+                    }
                     gestureActive = false;
                     clearTimeout(longPressTimer);
 
@@ -3571,10 +4097,8 @@
                     const v = document.getElementById(`video-p${slideIdx}`);
 
                     if (state === 'SPEED') {
-                        if (v) v.playbackRate = 1.0;
-                        speedToast.classList.add('opacity-0');
+                        resetSpeed();
                         state = 'IDLE';
-                        // 结束倍速播放属于有效交互，重置/开始清屏计时
                         this.showInterfaceTemp();
                         return;
                     }
@@ -3582,7 +4106,6 @@
                     if (state === 'DRAG') {
                         if (v) v.currentTime = targetTime;
                         state = 'IDLE';
-                        // 结束进度拖拽属于有效交互，重置/开始清屏计时
                         this.showInterfaceTemp();
                         return;
                     }
@@ -3626,35 +4149,33 @@
                     }
                 };
 
-                // 屏蔽选中和长按菜单
                 container.style.userSelect = 'none';
                 container.style.webkitUserSelect = 'none';
 
-                // 将事件绑定转移到触控遮罩层 (.touch-layer) 或容器，并通过事件拦截进一步确保右键菜单不弹出
                 container.addEventListener('contextmenu', (e) => {
-                    // 如果是在视频区域触发的长按，禁止默认菜单
                     if (e.target.closest('.touch-layer') || e.target.tagName.toLowerCase() === 'video') {
                         e.preventDefault();
                     }
                 });
 
-                // 直接绑定到 container，让 startHandler 内部的排除逻辑自行处理
                 container.addEventListener('touchstart', startHandler, { passive: true });
                 container.addEventListener('touchmove', moveHandler, { passive: false });
 
-                // 记录最后一次 touchend 的时间，用于过滤手机浏览器合成的鼠标事件
                 let lastTouchEnd = 0;
                 container.addEventListener('touchend', (e) => {
                     lastTouchEnd = Date.now();
                     endHandler(e);
                 });
-                container.addEventListener('touchcancel', () => { gestureActive = false; state = 'IDLE'; clearTimeout(longPressTimer); speedToast.classList.add('opacity-0'); });
+                container.addEventListener('touchcancel', () => { 
+                    gestureActive = false; 
+                    state = 'IDLE'; 
+                    resetSpeed();
+                });
 
-                // 鼠标适配层 (PC 端)。如果距上次 touchend < 500ms，则是手机浏览器合成事件，直接忽略
                 let isMouseDown = false;
                 container.addEventListener('mousedown', (e) => {
                     if (e.button !== 0) return;
-                    if (Date.now() - lastTouchEnd < 500) return; // 屏蔽手机合成鼠标事件
+                    if (Date.now() - lastTouchEnd < 500) return;
                     isMouseDown = true;
                     e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
                     startHandler(e);
@@ -3671,7 +4192,11 @@
                     endHandler(e);
                 };
                 container.addEventListener('mouseup', mouseEndHandler);
-                container.addEventListener('mouseleave', mouseEndHandler);
+                container.addEventListener('mouseleave', (e) => {
+                    mouseEndHandler(e);
+                    resetSpeed();
+                });
+                window.addEventListener('blur', resetSpeed);
             }
 
             async handleDoubleTapSkip(direction, x, y) {
@@ -3833,6 +4358,16 @@
                 const m = Math.floor(s / 60);
                 const sec = Math.floor(s % 60);
                 return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+            }
+
+            escapeHtml(str) {
+                if (!str) return '';
+                return String(str)
+                    .replace(/&/g, '&amp;')
+                    .replace(/</g, '&lt;')
+                    .replace(/>/g, '&gt;')
+                    .replace(/"/g, '&quot;')
+                    .replace(/'/g, '&#039;');
             }
         }
 
