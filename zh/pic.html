@@ -3638,9 +3638,10 @@
 
                     // 正常的 安卓/PC 系统调用原生全屏
                     if (!document.fullscreenElement) {
-                        document.documentElement.requestFullscreen().then(() => {
-                            app.classList.add('interface-hidden');
-                        }).catch(() => { });
+                        app.classList.add('interface-hidden');
+                        document.documentElement.requestFullscreen().catch(() => {
+                            app.classList.remove('interface-hidden');
+                        });
                     } else {
                         if (app.classList.contains('interface-hidden')) {
                             app.classList.remove('interface-hidden');
