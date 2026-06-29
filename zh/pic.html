@@ -1304,7 +1304,7 @@
 
                     this.state.videos = items;
                     this.state.currentIndex = 0;
-                    const fetchedTotal = typeof data.TotalRecordCount === 'number' ? data.TotalRecordCount : items.length;
+                    const fetchedTotal = data.TotalRecordCount || items.length;
                     this.state.totalCount = fetchedTotal;
                     if (searchTerm) {
                         this.state.searchTotalCount = fetchedTotal;
@@ -1578,7 +1578,7 @@
                 gridWrapper.className = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 content-start w-full relative z-10 px-1 pt-2';
                 scrollArea.appendChild(gridWrapper);
 
-                const listToRender = this.state.currentPerson ? this.state.personVideos : this.state.videos;
+                const listToRender = (this.state.currentPerson || this.state.isFilteredByTag) ? this.state.personVideos : this.state.videos;
                 listToRender.forEach((video, index) => {
                     const el = document.createElement('div');
                     const isActive = !this.state.currentPerson && (index === this.state.currentIndex);
@@ -3809,6 +3809,7 @@
 
                     // --- 个人中心 / 弹窗 / 网格列表内的空间导航 (Remote Control / Keyboard Focus) ---
                     if (profileActive || libraryActive || document.getElementById('app').classList.contains('grid-active')) {
+                        if (isInput) return;
                         const items = Array.from(document.querySelectorAll(
                             profileActive ? '#profilePage .focusable-item' :
                                 libraryActive ? '#libraryModal .focusable-item' :
