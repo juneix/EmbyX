@@ -697,6 +697,7 @@
                     lastReportTime: 0,
                     playSessionId: null,
                     playbackMethod: 'DirectPlay',
+                    isStrmSource: false,
                     originalVideos: [],  // 随机模式下保存原始顺序列表
                     _capabilitiesReported: false,
                     _hitokotoCache: null,
@@ -1237,13 +1238,13 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
+                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber`;
 
                     if (searchTerm) {
-                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                         url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
                     } else if (this.state.currentTag) {
-                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                         url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
                     } else if (this.state.currentPerson) {
                         url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
@@ -1257,10 +1258,10 @@
                     } else if (libraryId === 'favorites') {
                         url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
                     } else if (libraryId) {
-                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                         url += `&${sortStr}&ParentId=${libraryId}`;
                     } else {
-                        const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                         url += `&${sortStr}`;
                     }
 
@@ -1598,7 +1599,65 @@
                     };
                     el.appendChild(img);
 
-                    if (video.RunTimeTicks) {
+                    const isShortDrama = this.config.shortDrama;
+                    const pad = n => String(n).padStart(2, '0');
+                    const hasSeason = video.ParentIndexNumber != null;
+                    const hasEp = video.IndexNumber != null;
+                    const epLabel = isShortDrama
+                        ? ((hasSeason ? `S${pad(video.ParentIndexNumber)}` : '') +
+                           (hasEp ? `E${pad(video.IndexNumber)}` : '') ||
+                           (video.Name || '').slice(0, 8))
+                        : null;
+
+                    const isSeasonOpener = isShortDrama && video.IndexNumber === 1;
+
+                    if (isSeasonOpener && video.SeriesName) {
+                        // 右上角绿色书签图标 (顶部对齐 top-0，离右侧 right-2，填色 fill)
+                        const bookmark = document.createElement('div');
+                        bookmark.className = 'absolute top-0 right-2 z-20 text-primary';
+                        bookmark.innerHTML = `
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="drop-shadow-md">
+                                <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
+                            </svg>
+                        `;
+                        el.appendChild(bookmark);
+
+                        const topLayer = document.createElement('div');
+                        // 顶部遮罩渐变带微调: pt-6 (控制剧名距离顶部距离), pb-8 (控制渐变带高度)
+                        topLayer.className = 'absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent px-1 pt-6 pb-8 flex justify-center';
+                        
+                        const title = document.createElement('div');
+                        // 剧名字号字形微调: text-[20px] (调大2倍), line-clamp-2 (最多折两行)
+                        title.className = 'text-white text-[20px] font-bold text-center leading-tight line-clamp-2 drop-shadow-md';
+                        title.textContent = video.SeriesName;
+                        topLayer.appendChild(title);
+                        el.appendChild(topLayer);
+                    }
+
+                    if (isShortDrama && epLabel) {
+                        const bottomLayer = document.createElement('div');
+                        // 底部渐变层间距微调: px-2 (左右内边距), pb-1.5 (底部与文字间距), pt-5 (渐变高度)
+                        bottomLayer.className = 'absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 to-transparent px-2 pt-5 pb-1.5 flex items-end justify-between';
+
+                        const epDiv = document.createElement('div');
+                        // 字号微调: text-[10px] (稍微调大)
+                        epDiv.className = 'text-white/90 text-[10px] font-mono leading-none drop-shadow';
+                        epDiv.textContent = epLabel;
+                        bottomLayer.appendChild(epDiv);
+
+                        if (video.RunTimeTicks) {
+                            const duration = Math.floor(video.RunTimeTicks / 10000000);
+                            const mins = Math.floor(duration / 60);
+                            const secs = duration % 60;
+                            const timeDiv = document.createElement('div');
+                            // 字号微调: text-[11px]
+                            timeDiv.className = 'text-white/70 text-[11px] font-mono leading-none drop-shadow';
+                            timeDiv.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
+                            bottomLayer.appendChild(timeDiv);
+                        }
+
+                        el.appendChild(bottomLayer);
+                    } else if (video.RunTimeTicks) {
                         const duration = Math.floor(video.RunTimeTicks / 10000000);
                         const mins = Math.floor(duration / 60);
                         const secs = duration % 60;
@@ -2074,6 +2133,7 @@
                                              item.MediaSources[0].Container === 'strm'));
                             
                             if (isStrm) {
+                                this.state.isStrmSource = true;
                                 if (window.activeHls) {
                                     window.activeHls.destroy();
                                     window.activeHls = null;
@@ -2460,6 +2520,7 @@
             // --- 辅助功能 ---
 
             getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
+                if (isPrimaryPlayback) this.state.isStrmSource = false;
                 const { server, token, useStatic } = this.config;
 
                 // 获取视频流元数据
@@ -2979,8 +3040,8 @@
                 this.toggleLoading(true);
                 try {
                     const { server, token, userId } = this.config;
-                    const sortStr = this.config.shortDrama ? 'SortBy=Path&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                    const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
+                    const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                    const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
                     const res = await fetch(url, {
                         headers: {
                             'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
@@ -3353,7 +3414,7 @@
                         if (this.state.playbackMethod === 'Failed') {
                             transcodeState = '播放失败';
                         } else if (this.state.playbackMethod === 'DirectPlay') {
-                            transcodeState = '直接播放';
+                            transcodeState = this.state.isStrmSource ? '直接播放 (STRM)' : '直接播放';
                         } else if (this.state.playbackMethod === 'DirectStream') {
                             const audioCodec = (src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '').toLowerCase();
                             const isAudioNative = ['aac', 'mp3', 'ac3', 'eac3', 'aac_latm'].includes(audioCodec);
