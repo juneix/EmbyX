@@ -1803,7 +1803,7 @@
 
                         // ── iOS 平台特异性极简优化：iOS 限制并发多流 Range 请求，不预加载相邻视频 ──
                         const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-                            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
 
                         if (isIOS && offset !== 0) {
                             // iOS 下对相邻视频只清理，不预加载
@@ -2045,7 +2045,10 @@
                     const hls = new Hls(live ? {
                         maxBufferSize: 0,
                         liveSyncDurationCount: 3
-                    } : {});
+                    } : {
+                        maxBufferLength: 30,
+                        backBufferLength: 15
+                    });
                     window.activeHls = hls;
 
                     hls.on(Hls.Events.MEDIA_ATTACHED, () => {
@@ -2078,10 +2081,13 @@
                     window.activeHls.destroy();
                     window.activeHls = null;
                 }
-                if (videoEl.dataset.requestedSrc === src && videoEl.getAttribute('src')) return;
                 videoEl.pause();
                 videoEl.dataset.requestedSrc = src;
                 videoEl.dataset.hlsLoading = 'false';
+                videoEl.onerror = () => {
+                    const isCurrent = this.isCurrentPlayback(videoEl, item.Id, src);
+                    if (isCurrent) this.retryWithAltMode(index, item);
+                };
                 videoEl.src = src;
                 videoEl.load();
             }
@@ -2146,9 +2152,6 @@
                 if (!v) return;
 
                 const retryCount = parseInt(v.dataset.retryCount || '0');
-                const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-
                 v.dataset.retryCount = String(retryCount + 1);
 
                 const { server, token } = this.config;
@@ -2156,139 +2159,97 @@
 
                 if (this.config.useStatic) {
                     // ── A. 直接播放模式下的自适应兼容回退 ───────────────────────
-                    if (isIOS) {
+                    if (retryCount === 0) {
                         if (window.activeHls) {
                             window.activeHls.destroy();
                             window.activeHls = null;
                         }
+                        if (window.activeMpegtsPlayer) {
+                            window.activeMpegtsPlayer.destroy();
+                            window.activeMpegtsPlayer = null;
+                        }
 
-                        if (retryCount === 0) {
-                            // 原地重载重试，防瞬时网络波动
-                            v.load();
-                            this.playVideo(index);
-                        } else if (retryCount === 1 && this.state.playbackMethod === 'DirectPlay') {
-                            // 完美格式直连失败 ➔ 降级
-                            const vStream = item.MediaSources?.[0]?.MediaStreams?.find(s => s.Type === 'Video');
-                            const codec = (vStream?.Codec || item.MediaSources?.[0]?.VideoCodec || '').toLowerCase();
-                            if (codec === 'hevc') {
-                                // HEVC 的 HLS 流拷贝在 iOS 下有 fMP4 封装 500 崩溃 Bug，在此处禁止降级流拷贝，直接报错提示转码
-                                this.toggleLoading(false);
-                                this.state.playbackMethod = 'Failed';
-                                this.showToast('iOS 限制，请开启转码');
-                            } else {
+                        // 智能判定是否是 strm 直播流视频源
+                        const isStrm = (item.Path && item.Path.endsWith('.strm')) || 
+                                       (item.MediaSources && item.MediaSources[0] && 
+                                        (item.MediaSources[0].Path.startsWith('http') || 
+                                         item.MediaSources[0].Container === 'strm'));
+                        
+                        if (isStrm) {
+                            this.state.isStrmSource = true;
+                            const msId = item.MediaSources?.[0]?.Id || '';
+                            const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
+
+                            const mediaSource = item.MediaSources?.[0];
+                            const container = (mediaSource?.Container || '').toLowerCase();
+                            const path = (mediaSource?.Path || '').toLowerCase();
+                            const isFlv = container === 'flv' || path.includes('.flv') || path.includes('flv=') || path.includes('/flv');
+
+                            const playUrl = mediaSource?.Path && mediaSource.Path.startsWith('http') 
+                                ? mediaSource.Path 
+                                : fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`);
+
+                            if (isFlv && typeof mpegts !== 'undefined' && mpegts.isSupported()) {
+                                this.state.playbackMethod = 'DirectPlay';
+                                v.removeAttribute('src');
+                                v.onerror = null;
+
+                                const player = mpegts.createPlayer({
+                                    type: 'mse',
+                                    isLive: true,
+                                    url: playUrl
+                                }, {
+                                    enableWorker: true,
+                                    enableStashBuffer: false,
+                                    stashInitialSize: 128,
+                                    liveBufferLatencyChasing: true,
+                                    liveBufferLatencyMaxLatency: 1.5,
+                                    liveBufferLatencyMinRemain: 0.5
+                                });
+                                v.dataset.requestedSrc = playUrl;
+                                v.dataset.hlsLoading = 'false';
+                                player.attachMediaElement(v);
+                                player.load();
+                                window.activeMpegtsPlayer = player;
+                                this.playVideo(index);
+                            } else if (v.canPlayType('application/vnd.apple.mpegurl') ||
+                                (typeof Hls !== 'undefined' && Hls.isSupported())) {
+                                this.state.playbackMethod = 'DirectPlay';
+                                this.setVideoSource(v, playUrl, index, item, {
+                                    autoplay: true,
+                                    forceHls: true,
+                                    live: true
+                                });
+                                this.playVideo(index);
+                            }
+                        } else {
+                            // 普通视频降级：若不曾尝试过 DirectStream 则降级走 DirectStream (HLS fMP4 流拷贝，已带 hvc1 精确宣告)
+                            if (this.state.playbackMethod !== 'DirectStream' && this.state.playbackMethod !== 'Transcode') {
+                                if (window.activeHls) { window.activeHls.destroy(); window.activeHls = null; }
+                                if (window.activeMpegtsPlayer) { window.activeMpegtsPlayer.destroy(); window.activeMpegtsPlayer = null; }
                                 this.state.playbackMethod = 'DirectStream';
                                 this.setVideoSource(v, this._buildHlsSrc(item.Id, item, false), index, item, { autoplay: true });
                                 this.playVideo(index);
-                            }
-                        } else {
-                            // 直连模式下不允许强制转码，直接标记失败
-                            this.toggleLoading(false);
-                            this.state.playbackMethod = 'Failed';
-                            this.showToast('iOS 限制，请开启转码');
-                        }
-                    } else {
-                        // 非 iOS 降级链：保持原样 (Direct Play -> Direct Stream)
-                        if (retryCount === 0) {
-                            if (window.activeHls) {
-                                window.activeHls.destroy();
-                                window.activeHls = null;
-                            }
-                            if (window.activeMpegtsPlayer) {
-                                window.activeMpegtsPlayer.destroy();
-                                window.activeMpegtsPlayer = null;
-                            }
-
-                            // 智能判定是否是 strm 直播流视频源
-                            const isStrm = (item.Path && item.Path.endsWith('.strm')) || 
-                                           (item.MediaSources && item.MediaSources[0] && 
-                                            (item.MediaSources[0].Path.startsWith('http') || 
-                                             item.MediaSources[0].Container === 'strm'));
-                            
-                            if (isStrm) {
-                                this.state.isStrmSource = true;
-                                if (window.activeHls) {
-                                    window.activeHls.destroy();
-                                    window.activeHls = null;
-                                }
-                                if (window.activeMpegtsPlayer) {
-                                    window.activeMpegtsPlayer.destroy();
-                                    window.activeMpegtsPlayer = null;
-                                }
-
-                                const msId = item.MediaSources?.[0]?.Id || '';
-                                const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
-
-                                const mediaSource = item.MediaSources?.[0];
-                                const container = (mediaSource?.Container || '').toLowerCase();
-                                const path = (mediaSource?.Path || '').toLowerCase();
-                                const isFlv = container === 'flv' || path.includes('.flv') || path.includes('flv=') || path.includes('/flv');
-
-                                // 智能提取 strm 中的外部直播流 URL 以实现原画直连，绕过 Emby 的 Static 500 报错限制
-                                // 如果 path 是以 http 开头的真实网络流，前端直接用 mpegts/Hls 进行直连播放，不经过 Emby 服务器中转
-                                const playUrl = mediaSource?.Path && mediaSource.Path.startsWith('http') 
-                                    ? mediaSource.Path 
-                                    : fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`);
-
-                                if (isFlv && typeof mpegts !== 'undefined' && mpegts.isSupported()) {
-                                    this.state.playbackMethod = 'DirectPlay';
-                                    // 清理旧报错残留并解绑原生错误监听，防止直播抖动误触发降级导致反复刷新
-                                    v.removeAttribute('src');
-                                    v.onerror = null;
-
-                                    const player = mpegts.createPlayer({
-                                        type: 'mse',
-                                        isLive: true,
-                                        url: playUrl
-                                    }, {
-                                        enableWorker: true,
-                                        enableStashBuffer: false,
-                                        stashInitialSize: 128,
-                                        liveBufferLatencyChasing: true,
-                                        liveBufferLatencyMaxLatency: 1.5,
-                                        liveBufferLatencyMinRemain: 0.5
-                                    });
-                                    v.dataset.requestedSrc = playUrl;
-                                    v.dataset.hlsLoading = 'false';
-                                    player.attachMediaElement(v);
-                                    player.load();
-                                    window.activeMpegtsPlayer = player;
-                                    this.playVideo(index);
-                                } else if (v.canPlayType('application/vnd.apple.mpegurl') ||
-                                    (typeof Hls !== 'undefined' && Hls.isSupported())) {
-                                    this.state.playbackMethod = 'DirectPlay';
-                                    this.setVideoSource(v, playUrl, index, item, {
-                                        autoplay: true,
-                                        forceHls: true,
-                                        live: true
-                                    });
-                                    this.playVideo(index);
-                                }
                             } else {
-                                // 普通本地视频（如 MP4/MKV）：原生 HTML5 播放器，清理并卸载 Hls.js 和 mpegts
-                                if (this.state.playbackMethod === 'DirectStream') {
-                                    this.toggleLoading(false);
-                                    this.state.playbackMethod = 'Failed';
-                                    this.showToast('播放失败，请开启转码');
-                                    return;
-                                }
-                                if (window.activeHls) {
-                                    window.activeHls.destroy();
-                                    window.activeHls = null;
-                                }
-                                if (window.activeMpegtsPlayer) {
-                                    window.activeMpegtsPlayer.destroy();
-                                    window.activeMpegtsPlayer = null;
-                                }
-                                const params = `api_key=${token}&DeviceId=${deviceId}&VideoCodec=h264,hevc,av1&AllowVideoStreamCopy=true&AllowAudioStreamCopy=true`;
-                                this.state.playbackMethod = 'DirectStream';
-                                this.setVideoSource(v, fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream.mp4?${params}`), index, item, { autoplay: true });
+                                // 若 DirectStream 依然无法播放，自适应降级走服务端转码 (Transcode)
+                                if (window.activeHls) { window.activeHls.destroy(); window.activeHls = null; }
+                                if (window.activeMpegtsPlayer) { window.activeMpegtsPlayer.destroy(); window.activeMpegtsPlayer = null; }
+                                this.state.playbackMethod = 'Transcode';
+                                this.setVideoSource(v, this._buildHlsSrc(item.Id, item, true), index, item, { autoplay: true });
                                 this.playVideo(index);
                             }
-                        } else {
-                            this.toggleLoading(false);
-                            this.state.playbackMethod = 'Failed';
-                            this.showToast('播放失败，请开启转码');
                         }
+                    } else if (retryCount === 1) {
+                        // 首次降级转码重试
+                        if (window.activeHls) { window.activeHls.destroy(); window.activeHls = null; }
+                        if (window.activeMpegtsPlayer) { window.activeMpegtsPlayer.destroy(); window.activeMpegtsPlayer = null; }
+                        this.state.playbackMethod = 'Transcode';
+                        this.setVideoSource(v, this._buildHlsSrc(item.Id, item, true), index, item, { autoplay: true });
+                        this.playVideo(index);
+                    } else {
+                        this.toggleLoading(false);
+                        this.state.playbackMethod = 'Failed';
+                        this.showToast('播放失败，请检查 Emby 设置');
                     }
                 } else {
                     // ── B. 转码模式下的兼容失效回退 ───────────────────────────
@@ -2304,6 +2265,39 @@
                 }
             }
 
+            async fetchPlaybackInfoUrl(item) {
+                const id = item?.Id;
+                if (!id) return '';
+                const { server, token } = this.config;
+                try {
+                    const res = await fetch(`${server}/emby/Items/${id}/PlaybackInfo?api_key=${token}`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
+                        },
+                        body: JSON.stringify({
+                            DeviceProfile: {
+                                MaxStreamingBitrate: 140000000,
+                                DirectPlayProfiles: [
+                                    { Container: 'mp4,m4v,mov', Type: 'Video', VideoCodec: 'h264,hevc', AudioCodec: 'aac,mp3' }
+                                ]
+                            }
+                        })
+                    });
+                    if (!res.ok) return '';
+                    const data = await res.json();
+                    const ms = data?.MediaSources?.[0];
+                    const directStreamUrl = ms?.DirectStreamUrl;
+                    if (directStreamUrl) {
+                        return fixUrlForJellyfin(directStreamUrl.startsWith('http') ? directStreamUrl : `${server}${directStreamUrl}`);
+                    }
+                } catch (e) {
+                    console.warn('PlaybackInfo error:', e);
+                }
+                return '';
+            }
+
             _buildHlsSrc(id, mediaItem, forceReencode = false) {
                 const { server, token } = this.config;
                 const mediaSource = mediaItem?.MediaSources?.[0];
@@ -2314,18 +2308,26 @@
                 const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
                 const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
                 const useTsContainer = forceReencode || codec === 'h264';
+                const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
+                const isApple = isSafari || isIOS;
 
                 const params = [
                     `api_key=${token}`,
                     mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
                     `DeviceId=${deviceId}`,
                     `PlaySessionId=${playSessionId}`,
-                    forceReencode ? `VideoCodec=h264` : `VideoCodec=h264,hevc,vp9,av1`, // 强转码锁定 h264；流拷贝声明全格式，fMP4 容器原生支持 VP9/AV1 流拷贝
-                    `AudioCodec=aac,mp3,ac3,opus,flac,vorbis`,
+                    `EnableDirectStream=true`,
+                    `EnableVideoTranscoding=${forceReencode ? 'true' : 'false'}`,
+                    `EnableAudioTranscoding=true`,
+                    `EnableAudioStreamCopy=true`,
+                    forceReencode ? `VideoCodec=h264` : (isApple ? `VideoCodec=hvc1,h264` : `VideoCodec=h264,hevc,hvc1,vp9,av1`), // 苹果设备（macOS Safari & iOS）流拷贝时精准宣告 hvc1,h264（严禁出现 hevc/hev1 子串），强引导 Emby/Jellyfin 服务端自动重写 hev1 标签为 Safari 可解的 hvc1
+                    `AudioCodec=aac,mp3,ac3,eac3,opus,flac,vorbis`,
                     forceReencode ? `VideoBitrate=20000000` : '',   // 仅强转码时限制码率（局域网 20Mbps 上限）；流拷贝时不限制，按源码率传输
                     `AudioBitrate=320000`,
-                    `TranscodingMaxAudioChannels=2`,
-                    useTsContainer ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // H264/HEVC 强制用 TS 容器避开 Emby 500 封装 Bug；AV1/VP9 保留用 fMP4
+                    isSafari ? `TranscodingMaxAudioChannels=6` : `TranscodingMaxAudioChannels=2`, // Safari 支持多声道无损硬解，避免 CPU 音频降混
+                    useTsContainer ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // H264 强制用 TS 容器；HEVC fMP4 无损重封装为 hvc1
                     `MinSegments=1`,
                     useTsContainer ? `BreakOnNonKeyFrames=True` : '',  // 仅 TS 容器需要此关键帧优化
                     forceReencode ? `AllowVideoStreamCopy=false` : `AllowVideoStreamCopy=true`,
@@ -2620,21 +2622,15 @@
 
                 // ── 情况 2: 已勾选【直接播放】 (绝不重编码/极限硬解模式) ────────────────────
                 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
+                const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
+                const isApple = isSafari || isIOS;
 
-                if (isIOS) {
-                    // 智能判定是否是原生完美支持的封装格式及编码（iOS 端 H.264/hvc1 MP4 以及 WebM VP9 视为完美格式，免转码直连）
-                    const isMp4Container = container.includes('mp4') || container.includes('m4v') || container.includes('mov');
-                    const isWebmVP9 = container.includes('webm') && (codec === 'vp9' || codec === 'vp8' || codec === 'h264');
-                    const isNativeCompatible = (codec === 'h264' && isMp4Container) ||
-                                               (codec === 'hevc' && codecTag.includes('hvc1') && isMp4Container) ||
-                                               isWebmVP9;
-
-                    if (!isNativeCompatible) {
-                        // 对于非完美兼容格式（如 HEVC hev1、VP9、AV1、MKV等），首播直接走轻量级的 HLS 视频流拷贝 (Direct Stream)
-                        if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
-                        return this._buildHlsSrc(id, mediaItem, false); // forceReencode = false
-                    }
+                // 苹果设备 (macOS Safari & iOS WebKit) 对 HEVC hev1 裸文件原生无法渲染画面，强制走 HLS fMP4 流拷贝由 Emby/Jellyfin 修正为 hvc1
+                const isHev1Mp4 = codec === 'hevc' && !codecTag.includes('hvc1');
+                if (isApple && isHev1Mp4) {
+                    if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
+                    return this._buildHlsSrc(id, mediaItem, false);
                 }
 
                 // 浏览器对 MKV/TS 等容器的原生支持不稳定，优先让服务端无损转封装为 MP4。
@@ -3761,7 +3757,7 @@
                     const app = document.getElementById('app');
 
                     const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+                        (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
                     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
                     // 检测是否被嵌入在 iframe 中
