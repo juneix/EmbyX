@@ -376,6 +376,17 @@
                         <h2 class="text-primary font-bold text-sm mb-5 flex items-center">
                             <i data-lucide="server" class="w-4 h-4 mr-2"></i>服务器配置
                         </h2>
+                        <!-- 飞牛网关一键授权登录（仅在检测到飞牛统一网关时动态展示） -->
+                        <div id="fnosOAuthBox" class="hidden mb-4 p-4 rounded-lg border border-primary/40 bg-primary/10 transition-all">
+                            <div class="flex items-center space-x-2 mb-3">
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
+                                <span id="fnosOAuthTitle" class="text-sm font-bold text-white">已发现飞牛影视</span>
+                            </div>
+                            <button id="fnosOAuthBtn" type="button"
+                                class="w-full h-11 flex items-center justify-center bg-primary hover:bg-primary/90 text-white text-sm rounded-lg font-bold active:scale-95 shadow-lg shadow-primary/20 transition-all focusable-item">
+                                <i data-lucide="log-in" class="w-4 h-4 mr-2"></i>使用 NAS 账号登录
+                            </button>
+                        </div>
                         <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
                             <div>
                                 <label class="text-gray-400 text-xs block mb-1.5">IP 或域名</label>
@@ -814,6 +825,9 @@
                 // 检查版本更新 (静默模式，仅修改个人中心胶囊颜色)
                 this.checkUpdate();
 
+                // 检查飞牛网关与 OAuth 认证
+                this.initFnosOAuth();
+
                 // ─── 注入项目签名彩蛋 (Branding Egg) ───
                 console.log(
                     "%c EmbyX %c 原创设计@谢週五 %c",
@@ -948,6 +962,124 @@
                 // Jellyfin 初始化挂载
                 if (localStorage.getItem('emby_is_jellyfin') === 'true') {
                     enableJellyfinFetchProxy();
+                }
+            }
+
+            // ═══ 飞牛网关 OAuth 认证 ═══
+            initFnosOAuth() {
+                // 1. 检查 URL 中是否直接携带 OAuth code（重定向场景）
+                const urlParams = new URLSearchParams(window.location.search);
+                const code = urlParams.get('code');
+                if (code) {
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                    this.handleFnosOAuthCode(code);
+                    return;
+                }
+
+                // 2. 注册 postMessage 与 storage 双重监听（弹窗回调场景）
+                window.addEventListener('message', (e) => {
+                    if (e.data && e.data.type === 'FNOS_OAUTH_CODE' && e.data.code) {
+                        this.handleFnosOAuthCode(e.data.code);
+                    }
+                });
+                window.addEventListener('storage', (e) => {
+                    if (e.key === 'fnos_oauth_code' && e.newValue) {
+                        try {
+                            const parsed = JSON.parse(e.newValue);
+                            if (parsed && parsed.code) {
+                                localStorage.removeItem('fnos_oauth_code');
+                                this.handleFnosOAuthCode(parsed.code);
+                            }
+                        } catch (err) {}
+                    }
+                });
+
+                // 3. 探测网关环境
+                this.detectFnosGateway();
+            }
+
+            async detectFnosGateway() {
+                try {
+                    // 若当前已登录且已连接飞牛影视，保持个人中心极简清爽，隐藏网关授权入口
+                    if (this.config.token && this.config.fnOS) return;
+
+                    const base = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
+                    const res = await fetch(base + 'api/fnos/oauth-config');
+                    if (!res.ok) return;
+                    const config = await res.json();
+                    if (!config.is_gateway || !config.oauth_url) return;
+
+                    this._fnosOAuthUrl = config.oauth_url;
+                    const box = document.getElementById('fnosOAuthBox');
+                    const titleEl = document.getElementById('fnosOAuthTitle');
+                    if (box) {
+                        if (titleEl && config.server_name) {
+                            titleEl.textContent = `已发现飞牛影视：${config.server_name}`;
+                        }
+                        box.classList.remove('hidden');
+                        if (window.lucide) lucide.createIcons({ root: box });
+                    }
+                } catch (e) {
+                    // 非飞牛网关环境，静默忽略
+                }
+            }
+
+            openFnosOAuth(oauthUrl) {
+                const width = 520;
+                const height = 650;
+                const left = Math.max(0, (window.screen.width - width) / 2);
+                const top = Math.max(0, (window.screen.height - height) / 2);
+                return window.open(
+                    oauthUrl,
+                    'fnos_oauth',
+                    `width=${width},height=${height},top=${top},left=${left},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
+                );
+            }
+
+            async handleFnosOAuthCode(code) {
+                if (!code || this._oauthExchanging) return;
+                this._oauthExchanging = true;
+                this.toggleLoading(true);
+                this.showToast('正在完成飞牛影视认证...');
+
+                try {
+                    const base = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
+                    const res = await fetch(base + 'api/fnos/oauth-exchange', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ code })
+                    });
+                    if (!res.ok) throw new Error(`换票请求失败: ${res.status}`);
+                    const data = await res.json();
+                    if (!data.AccessToken) throw new Error('未能获取有效 AccessToken');
+
+                    // 确定飞牛同源代理服务根地址
+                    const cleanPath = window.location.pathname.replace(/\/+$/, '');
+                    const serverUrl = window.location.origin + cleanPath;
+                    const userId = (data.SessionInfo && data.SessionInfo.UserId) || (data.User && data.User.Id) || '1';
+                    const userName = (data.User && data.User.Name) || 'fnos_user';
+
+                    localStorage.setItem('emby_server', serverUrl);
+                    localStorage.setItem('emby_user', userName);
+                    localStorage.setItem('emby_token', data.AccessToken);
+                    localStorage.setItem('emby_uid', userId);
+                    localStorage.setItem('emby_fnOS', 'true');
+                    localStorage.setItem('emby_static', 'true');
+                    localStorage.setItem('emby_pwd_len', '0');
+
+                    localStorage.removeItem('emby_views_cache');
+                    localStorage.removeItem('emby_favorites');
+                    localStorage.removeItem('emby_lib_id');
+                    localStorage.removeItem('emby_lib_type');
+
+                    this.showToast('✅ 飞牛影视授权成功，正在加载...', 2000);
+                    setTimeout(() => location.reload(), 800);
+                } catch (e) {
+                    console.error('OAuth exchange error:', e);
+                    this.showToast(`❌ 飞牛授权失败: ${e.message || '未知错误'}`);
+                    this.toggleLoading(false);
+                } finally {
+                    this._oauthExchanging = false;
                 }
             }
 
@@ -3900,6 +4032,10 @@
 
                 document.getElementById('closeProfileBtn').onclick = () => this.toggleModal('profilePage', false);
                 document.getElementById('saveConfigBtn').onclick = () => this.saveConfig();
+                const fnosOAuthBtn = document.getElementById('fnosOAuthBtn');
+                if (fnosOAuthBtn) fnosOAuthBtn.onclick = () => {
+                    if (this._fnosOAuthUrl) this.openFnosOAuth(this._fnosOAuthUrl);
+                };
                 document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
 
                 this.dom.confirmDeleteBtn.onclick = () => this.executeDelete();
