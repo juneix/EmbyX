@@ -5,5 +5,7 @@ android/
 strm_out/
 strm_test/
 .mimocode/
+.zcode/
 key/
 docs/
+AGENTS.md

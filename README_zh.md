@@ -22,7 +22,6 @@ EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻�
 - **键鼠适配**：纯按键控制，电脑、电视轻松摸鱼
 - **PWA 支持**：添加到主屏幕 / 作为应用安装
 - **隐私第一**：数据本地存储，绝不上传云端
-- **直播中转**：支持国内主流直播平台
 
 
 ## 💡 快速开始
@@ -91,14 +90,6 @@ EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻�
 | `V / 标题区` | 流媒体详情 |
 
 ---
-## 📺 LIVE 助手
-
-Go 后端服务（`live/main.go`）可为您将抖音、斗鱼、虎牙、B站的主播房间或静态 m3u8 实时转换为 Emby 播放卡片：
-1. **启动服务**：本地执行 `go run live/main.go`（默认端口 `8091`）。
-2. **导入 Emby**：在 Emby 媒体库中添加对应的文件夹路径。
-
-
----
 
 ## 📁 文件目录
 
@@ -107,7 +98,6 @@ embyx/
 ├── zh/               # 中文版资源
 ├── en/               # 英文版资源
 ├── pic/              # 图片素材
-├── live/             # 直播中转服务
 ├── docker/           # Docker 配置文件
 ├── README.md         # 英文说明文档
 └── README_zh.md      # 中文说明文档
@@ -136,7 +126,6 @@ docker run -d \
   --network host \
   -e APP_LANG=zh \
   -e APP_PORT=8090 \
-  -e LIVE_PORT=8091 \
   ghcr.io/juneix/embyx
   # docker.1ms.run/juneix/embyx # 毫秒镜像加速
 ```
@@ -153,7 +142,6 @@ services:
     environment:
       - APP_LANG=zh # 中文版
       - APP_PORT=8090 # 访问端口
-      - LIVE_PORT=8091 # 直播中转端口
 ```
 
 

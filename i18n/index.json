@@ -2,7 +2,7 @@
   "_meta": {
     "source": "zh/index.html",
     "target": "en/index.html",
-    "updated": "2026-07-29"
+    "updated": "2026-09-18"
   },
   "strings": {
     "请填写完整信息": "Please fill in all fields",
@@ -152,6 +152,13 @@
     "<p class=\"text-gray-300\">👋 Hi～我叫<a href=\"https://juneix.github.io\" target=\"_blank\"\n                                        class=\"text-primary hover:underline\">@谢週五</a>，<b>EmbyX</b> 是一款专为 Emby / Jellyfin（兼容飞牛影视🔥）打造的\n                                    Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉</p>": "<p class=\"text-gray-300\">👋 Hi, I am <a href=\"https://github.com/juneix\" target=\"_blank\"\n                                        class=\"text-primary hover:underline\">@Juneix</a>. EmbyX is a TikTok-style web\n                                    player for Emby / Jellyfin. Experience your private media library in a whole new,\n                                    immersive way. 🎉</p>",
     "https://5nav.eu.org": "https://github.com/juneix/EmbyX/wiki",
     "https://github.com/juneix/EmbyX/blob/main/README_zh.md": "https://github.com/juneix/EmbyX/wiki",
-    "https://juneix.github.io": "https://github.com/juneix"
+    "正在完成飞牛影视认证...": "Completing fnOS Video authentication...",
+    "✅ 飞牛影视授权成功，正在加载...": "✅ fnOS Video authorized successfully, loading...",
+    "❌ 飞牛授权失败: ${e.message ||": "❌ fnOS authorization failed: ${e.message ||",
+    "播放失败，请检查 Emby 设置": "Playback failed, please check server settings",
+    "❌ 删除失败 (${status})": "❌ Delete failed (${status})",
+    "已发现飞牛影视：${config.server_name}": "fnOS Video detected: ${config.server_name}",
+    "已发现飞牛影视": "fnOS Video Detected",
+    "使用 NAS 账号登录": "Log in with NAS Account"
   }
 }

@@ -22,22 +22,21 @@
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX - Gallery Mode</title>
-    <!-- CDN first, fallback to local lib/ on CDN failure -->
+    <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
     <script src="https://cdn.tailwindcss.com" data-cfasync="false"
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
     <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js" data-cfasync="false"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/hls.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/mpegts.min.js';document.head.appendChild(s)"></script>
+    <script src="js/common.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/gallery.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {
                 extend: {
                     colors: {
-                        primary: '#52B54B',
-                        secondary: '#EE3152'
+                        primary: '#52B54B', // Emby绿
+                        secondary: '#EE3152' // 抖音红
                     },
                     fontFamily: {
                         sans: ['PingFang SC', 'Helvetica Neue', 'Arial', 'sans-serif']
@@ -48,7 +47,9 @@
     </script>
     <style type="text/tailwindcss">
         @layer utilities {
+            /* 画廊容器 */
             .slide-container {
+
                 @apply relative w-screen overflow-hidden bg-black;
                 height: 100dvh;
             }
@@ -58,10 +59,23 @@
                 }
             }
             
+            /* 单张照片卡片 */
             .slide-item {
-                @apply absolute top-0 left-0 w-full h-full z-10 overflow-hidden;
+                @apply absolute top-0 left-0 w-full h-full overflow-hidden opacity-0 pointer-events-none;
+                transition: opacity 1100ms ease-in-out;
+                z-index: 10;
+            }
+            .slide-item.is-buffered {
+                @apply opacity-0;
+                z-index: 11;
+            }
+            .slide-item.is-active {
+                @apply opacity-100 pointer-events-auto;
+                z-index: 12;
             }
             
+            /* 播放/暂停按钮动画 */
+
             .play-pause-btn {
                 @apply absolute top-1/2 left-1/2 w-16 h-16 rounded-full flex items-center justify-center z-20 opacity-0 pointer-events-none transition-all duration-200 ease-out bg-black/30;
                 transform: translate(-50%, -50%) scale(1.5);
@@ -74,6 +88,7 @@
                 @apply text-2xl text-white;
             }
 
+            /* 轮播/清屏模式逻辑 */
             .interface-hidden .bottom-info,
             .interface-hidden .bottom-nav,
             .interface-hidden .right-toolbar,
@@ -83,6 +98,7 @@
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
 
+            /* 格子视图下的特殊“清屏”：保留底部栏，隐藏画廊浮层 UI */
             .grid-active .bottom-info,
             .grid-active .right-toolbar,
             .grid-active #fullscreenBtn,
@@ -90,10 +106,12 @@
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
             
+            /* 遥控器与键盘焦点高亮 */
             .focusable-item:focus {
                 @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-black z-20;
             }
 
+            /* “我的”页面层级过渡 */
             .profile-layer {
                 @apply fixed top-0 left-0 w-full h-full z-[60] translate-y-full transition-transform duration-300 ease-in-out;
             }
@@ -117,10 +135,43 @@
                 scrollbar-gutter: stable;
             }
 
-            .progress-line {
-                @apply h-full bg-white transition-[width] duration-[250ms] ease-linear;
+            .photo-motion {
+                animation-name: photoSlowZoom;
+                animation-duration: var(--photo-motion-duration, 30s);
+                animation-timing-function: ease-in-out;
+                animation-fill-mode: forwards;
+                animation-iteration-count: 1;
+                transform-origin: center;
+                will-change: transform;
+            }
+            .slideshow-paused .photo-motion {
+                animation-play-state: paused;
+            }
+            @keyframes photoSlowZoom {
+                0% { transform: scale(1); }
+                55% { transform: scale(1.10); }
+                100% { transform: scale(1.03); }
+            }
+            .magazine-pair {
+                @apply absolute inset-0 flex items-center justify-center bg-black;
+            }
+            .photo-frame {
+                @apply relative h-full overflow-hidden bg-black;
+            }
+            .magazine-pair.is-magazine {
+                @apply gap-1 px-1;
+            }
+            .magazine-pair.is-magazine .photo-frame {
+                width: calc(50% - 0.125rem);
+            }
+            .magazine-pair:not(.is-magazine) .photo-frame {
+                @apply w-full;
+            }
+            .magazine-pair:not(.is-magazine) .photo-frame-secondary {
+                @apply hidden;
             }
 
+            /* MD3 & Liquid Glass: 底部导航反馈 */
             .nav-btn {
                 @apply relative flex flex-col items-center justify-center w-1/4 h-full cursor-pointer transition-colors duration-300 z-10;
                 -webkit-tap-highlight-color: transparent;
@@ -142,6 +193,15 @@
                 filter: drop-shadow(0 0 6px rgba(82, 181, 75, 0.6));
             }
 
+            @media (prefers-reduced-motion: reduce) {
+                .slide-item {
+                    transition-duration: 80ms;
+                }
+                .photo-motion {
+                    animation: none !important;
+                    transform: none !important;
+                }
+            }
         }
     </style>
 </head>
@@ -183,6 +243,7 @@
 
         </div>
 
+        <!-- 左上角管理删除按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] left-4 z-30 transition-opacity duration-300"
             id="deleteBtn">
             <div
@@ -191,6 +252,7 @@
             </div>
         </div>
 
+        <!-- 右上角全屏按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
@@ -204,7 +266,7 @@
             <div
                 class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm max-h-[80vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
                 <h3 class="text-white text-lg font-bold mb-4 text-center">
-                    Media Info
+                    Photo Info
                 </h3>
                 <div id="mediaInfoContent" class="text-sm text-gray-300">
                     <div class="flex justify-center py-4"><i data-lucide="loader-2"
@@ -224,8 +286,7 @@
                     <i data-lucide="trash-2" class="text-secondary w-7 h-7"></i>
                 </div>
                 <h3 class="text-white text-lg font-bold mb-2">Delete Media</h3>
-                <p class="text-secondary text-xs font-semibold px-4 mb-4 leading-relaxed">⚠️ Warning: This will
-                    permanently delete the source file from Emby!</p>
+                <p class="text-secondary text-xs font-semibold px-4 mb-4 leading-relaxed">⚠️ Warning: This will permanently delete the source file from Emby!</p>
                 <div class="bg-gray-800/40 rounded-lg p-3 mb-6 border border-gray-700/30">
                     <p id="deleteFileName" class="text-gray-300 text-xs break-all opacity-80"></p>
                 </div>
@@ -239,15 +300,15 @@
         </div>
 
         <!-- 底部渐变黑影遮罩 (Scrim) -->
-        <div class="absolute bottom-0 left-0 right-0 h-[280px] bg-gradient-to-t from-black/85 via-black/35 to-transparent z-10 pointer-events-none transition-opacity duration-300" id="bottomScrim"></div>
+        <div class="absolute bottom-0 left-0 right-0 h-[280px] bg-gradient-to-t from-black/60 via-black/20 to-transparent z-10 pointer-events-none transition-opacity duration-300" id="bottomScrim"></div>
 
         <div
-            class="bottom-info absolute bottom-4 left-4 right-4 z-30 transition-opacity duration-300 pointer-events-none">
+            class="bottom-info absolute bottom-20 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
             <div id="metaInfoContainer" class="mb-3 w-[85%] pr-4 pointer-events-auto transition-all duration-300">
                 <h3 id="videoTitle" class="text-white text-lg font-medium mb-1 drop-shadow-md truncate pointer-events-auto cursor-pointer hover:underline inline-block max-w-full">Initializing...</h3>
                 <div id="videoDescriptionArea" class="pointer-events-auto cursor-pointer transition-all duration-300">
                     <div id="videoDescriptionScroll">
-                        <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90 transition-all break-all whitespace-pre-wrap">Click the 'Profile' button at bottom right to configure server.</p>
+                        <p id="videoDescription" class="text-gray-200 text-sm line-clamp-2 drop-shadow-md opacity-90 transition-all break-all whitespace-pre-wrap">Open Profile at the bottom right to configure your server</p>
                     </div>
                 </div>
             </div>
@@ -281,6 +342,7 @@
                 class="absolute top-0 left-0 w-full h-[calc(3.5rem+env(safe-area-inset-top))] border-b border-gray-700/50 bg-black/50 backdrop-blur-sm z-10 pt-[env(safe-area-inset-top)]">
                 <div class="flex items-center justify-center h-14 px-4 relative">
                     <span class="font-bold text-lg">Profile</span>
+                    <!-- 右上角向下箭头，已将原来的 right-4 改为了 right-5 稍微左移。如感到偏右可改 right-5.5 / right-6 寻找舒适点 -->
                     <button id="closeProfileBtn"
                         class="absolute text-gray-400 right-5 w-10 h-10 flex items-center justify-center active:text-gray-300 focusable-item rounded-full">
                         <i data-lucide="chevron-down" class="w-6 h-6"></i>
@@ -291,42 +353,58 @@
             <div class="absolute inset-0 overflow-y-auto overflow-x-hidden z-0">
                 <div class="pt-[calc(3.5rem+env(safe-area-inset-top))] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                     <div class="mb-5 mt-5">
+
                         <h2 class="text-primary font-bold text-sm mb-5 flex items-center">
-                            <i data-lucide="server" class="w-4 h-4 mr-2"></i>Server Config
+                            <i data-lucide="server" class="w-4 h-4 mr-2"></i>Server Settings
                         </h2>
                         <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
                             <div>
-                                <label class="text-gray-400 text-xs block mb-1.5">Server URL</label>
-                                <input type="text" id="configServer" placeholder="Auto-completion of IP or domain name"
+                                <label class="text-gray-400 text-xs block mb-1.5">Auto-complete IP or Domain</label>
+                                <input type="text" id="configServer" placeholder="Emby / Jellyfin / fnOS supported"
                                     class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-gray-400 text-xs block mb-1.5">Username</label>
-                                    <input type="text" id="configUser" placeholder="Username"
+                                    <input type="text" id="configUser" placeholder="Your username"
                                         class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                                 </div>
                                 <div>
                                     <label class="text-gray-400 text-xs block mb-1.5">Password</label>
-                                    <input type="password" id="configPwd" placeholder="Password"
+                                    <input type="password" id="configPwd" placeholder="Your password"
                                         class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                                 </div>
                             </div>
                             <div id="rowAutoplay" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configAutoplay').click();">
-                                <label for="configAutoplay" class="text-gray-300 text-sm cursor-pointer flex-1">Auto slideshow</label>
+                                <label for="configAutoplay" class="text-gray-300 text-sm cursor-pointer flex-1">Auto Slideshow
+                                </label>
                                 <input type="checkbox" id="configAutoplay"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none"
                                     checked>
+                            </div>
+                            <div id="rowSlideshowInterval" tabindex="0"
+                                class="focusable-item flex items-center justify-between gap-3 py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all group">
+                                <label for="configSlideshowInterval"
+                                    class="text-gray-300 text-sm cursor-pointer flex-1">Slideshow Interval (seconds)</label>
+                                <input type="number" id="configSlideshowInterval" min="5" max="3600" step="1" value="30"
+                                    class="w-24 h-9 bg-gray-950 text-white text-sm text-center rounded px-2 outline-none border border-gray-700 focus:border-primary transition-colors">
+                            </div>
+                            <div id="rowMagazineMode" tabindex="0"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                onclick="document.getElementById('configMagazineMode').click();">
+                                <label for="configMagazineMode" class="text-gray-300 text-sm cursor-pointer flex-1">Magazine Mode
+                                </label>
+                                <input type="checkbox" id="configMagazineMode"
+                                    class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configDeleteMode').click();">
                                 <label for="configDeleteMode"
-                                    class="text-yellow-500/90 text-sm cursor-pointer flex-1 font-medium">Enable Media
-                                    Deletion
-                                    ⚠️</label>
+                                    class="text-yellow-500/90 text-sm cursor-pointer flex-1 font-medium">Allow Delete Media ⚠️
+                                </label>
                                 <input type="checkbox" id="configDeleteMode"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
                             </div>
@@ -339,9 +417,9 @@
                         </div>
                     </div>
 
-                    <!-- Divider -->
                     <div class="border-t border-dashed border-gray-600 w-full mt-5 mb-5">
                     </div>
+
 
                     <div>
                         <h2 class="text-primary font-bold text-sm mb-5 flex items-center">
@@ -351,7 +429,7 @@
                             class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
-                                    <img src="./icon.png" style="height: 80%; width: 80%; object-fit: cover;">
+                                    <img src="icon.png" style="height: 80%; width: 80%; object-fit: cover;">
                                 </div>
                                 <div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -359,15 +437,14 @@
                                         <span id="appVersionBadge"
                                             class="px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v2.0</span>
                                     </div>
-                                    <p style="margin: 4px 0 0 0; font-size: 0.75rem; color: #9ca3af; opacity: 0.6; line-height: 1.625;">Bookmark the world, cherish every frame.</p>
+                                    <p style="margin: 4px 0 0 0; font-size: 0.75rem; color: #9ca3af; opacity: 0.6; line-height: 1.625;">Collect the World, Love the Beauty.</p>
                                 </div>
                             </div>
 
                             <div>
-                                <p class="text-gray-300">👋 Hi, I am <a href="https://github.com/juneix" target="_blank"
-                                        class="text-primary hover:underline">@Juneix</a>. EmbyX is a TikTok-style web
-                                    player for Emby / Jellyfin. Experience your private media library in a whole new,
-                                    immersive way. 🎉</p>
+                                <p class="text-gray-300">👋 Hi, I am <a href="https://juneix.github.io" target="_blank"
+                                        class="text-primary hover:underline">@Juneix</a>. <b>EmbyX</b> is a web app for Emby / Jellyfin, with fnOS Video support.
+                                    Gallery mode brings immersive browsing to your private photo library. 🎉</p>
                             </div>
 
                             <div
@@ -377,38 +454,34 @@
                             </div>
 
                             <div>
-                                <h4 class="text-gray-300">Photo Gallery</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
-                                    <li>Only items indexed by Emby as photos are displayed.</li>
-                                    <li>Live Photo companion videos and regular videos are ignored.</li>
+                                <h4 class="text-gray-300">🧩 Usage Tips</h4>
+                                <ul class="space-y-2 text-gray-400 text-xs mt-2 mb-3">
+                                    <li class="flex items-center">
+                                        <span class="text-primary mr-1.5">📚</span>
+                                        Full Tutorial:<a href="https://github.com/juneix/EmbyX/wiki" target="_blank" class="text-primary hover:underline">Juneix Vault</a>
+                                    </li>
+                                    <li class="flex items-center">
+                                        <span class="text-primary mr-1.5">🖼️</span>
+                                        The gallery scans photos only and excludes video files.
+                                    </li>
                                 </ul>
                             </div>
 
                             <div>
-                                <h4 class="text-gray-300">🧩 Tips & Tricks</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-2">
-                                    <li>Use an Emby photo library for predictable filtering.</li>
-                                    <li>Smoother Loading: Keep each photo library reasonably sized.</li>
-                                    <li>Easier Managing: Use multiple libraries and playlists.</li>
-                                    <li>PWA Support: Add to Home Screen or Install as App. 📲</li>
-                                </ul>
-                            </div>
-
-                            <div>
-                                <h4 class="text-gray-300">⌨️ Shortcuts</h4>
+                                <h4 class="text-gray-300">⌨️ Keyboard Shortcuts</h4>
                                 <div class="bg-black/40 rounded-lg overflow-hidden border border-gray-700/50 mt-2">
                                     <table class="w-full text-center text-[11px] leading-tight">
                                         <thead class="bg-gray-700/30 text-gray-400">
                                             <tr>
                                                 <th class="px-3 py-1.5 font-medium border-r border-gray-700/50">Key</th>
-                                                <th class="px-3 py-1.5 font-medium">Function</th>
+                                                <th class="px-3 py-1.5 font-medium">Action</th>
                                             </tr>
                                         </thead>
                                         <tbody class="divide-y divide-gray-700/50 text-gray-400">
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">W / S /
                                                     ↑ / ↓</td>
-                                                <td class="px-3 py-1.5">Previous / Next Photo</td>
+                                                <td class="px-3 py-1.5">Open Library</td>
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">A / D /
@@ -417,16 +490,22 @@
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">Space /
-                                                    Click OK</td>
-                                                <td class="px-3 py-1.5">Pause / Resume Slideshow</td>
+                                                    Press OK</td>
+                                                <td class="px-3 py-1.5">Show / Hide Controls</td>
                                             </tr>
                                             <tr>
-                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">U / Double Click OK</td>
+                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">U / Double-tap
+                                                    OK</td>
                                                 <td class="px-3 py-1.5">Favorite Photo</td>
                                             </tr>
                                             <tr>
-                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">J / Menu Key</td>
-                                                <td class="px-3 py-1.5">Toggle Aspect Ratio</td>
+                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">J / Menu Key
+                                                </td>
+                                                <td class="px-2 py-1.5">Aspect Ratio</td>
+                                            </tr>
+                                            <tr>
+                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">M</td>
+                                                <td class="px-3 py-1.5">Mute Toggle</td>
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">I / Tab 4</td>
@@ -438,7 +517,7 @@
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">Y</td>
-                                                <td class="px-3 py-1.5">Actor Works</td>
+                                                <td class="px-3 py-1.5">Photos of This Person</td>
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">R / Tab 2</td>
@@ -452,9 +531,10 @@
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">G / Tab 3</td>
                                                 <td class="px-3 py-1.5">Select Library</td>
                                             </tr>
+
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">V</td>
-                                                <td class="px-3 py-1.5">Media Info</td>
+                                                <td class="px-3 py-1.5">Photo Details</td>
                                             </tr>
                                         </tbody>
                                     </table>
@@ -462,30 +542,41 @@
                             </div>
 
                             <div>
-                                <h4 class="text-gray-300">🚀 Get Involved</h4>
-                                <ul class="list-disc list-inside space-y-1 text-gray-400 text-xs mt-3">
-                                    <li><span class="text-gray-300 font-medium">Community:</span> Follow the latest
-                                        updates.</li>
-                                    <li><span class="text-gray-300 font-medium">Support:</span> Help me build more cool
-                                        stuff.</li>
-                                </ul>
-                                <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
-                                    <a href="https://x.com/juneix_tse" target="_blank"
-                                        class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/x/white" class="w-3.5 h-3.5 mr-1.5"
-                                            alt="X" /> Twitter • Follow</a>
-                                    <a href="https://t.me/juneix_en" target="_blank"
-                                        class="flex items-center justify-center text-[#26A5E4] bg-[#26A5E4]/10 hover:bg-[#26A5E4]/20 px-3 h-11 rounded-full transition-colors border border-[#26A5E4]/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/telegram/26A5E4"
-                                            class="w-3.5 h-3.5 mr-1.5" alt="Telegram" /> Telegram • Channel</a>
-                                    <a href="https://ko-fi.com/juneixtse" target="_blank"
-                                        class="flex items-center justify-center text-[#FF6433] bg-[#FF5E5B]/10 hover:bg-[#FF5E5B]/20 px-3 h-11 rounded-full transition-colors border border-[#FF5E5B]/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/kofi/FF6433" class="w-3.5 h-3.5 mr-1.5"
-                                            alt="Ko-fi" /> Ko-fi • Support</a>
-                                    <a href="https://github.com/juneix/embyx" target="_blank"
+                                <h4 class="text-gray-300">🚀 Community & Support</h4>
+                                <p class="text-gray-400 text-xs mt-2">💬 Feel free to share this project, follow updates, and join community!</p>
+                                <!-- 胶囊按钮组：社区 & 开源 -->
+                                <div class="grid grid-cols-2 gap-2 mt-3">
+                                    <a href="https://space.bilibili.com/765334" target="_blank"
+                                        class="flex items-center justify-center text-[#FB7299] bg-[#FB7299]/10 hover:bg-[#FB7299]/20 px-3 h-11 rounded-full transition-colors border border-[#FB7299]/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <img src="https://cdn.simpleicons.org/bilibili/FB7299"
+                                            class="w-3.5 h-3.5 mr-1.5" alt="Bilibili" /> Bilibili · Video</a>
+                                    <a href="https://xhslink.com/m/7JytoZm2Rpl" target="_blank"
+                                        class="flex items-center justify-center text-[#FF2442] bg-[#FF2442]/10 hover:bg-[#FF2442]/20 px-3 h-11 rounded-full transition-colors border border-[#FF2442]/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <img src="https://cdn.simpleicons.org/xiaohongshu/FF2442"
+                                            class="w-3.5 h-3.5 mr-1.5" alt="Xiaohongshu" /> RED · Guides</a>
+                                    <a href="https://qm.qq.com/q/KhRMpYLnGi" target="_blank"
+                                        class="flex items-center justify-center text-[#12B7F5] bg-[#12B7F5]/10 hover:bg-[#12B7F5]/20 px-3 h-11 rounded-full transition-colors border border-[#12B7F5]/20 text-[10px] whitespace-nowrap active:scale-95">
+                                        <img src="https://cdn.simpleicons.org/qq/12B7F5" class="w-3.5 h-3.5 mr-1.5"
+                                            alt="QQ" /> QQ Group · Chat</a>
+                                    <a href="https://github.com/juneix/EmbyX/blob/main/README_zh.md" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap active:scale-95">
                                         <img src="https://cdn.simpleicons.org/github/white" class="w-3.5 h-3.5 mr-1.5"
-                                            alt="GitHub" /> GitHub • Source</a>
+                                            alt="GitHub" /> GitHub · Stars</a>
+                                </div>
+                            </div>
+
+                            <!-- 打赏区 -->
+                            <div class="rounded-2xl border border-white/10 bg-white/5 p-6 text-center mt-4">
+                                <p class="text-gray-400 text-xs font-medium mb-4">☕ Donate to support further development~</p>
+                                <div class="flex justify-center gap-6">
+                                    <a href="weixin://profile/gh_86f7c0a73738" class="flex flex-col items-center gap-2 flex-1 min-w-0">
+                                        <img src="wechat.webp" alt="WeChat" class="w-full max-w-[160px] aspect-square rounded-xl object-cover border border-white/10">
+                                        <span class="text-[10px] text-gray-400/60">WeChat</span>
+                                    </a>
+                                    <a href="alipays://platformapi/startapp?saId=10000007&clientVersion=3.7.0.0718&qrcode=https%3A%2F%2Fqr.alipay.com%2Ffkx15248wilbz2ddz96og40" class="flex flex-col items-center gap-2 flex-1 min-w-0">
+                                        <img src="alipay.webp" alt="Alipay" class="w-full max-w-[160px] aspect-square rounded-xl object-cover border border-white/10">
+                                        <span class="text-[10px] text-gray-400/60">Alipay</span>
+                                    </a>
                                 </div>
                             </div>
 
@@ -537,17 +628,20 @@
             <div class="w-10 h-10 border-4 border-gray-600 border-t-primary rounded-full animate-spin"></div>
         </div>
     </div>
+
     <script>
-        // Jellyfin media and image URL correction
-        function fixUrlForJellyfin(url) {
-            if (typeof url === 'string' && localStorage.getItem('emby_is_jellyfin') === 'true') {
-                return url.replace('/emby/', '/');
-            }
-            return url;
-        }
+        // Jellyfin 与鉴权工具函数（委托至 common.js）
+        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
+        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
+        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
 
         class EmbyApp {
+            getAuthHeaders(token = '', extra = {}) {
+                return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);
+            }
+
             constructor() {
+                // 应用状态
                 this.state = {
                     videos: [],
                     currentIndex: 0,
@@ -559,7 +653,7 @@
                     currentTab: 'home',
                     currentLibraryId: null,
                     isScaleFill: true,
-                    originalVideos: [],
+                    originalVideos: [],  // 随机模式下Save原始顺序列表
                     _hitokotoCache: null,
                     currentPerson: null,
                     isFilteredByPerson: false,
@@ -573,16 +667,18 @@
                     isFilteredByTag: false
                 };
 
-                this.config = { server: '', user: '', token: '', userId: '', autoplay: true, deleteMode: false };
+                this.config = { server: '', user: '', token: '', userId: '', autoplay: true, slideshowInterval: 30, magazineMode: false, deleteMode: false, fnOS: false };
 
                 this.csTimer = null;
-                this.slideshowTimer = null;
-
-                this.dom = {};
+                this.playFeedbackTimer = null;
+                this.dom = {}; // DOM 元素缓存
+                this.nav = new SpatialNavigator({ app: this });
+                this.gallery = new Gallery({ app: this });
+                this.photoMetadataCache = this.gallery.photoMetadataCache;
+                this.photoMetadataControllers = this.gallery.photoMetadataControllers;
                 this.config.deviceName = this.getDeviceName();
                 this.init();
             }
-
 
             getDeviceName() {
                 const ua = navigator.userAgent;
@@ -610,21 +706,28 @@
                 return "Web Browser";
             }
 
+            // 检查当前是否有任何弹窗/面板处于打开状态
+            // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
                 const modals = ['mediaInfoModal', 'deleteConfirmModal', 'profilePage', 'libraryModal', 'addToPlaylistModal'];
                 return modals.some(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
+                    // profilePage 使用 active 类名，其他使用 hidden 类名
                     if (id === 'profilePage') return el.classList.contains('active');
                     return !el.classList.contains('hidden');
                 });
             }
 
+            // --- 初始化 ---
             init() {
                 this.cacheDOM();
+                if (this.gallery) {
+                    this.gallery.container = document.getElementById('app');
+                }
                 this.loadConfig();
 
-                // Dynamic app version detection: extract from HTML (e.g. v1.1 -> 1.1)
+                // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
                 const vEl = document.querySelector('.bg-primary\\/20.text-xs');
                 this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
 
@@ -634,34 +737,37 @@
 
                 this.state.isAutoplay = this.config.autoplay !== false;
 
-                // Sync UI based on loaded stated
+                // 根据持久化状态同步 UI 图标
                 if (this.dom.scaleBtn) {
                     this.dom.scaleBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
                 }
 
+                // 初始化视图模式按钮图标（默认竖版，显示gallery-vertical）
                 const viewBtn = this.dom.viewModeBtn;
                 viewBtn.innerHTML = `<i data-lucide="gallery-vertical" class="stroke-current w-5 h-5"></i>`;
 
+                // 初始化播放模式按钮图标
                 const playBtn = this.dom.playModeBtn;
-                // If random mode is saved, show shuffle icon. Otherwise show repeat/repeat-1 based on isAutoplay
+                // 若为随机模式，显示 shuffle；否则根据是否Auto Slideshow显示 repeat 或 repeat-1
                 const isSeq = this.state.playMode === 'sequence';
                 const playIcon = isSeq ? (this.state.isAutoplay ? 'repeat' : 'repeat-1') : 'shuffle';
                 playBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
 
                 lucide.createIcons();
 
+                // 检查配置并启动
                 if (this.config.server && this.config.token) {
                     this.fetchVideos(this.state.currentLibraryId, null, false, this.state.playMode === 'random');
                 } else {
                     setTimeout(() => this.toggleModal('profilePage', true), 500);
                 }
 
-                // Check for updates (silent mode, only changes badge color)
+                // 检查版本更新 (静默模式，仅修改Profile胶囊颜色)
                 this.checkUpdate();
 
-                // ─── Branding Egg ───
+                // ─── 注入项目签名彩蛋 (Branding Egg) ───
                 console.log(
-                    "%c EmbyX %c Designed by Juneix %c",
+                    "%c EmbyX %c Designed by @Juneix %c",
                     "background:#3b82f6;color:#fff;padding:2px 6px;border-radius:4px 0 0 4px;font-weight:bold;",
                     "background:#1e293b;color:#fff;padding:2px 6px;border-radius:0 4px 4px 0;",
                     "background:transparent"
@@ -669,47 +775,19 @@
             }
 
             /**
-             * Check GitHub for updates
+             * 检查 GitHub 更新
+             * 逻辑：对比本地版本与 GitHub 最新 Release
              */
             async checkUpdate() {
                 const badge = document.getElementById('appVersionBadge');
                 if (!badge) return;
 
-                // Rate limiting: check once every 24 hours
-                const lastCheck = localStorage.getItem('embyx_last_update_check');
-                const now = Date.now();
-                if (lastCheck && now - parseInt(lastCheck) < 24 * 60 * 60 * 1000) return;
-
-                try {
-                    const response = await fetch('https://api.github.com/repos/juneix/EmbyX/releases/latest');
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    localStorage.setItem('embyx_last_update_check', now.toString());
-
-                    const latestTag = data.tag_name; // e.g. v1.2
-                    const latestVersion = latestTag.replace('v', '').trim();
-                    const currentVersion = this.config.appVersion;
-
-                    // Semantic version comparison
-                    const isNewer = (latest, current) => {
-                        const l = latest.split('.').map(Number);
-                        const c = current.split('.').map(Number);
-                        for (let i = 0; i < Math.max(l.length, c.length); i++) {
-                            if ((l[i] || 0) > (c[i] || 0)) return true;
-                            if ((l[i] || 0) < (c[i] || 0)) return false;
-                        }
-                        return false;
-                    };
-
-                    if (isNewer(latestVersion, currentVersion)) {
-                        // New version found: change to orange and enable click
-                        badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
-                        badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
-                        badge.title = 'New version available, click to download';
-                        badge.onclick = () => window.open('https://github.com/juneix/EmbyX/releases', '_blank');
-                    }
-                } catch (err) {
-                    console.error('Update check failed:', err);
+                const res = await EmbyXCommon.checkGitHubUpdate(this.config.appVersion);
+                if (res && res.hasUpdate) {
+                    badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
+                    badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
+                    badge.title = 'New version found, click to download';
+                    badge.onclick = () => window.open(res.releaseUrl || 'https://github.com/juneix/EmbyX/releases', '_blank');
                 }
             }
 
@@ -722,10 +800,32 @@
                     'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
-                    'configServer', 'configUser', 'configPwd', 'configAutoplay', 'configDeleteMode'
+                    'configServer', 'configUser', 'configPwd', 'configAutoplay', 'configSlideshowInterval', 'configMagazineMode', 'configDeleteMode'
                 ];
                 ids.forEach(id => this.dom[id] = document.getElementById(id));
                 this.dom.rightToolbar = document.querySelector('.right-toolbar');
+            }
+
+            // --- 配置与数据管理 ---
+            clampSlideshowInterval(value) {
+                const parsed = parseInt(value, 10);
+                if (!Number.isFinite(parsed)) return 30;
+                return Math.min(3600, Math.max(5, parsed));
+            }
+
+            getMediaBasename(item) {
+                const raw = item?.Path || item?.Name || '';
+                let name = String(raw).split(/[\\/]/).pop() || String(raw);
+                try { name = decodeURIComponent(name); } catch (e) { }
+                return name.split(/[?#]/)[0].trim();
+            }
+
+            isPosterLikePhoto(item) {
+                return this.getMediaBasename(item).toLowerCase().includes('poster');
+            }
+
+            filterDisplayPhotos(items) {
+                return (items || []).filter(item => !this.isPosterLikePhoto(item));
             }
 
             loadConfig() {
@@ -734,15 +834,19 @@
                 this.config.token = localStorage.getItem('emby_token') || '';
                 this.config.userId = localStorage.getItem('emby_uid') || '';
                 this.config.autoplay = localStorage.getItem('emby_pic_autoplay') !== 'false';
+                this.config.slideshowInterval = this.clampSlideshowInterval(localStorage.getItem('emby_pic_slideshow_interval') || '30');
+                this.config.magazineMode = localStorage.getItem('emby_pic_magazine_mode') === 'true';
                 this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
+                this.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
 
-                // Unique Device ID for session management
+                // 生成或读取设备唯一 ID，解决多设备识别冲突问题
                 if (!localStorage.getItem('emby_device_id')) {
                     const randomId = Math.random().toString(36).slice(2, 10);
                     localStorage.setItem('emby_device_id', `EmbyX-${randomId}`);
                 }
                 this.config.deviceId = localStorage.getItem('emby_device_id');
 
+                // 读取高频交互状态
                 const savedScale = localStorage.getItem('emby_is_scale_fill');
                 if (savedScale !== null) this.state.isScaleFill = savedScale === 'true';
 
@@ -759,21 +863,34 @@
                     this.state.currentLibraryType = 'favorites';
                 }
 
+                // 填充 UI
                 if (this.dom.configServer) this.dom.configServer.value = this.config.server;
                 if (this.dom.configUser) this.dom.configUser.value = this.config.user;
                 if (this.dom.configPwd && this.config.token) {
+                    // 显示与实际Password位数一致的掩码（Password长度存入 localStorage，不存Password本身）
                     const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    this.dom.configPwd.value = '*'.repeat(Math.max(1, pwdLen));
+                    this.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
                 }
                 if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
+                if (this.dom.configSlideshowInterval) this.dom.configSlideshowInterval.value = this.config.slideshowInterval;
+                if (this.dom.configMagazineMode) this.dom.configMagazineMode.checked = this.config.magazineMode;
                 if (this.dom.configDeleteMode) this.dom.configDeleteMode.checked = this.config.deleteMode;
 
-                // Sync UI based on config
+                // 基于配置同步UI
                 this.dom.deleteBtn.style.display = this.config.deleteMode ? 'flex' : 'none';
                 if (this.dom.playModeBtn) {
                     this.dom.playModeBtn.innerHTML = `<i data-lucide="${this.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                     lucide.createIcons();
                 }
+
+                // Jellyfin 初始化挂载
+                if (EmbyXCommon.getServerType() === 'jellyfin') {
+                    enableJellyfinFetchProxy();
+                }
+            }
+
+            async detectFnOS(server) {
+                return EmbyXCommon.detectFnOS(server);
             }
 
             async saveConfig() {
@@ -782,99 +899,78 @@
                 const pwd = this.dom.configPwd.value.trim();
 
                 const autoplay = this.dom.configAutoplay.checked;
+                const slideshowInterval = this.clampSlideshowInterval(this.dom.configSlideshowInterval.value);
+                const magazineMode = this.dom.configMagazineMode.checked;
                 const deleteMode = this.dom.configDeleteMode.checked;
+                if (this.dom.configSlideshowInterval) this.dom.configSlideshowInterval.value = slideshowInterval;
 
                 if (!server || !user) return this.showToast('Please fill in all fields');
 
                 this.toggleLoading(true);
 
-                // Auto-fill protocol and port
-                let isAutoFilled = false;
-                if (server && !server.startsWith('http')) {
-                    const host = server.split(':')[0];
-                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
-
-                    if (isIP && !server.includes(':')) {
-                        const scheme = location.protocol === 'https:' ? 'https://' : 'http://';
-                        server = `${scheme}${server}:8096`;
-                        isAutoFilled = true;
-                    } else {
-                        server = (isIP ? 'http://' : 'https://') + server;
-                    }
-                }
-
-                // Encapsulate login verification process (8096: Emby/Jellyfin standard port, 8090: Feiniu OS port)
-                const performAuth = async (targetServer) => {
-                    const res = await fetch(`${targetServer}/emby/Users/AuthenticateByName`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
-                        },
-                        body: JSON.stringify({ Username: user, Pw: pwd })
-                    });
-
-                    if (!res.ok) {
-                        throw { status: res.status };
-                    }
-
-                    const data = await res.json();
-                    if (!data.AccessToken) {
-                        throw { status: 'NO_TOKEN' };
-                    }
-                    return data;
-                };
+                // 自动补全协议头和端口
+                const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
+                server = normalizedServer;
 
                 try {
-                    if (/^\*+$/.test(pwd) && this.config.token && this.config.server === server && this.config.user === user) {
+                    // 如果是用旧 token 更新设置，跳过登录（仅当输入为掩码且旧Password长度大于0）
+                    const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
+                    const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
+                    if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
+                        // 服务器未变，fnOS 状态沿用内存值，无需重新发探测请求
+                        const fnOS = this.config.fnOS;
                         localStorage.setItem('emby_pic_autoplay', autoplay);
+                        localStorage.setItem('emby_pic_slideshow_interval', slideshowInterval);
+                        localStorage.setItem('emby_pic_magazine_mode', magazineMode);
                         localStorage.setItem('emby_delete_mode', deleteMode);
+                        if (fnOS) localStorage.setItem('emby_fnOS', 'true');
+                        else localStorage.removeItem('emby_fnOS');
 
-                        // Clear data cache, keep core settings and reload
+                        // 清理数据缓存，保留核心设置并重新加载
                         localStorage.removeItem('emby_views_cache');
                         localStorage.removeItem('emby_favorites');
                         location.reload();
                         return;
                     }
 
-                    let data;
-                    try {
-                        data = await performAuth(server);
-                    } catch (err) {
-                        // Fallback to 8090 if 8096 login fails and the port was auto-filled by system
-                        if (isAutoFilled && server.endsWith(':8096')) {
-                            const fallbackServer = server.replace(/:8096$/, ':8090');
-                            try {
-                                data = await performAuth(fallbackServer);
-                                server = fallbackServer; // Update server address to 8090 on success
-                            } catch (fallbackErr) {
-                                // Fallback fails, throw original 8096 error
-                                throw err;
-                            }
-                        } else {
-                            throw err;
-                        }
-                    }
+                    const auth = await EmbyXCommon.authenticate({
+                        server,
+                        user,
+                        pwd,
+                        deviceName: this.config.deviceName,
+                        deviceId: this.config.deviceId,
+                        appVersion: this.config.appVersion,
+                        isAutoFilled
+                    });
 
+                    const { data, userId, fnOS, finalServer } = auth;
+                    server = finalServer;
+
+                    // 登录成功后的处理
                     localStorage.setItem('emby_server', server);
                     localStorage.setItem('emby_user', user);
                     localStorage.setItem('emby_token', data.AccessToken);
-                    localStorage.setItem('emby_uid', data.SessionInfo.UserId);
+                    localStorage.setItem('emby_uid', userId);
                     localStorage.setItem('emby_pic_autoplay', autoplay);
+                    localStorage.setItem('emby_pic_slideshow_interval', slideshowInterval);
+                    localStorage.setItem('emby_pic_magazine_mode', magazineMode);
                     localStorage.setItem('emby_delete_mode', deleteMode);
+                    if (fnOS) localStorage.setItem('emby_fnOS', 'true');
+                    else localStorage.removeItem('emby_fnOS');
 
-                    this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, autoplay, deleteMode };
+                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, autoplay, slideshowInterval, magazineMode, deleteMode, fnOS };
 
-                    const pwdLen = Math.max(1, pwd.length);
-                    localStorage.setItem('emby_pwd_len', pwdLen);
-                    this.dom.configPwd.value = '*'.repeat(pwdLen);
+                    // 将Password位数存入 localStorage，不存Password本身，空Password记为 0
+                    const pwdLen2 = pwd.length;
+                    localStorage.setItem('emby_pwd_len', pwdLen2);
+                    this.dom.configPwd.value = '*'.repeat(pwdLen2);
                     this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
                     if (this.dom.playModeBtn) {
                         this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                         lucide.createIcons();
                     }
 
-                    // Clear data cache, keep core settings and reload
+                    // 清理数据缓存，保留核心设置并重新加载
                     localStorage.removeItem('emby_views_cache');
                     localStorage.removeItem('emby_favorites');
                     localStorage.removeItem('emby_pic_lib_id');
@@ -882,18 +978,20 @@
                     location.reload();
                 } catch (e) {
                     console.error('saveConfig error:', e);
+                    // 分辨常见错误类型并规范 Toast 空格
                     const status = e?.status;
                     if (status === 401 || status === 'NO_TOKEN') {
                         this.showToast('❌ Auth failed: Invalid Username or Password');
                     } else if (status === 404) {
                         this.showToast('❌ Connection Failed: Check port');
                     } else if (status) {
-                        this.showToast('❌ Connection Failed ' + status + '. Check Emby logs.');
+                        this.showToast('❌ Connection Failed ' + status + '. Check the server logs');
                     } else {
                         const msg = e?.message || '';
                         const isHttps = location.protocol === 'https:';
                         const targetHttp = server.startsWith('http:');
                         if (isHttps && targetHttp) {
+                            // HTTPS 页面请求 HTTP Emby 会被浏览器拦截（Mixed Content）
                             this.showToast('❌ Blocked: Mixed Content (HTTPS -> HTTP)');
                         } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
                             this.showToast('❌ Cannot connect to server');
@@ -907,35 +1005,21 @@
             }
 
             resetConfig() {
-                if (confirm('Are you sure to reset all settings?')) {
+                if (confirm('Are you sure you want to reset all settings?')) {
                     localStorage.clear();
                     location.reload();
                 }
             }
 
             async loadFavorites() {
-                const { server, token, userId } = this.config;
-                if (!server || !token || !userId) {
-                    const saved = localStorage.getItem('emby_favorites');
-                    if (saved) this.state.favorites = new Set(JSON.parse(saved));
-                    return;
-                }
                 try {
-                    const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&Fields=Id`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.Items) {
-                            this.state.favorites = new Set(data.Items.map(i => String(i.Id)));
-                            localStorage.setItem('emby_favorites', JSON.stringify([...this.state.favorites]));
-                            this.updateUI();
-                        }
+                    const favs = await EmbyXCommon.fetchFavorites(this.config);
+                    if (favs) {
+                        this.state.favorites = favs;
+                        this.updateUI();
                     }
                 } catch (e) {
-                    console.error('Failed to load remote Favorites:', e);
+                    console.error('Failed to load remote favorites:', e);
                     const saved = localStorage.getItem('emby_favorites');
                     if (saved) this.state.favorites = new Set(JSON.parse(saved));
                 }
@@ -946,7 +1030,7 @@
                 if (!server || !token || !userId) return;
                 try {
                     const res = await fetch(`${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`, {
-                        headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (!res.ok) return;
                     const data = await res.json();
@@ -956,7 +1040,7 @@
                     await Promise.all(playlists.map(async pl => {
                         try {
                             const cRes = await fetch(`${server}/emby/Playlists/${pl.Id}/Items?UserId=${userId}&api_key=${token}&Limit=10000&Fields=Id`, {
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             });
                             if (cRes.ok) {
                                 const cData = await cRes.json();
@@ -975,12 +1059,13 @@
                 } catch(e) {}
             }
 
+            // --- 核心照片加载逻辑 ---
             async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false, searchTerm = '') {
-                this.toggleLoading(!isAppend);
+                this.toggleLoading(!isAppend); // 追加时不显示全屏 loading
                 try {
                     const { server, token, userId } = this.config;
                     if (!server || !token) {
-                        if (!isAppend) this.showToast('Please config server first');
+                        if (!isAppend) this.showToast('Please configure your server first');
                         return;
                     }
 
@@ -990,8 +1075,9 @@
 
                     const libraryId = parentId || this.state.currentLibraryId;
 
+                    // --- 分页参数 ---
+                    // PAGE_SIZE: 每页图片数，150 为体验甜点值
                     const PAGE_SIZE = 150;
-                    // const MAX_GRID_VIDEOS = 1000;
 
                     let fetchStartIndex = this.state.startIndex || 0;
                     if (isAppend) {
@@ -1010,6 +1096,7 @@
                         url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
                     } else if (ids) {
                         url += `&Ids=${ids}`;
+                        if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
                     } else if (isRandom) {
                         url += `&SortBy=Random`;
                         if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
@@ -1025,15 +1112,13 @@
                     }
 
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) {
-                        throw new Error(`Server Error: ${res.status}`);
+                        throw new Error(`Server error: ${res.status}`);
                     }
                     let data = await res.json();
-                    const items = data.Items || [];
+                    const items = this.filterDisplayPhotos(data.Items || []);
 
                     if (isAppend) {
                         if (items.length > 0) {
@@ -1066,6 +1151,7 @@
                         this.showToast('No photos found');
                     }
 
+                    // 随机模式下加载完，直接原地洗牌（保持第一张照片在首位）
                     if (this.state.playMode === 'random' && items.length > 0) {
                         this.state.originalVideos = [...this.state.videos];
                         this._shuffleAroundCurrent();
@@ -1076,9 +1162,9 @@
                     } else {
                         if (items.length > 0) {
                             this.renderSlides();
-                            this.loadPhoto(0);
+                            this.loadPhoto(this.state.currentIndex);
                         } else {
-                            this.renderGridView();
+                            this.renderGridView(); // 瀑布流播放模式下无Search结果时，退回网格视图展示 0 统计
                         }
                     }
                 } catch (e) {
@@ -1090,16 +1176,13 @@
             }
 
             renderSlides() {
-                this.dom.videoContainer.innerHTML = '';
-                this.dom.videoContainer.className = 'relative w-full h-full transition-transform duration-300 ease-out';
-                // Temporarily disable transition for instant snap
-                this.dom.videoContainer.style.transition = 'none';
-                this.dom.videoContainer.style.transform = `translateX(-${this.state.currentIndex * 100}%)`;
-                // Force browser reflow to apply the instant transform
-                void this.dom.videoContainer.offsetHeight;
-                // Restore transition for subsequent manual swipes
-                this.dom.videoContainer.style.transition = '';
 
+                this.dom.videoContainer.innerHTML = '';
+                this.dom.videoContainer.className = 'relative w-full h-full overflow-hidden bg-black';
+                this.dom.videoContainer.style.transition = '';
+                this.dom.videoContainer.style.transform = 'none';
+
+                // 只初始化 3 个物理槽位
                 for (let i = 0; i < 3; i++) {
                     const el = document.createElement('div');
                     el.className = 'slide-item';
@@ -1107,11 +1190,19 @@
                     el.style.display = 'none';
                     el.innerHTML = `
                         <div class="w-full h-full relative bg-black">
-                            <img id="thumb-${i}" class="absolute inset-0 w-full h-full z-10 transition-opacity duration-300 ${this.state.isScaleFill ? 'object-cover' : 'object-contain'}" src="" alt="" />
-                            <div id="poster-${i}" class="absolute inset-0 bg-cover bg-center scale-[1.15] blur-xl transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-70'}"></div>
-                            <div id="overlay-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-[1] ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
-                            <div class="touch-layer absolute inset-0 z-20" style="-webkit-touch-callout: none;"></div>
-                            
+                            <div id="magazine-pair-${i}" class="magazine-pair">
+                                <div class="photo-frame photo-frame-primary">
+                                    <img id="thumb-${i}" class="absolute inset-0 w-full h-full z-10 opacity-0 transition-opacity duration-[850ms] ${this.state.isScaleFill ? 'object-cover' : 'object-contain'}" src="" alt="" />
+                                    <div id="poster-${i}" class="absolute inset-0 bg-cover bg-center scale-[1.15] blur-xl transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-70'}"></div>
+                                    <div id="overlay-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-[1] ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
+                                </div>
+                                <div class="photo-frame photo-frame-secondary">
+                                    <img id="thumb2-${i}" class="absolute inset-0 w-full h-full z-10 opacity-0 transition-opacity duration-[850ms] ${this.state.isScaleFill ? 'object-cover' : 'object-contain'}" src="" alt="" />
+                                    <div id="poster2-${i}" class="absolute inset-0 bg-cover bg-center scale-[1.15] blur-xl transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-70'}"></div>
+                                    <div id="overlay2-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-[1] ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
+                                </div>
+                            </div>
+
                             <div id="playBtn-${i}" class="play-pause-btn">
                                 <i data-lucide="play" class="stroke-white w-8 h-8"></i>
                             </div>
@@ -1130,6 +1221,7 @@
             }
 
             renderGridView() {
+                this.clearSlideshowTimer();
                 this.dom.slides = null;
                 const container = this.dom.videoContainer;
                 document.documentElement.scrollTop = 0;
@@ -1182,8 +1274,9 @@
                     });
                 }
 
-                const currentVideo = this.state.videos[this.state.currentIndex];
-                const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : this.getImageSrc(null);
+                // 背景海报模糊层更新
+                const currentPhoto = this.state.videos[this.state.currentIndex];
+                const bgPosterStr = currentPhoto ? this.getImageSrc(currentPhoto) : this.getImageSrc(null);
                 if (bgPosterStr) {
                     bgLayer.style.backgroundImage = `url('${bgPosterStr}')`;
                 }
@@ -1194,7 +1287,7 @@
                 } else if (this.state.isFilteredByTag && this.state.currentTag) {
                     libraryName = `Tag: ${this.state.currentTag}`;
                 } else if (this.state.currentPerson) {
-                    libraryName = `Actor: ${this.state.currentPerson}`;
+                    libraryName = `Person: ${this.state.currentPerson}`;
                 } else if (this.state.currentLibraryId === 'favorites') {
                     libraryName = 'Favorites';
                 } else if (this.state.currentLibraryId) {
@@ -1259,7 +1352,7 @@
                             <i data-lucide="search" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
                             <input id="gridSearchInput" type="search"
                                    value="${this.state.searchTerm}"
-                                   placeholder="Search title, actor, overview..."
+                                   placeholder="Search photo title, person, description..."
                                    class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500 min-w-0">
                         </div>
                     `;
@@ -1272,7 +1365,7 @@
                     shuffleBtn.onclick = (e) => {
                         e.stopPropagation();
                         this.state.startIndex = 0;
-                        this.fetchVideos(libArg, null, false, true); // isRandom=true
+                        this.fetchVideos(libArg, null, false, true);
                     };
                 }
 
@@ -1296,6 +1389,7 @@
                     };
                 }
 
+                // 清空并重新构建滚动列表内容
                 scrollArea.innerHTML = '';
                 const gridWrapper = document.createElement('div');
                 gridWrapper.className = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 content-start w-full relative z-10 px-1 pt-2';
@@ -1332,18 +1426,21 @@
                     gridWrapper.appendChild(el);
                 });
 
-                // Basic URL: https://v1.hitokoto.cn/
-                const eggFooter = document.createElement('div');
-                eggFooter.className = 'col-span-full pt-8 pb-24 px-4 text-center text-gray-600 text-[11px] leading-relaxed select-none';
-                eggFooter.innerHTML = '<span class="opacity-40">——</span>';
-                gridWrapper.appendChild(eggFooter);
+                let eggFooter = document.getElementById('gridHitokotoFooter');
+                if (!eggFooter) {
+                    eggFooter = document.createElement('div');
+                    eggFooter.id = 'gridHitokotoFooter';
+                    eggFooter.className = 'absolute bottom-16 left-0 right-0 z-30 pointer-events-none text-center text-gray-400 text-xs px-4 drop-shadow-md select-none transition-opacity duration-300';
+                    scrollArea.parentNode.appendChild(eggFooter);
+                }
+                eggFooter.style.display = 'block';
 
                 if (this.state._hitokotoCache) {
                     const data = this.state._hitokotoCache;
                     const source = [data.from_who, data.from].filter(Boolean).join(' · ');
                     eggFooter.innerHTML = `
                         <p class="text-gray-300">“${data.hitokoto || ''}”</p>
-                        ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                        ${source ? `<p class="mt-1 text-gray-500 italic text-[11px]">- ${source} -</p>` : ''}
                     `;
                 } else {
                     fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
@@ -1354,7 +1451,7 @@
                             const source = [data.from_who, data.from].filter(Boolean).join(' · ');
                             eggFooter.innerHTML = `
                                 <p class="text-gray-300">“${text}”</p>
-                                ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
+                                ${source ? `<p class="mt-1 text-gray-500 italic text-[11px]">- ${source} -</p>` : ''}
                             `;
                         })
                         .catch(() => {
@@ -1362,10 +1459,8 @@
                         });
                 }
 
-
                 this.updateUI();
 
-                // Scroll to active card (direct scrollArea op, avoids scrollIntoView polluting html.scrollTop)
                 requestAnimationFrame(() => {
                     const activeEl = gridWrapper.children[this.state.currentIndex];
                     if (activeEl && scrollArea) {
@@ -1422,75 +1517,136 @@
                 lucide.createIcons();
             }
 
-            clearSlideshowTimer() {
-                if (this.slideshowTimer) {
-                    clearTimeout(this.slideshowTimer);
-                    this.slideshowTimer = null;
-                }
-            }
+            // 缓冲渲染逻辑（委托至 Gallery 控制器）
+            isMagazineModeActive() { return this.gallery.isMagazineModeActive(); }
+            getGalleryStep() { return this.gallery.getGalleryStep(); }
+            getSlideshowIntervalMs() { return this.gallery.getSlideshowIntervalMs(); }
+            clearSlideshowTimer() { this.gallery.clearSlideshowTimer(); }
+            isSlideshowAllowed() { return this.gallery.isSlideshowAllowed(); }
+            scheduleSlideshow() { this.gallery.scheduleSlideshow(); }
+            restartPhotoMotion(img) { this.gallery.restartPhotoMotion(img); }
+            restartSlideMotion(slotIndex) { this.gallery.restartSlideMotion(slotIndex); }
 
-            scheduleSlideshow() {
-                this.clearSlideshowTimer();
-                if (this.state.viewMode !== 'stream' || !this.state.isAutoplay || this.state.isSlideshowPaused) return;
-                if (this.state.currentIndex >= this.state.videos.length - 1) return;
-                this.slideshowTimer = setTimeout(() => this.nextVideo(true), 30000);
+            setPhotoFrame(slotIndex, item, suffix = '') {
+                const thumb = document.getElementById(`thumb${suffix}-${slotIndex}`);
+                const poster = document.getElementById(`poster${suffix}-${slotIndex}`);
+                const overlay = document.getElementById(`overlay${suffix}-${slotIndex}`);
+                if (!thumb || !poster || !overlay) return;
+
+                if (!item) {
+                    thumb.removeAttribute('src');
+                    thumb.style.opacity = '0';
+                    poster.style.backgroundImage = '';
+                    poster.style.opacity = '0';
+                    overlay.style.opacity = '0';
+                    return;
+                }
+
+                const src = this.getImageSrc(item);
+                thumb.style.opacity = '0';
+                thumb.classList.remove('object-cover', 'object-contain');
+                thumb.classList.add(this.state.isScaleFill ? 'object-cover' : 'object-contain');
+                thumb.onerror = () => { thumb.src = this.getImageSrc(null); thumb.style.opacity = '1'; };
+                thumb.onload = () => {
+                    thumb.style.opacity = '1';
+                    if (thumb.closest('.slide-item')?.classList.contains('is-active')) {
+                        this.restartPhotoMotion(thumb);
+                    } else {
+                        thumb.classList.remove('photo-motion');
+                    }
+                };
+                thumb.src = src;
+                if (thumb.complete && thumb.naturalWidth > 0) {
+                    thumb.onload();
+                }
+
+                poster.style.backgroundImage = `url('${src}')`;
+                poster.style.opacity = this.state.isScaleFill ? '0' : '0.7';
+                overlay.style.opacity = this.state.isScaleFill ? '0' : '1';
             }
 
             renderBuffer() {
                 if (this.state.viewMode !== 'stream' || !this.dom.slides) return;
 
-                this.dom.videoContainer.style.transform = `translateX(-${this.state.currentIndex * 100}%)`;
+                this.dom.videoContainer.style.transform = 'none';
+
                 const offsets = [-1, 0, 1];
+                const step = this.getGalleryStep();
+                const magazineActive = this.isMagazineModeActive();
+                const activePhotoIds = new Set();
+                const activeSlotIds = new Set();
+                offsets.forEach((offset) => {
+                    const videoIdx = this.state.currentIndex + (offset * step);
+                    if (videoIdx < 0 || videoIdx >= this.state.videos.length) return;
 
-                offsets.forEach(offset => {
-                    const photoIndex = this.state.currentIndex + offset;
-                    if (photoIndex < 0 || photoIndex >= this.state.videos.length) return;
+                    const slideIdx = (videoIdx % 3 + 3) % 3;
+                    const slideEl = this.dom.slides[slideIdx];
+                    const videoData = this.state.videos[videoIdx];
+                    const secondaryData = magazineActive ? this.state.videos[videoIdx + 1] : null;
+                    const isCurrent = offset === 0;
+                    const wasActive = slideEl.dataset.active === 'true';
+                    activePhotoIds.add(String(videoData.Id));
+                    if (secondaryData?.Id) activePhotoIds.add(String(secondaryData.Id));
+                    activeSlotIds.add(slideIdx);
 
-                    const slideIndex = (photoIndex % 3 + 3) % 3;
-                    const slide = this.dom.slides[slideIndex];
-                    const photo = this.state.videos[photoIndex];
-                    slide.style.transform = `translateX(${photoIndex * 100}%)`;
-                    slide.style.display = 'block';
+                    slideEl.style.transform = 'none';
+                    slideEl.style.display = 'block';
+                    slideEl.classList.toggle('is-active', isCurrent);
+                    slideEl.classList.toggle('is-buffered', !isCurrent);
+                    slideEl.dataset.active = isCurrent ? 'true' : 'false';
 
-                    if (slide.dataset.id !== String(photo.Id)) {
-                        slide.dataset.id = String(photo.Id);
-                        const imageUrl = this.getImageSrc(photo);
-                        const image = document.getElementById(`thumb-${slideIndex}`);
-                        const poster = document.getElementById(`poster-${slideIndex}`);
-                        image.src = imageUrl;
-                        image.alt = photo.Name || '';
-                        image.style.opacity = '1';
-                        image.classList.remove('object-cover', 'object-contain');
-                        image.classList.add(this.state.isScaleFill ? 'object-cover' : 'object-contain');
-                        image.onerror = () => { image.src = this.getImageSrc(null); };
-                        poster.style.backgroundImage = `url('${imageUrl}')`;
-                        poster.style.opacity = this.state.isScaleFill ? '0' : '0.7';
+                    const pairEl = document.getElementById(`magazine-pair-${slideIdx}`);
+                    if (pairEl) pairEl.classList.toggle('is-magazine', magazineActive && !!secondaryData);
+
+                    const datasetId = [videoData.Id, secondaryData?.Id || '', magazineActive ? 'm' : 's', this.state.isScaleFill ? 'cover' : 'contain'].join(':');
+                    if (slideEl.dataset.id !== datasetId) {
+                        slideEl.dataset.id = datasetId;
+                        this.setPhotoFrame(slideIdx, videoData);
+                        this.setPhotoFrame(slideIdx, secondaryData, '2');
                     }
+                    if (isCurrent && !wasActive) this.restartSlideMotion(slideIdx);
+                    this.updateCenterPlaybackButton(slideIdx);
+                    this.ensurePhotoMetadata(videoData, offset === 0);
+                    if (secondaryData) this.ensurePhotoMetadata(secondaryData, false);
                 });
+                this.abortInactivePhotoMetadata(activePhotoIds);
 
                 for (let i = 0; i < 3; i++) {
-                    const active = offsets.some(offset => {
-                        const index = this.state.currentIndex + offset;
-                        return index >= 0 && index < this.state.videos.length && ((index % 3 + 3) % 3) === i;
-                    });
-                    if (!active) {
+                    if (!activeSlotIds.has(i)) {
                         this.dom.slides[i].style.display = 'none';
+                        this.dom.slides[i].classList.remove('is-active', 'is-buffered');
+                        this.dom.slides[i].dataset.active = 'false';
                         this.dom.slides[i].dataset.id = '';
+                        this.setPhotoFrame(i, null);
+                        this.setPhotoFrame(i, null, '2');
+                        this.updateCenterPlaybackButton(i);
                     }
-                    const button = document.getElementById(`playBtn-${i}`);
-                    if (button) button.classList.toggle('paused', active && this.state.isSlideshowPaused);
                 }
                 this.updateUI();
+                this.scheduleSlideshow();
             }
+
+            abortInactivePhotoMetadata(activePhotoIds) { this.gallery.abortInactivePhotoMetadata(activePhotoIds); }
+            getPhotoDisplayName(item) { return this.gallery.getPhotoDisplayName(item); }
+            getPhotoMetadataText(item) { return this.gallery.getPhotoMetadataText(item); }
+            buildPhotoDownloadUrl(item) { return this.gallery.buildPhotoDownloadUrl(item); }
+            ensurePhotoMetadata(item, shouldRefreshUi = false) { this.gallery.ensurePhotoMetadata(item, shouldRefreshUi); }
+            loadPhotoMetadata(item, signal) { return this.gallery.loadPhotoMetadata(item, signal); }
+            parseEmbeddedImageMetadata(buffer) { return this.gallery.parseEmbeddedImageMetadata(buffer); }
+            formatPhotoMetadata(meta) { return this.gallery.formatPhotoMetadata(meta); }
+            formatExposure(value) { return this.gallery.formatExposure(value); }
+
+
 
             loadPhoto(index) {
                 if (this.state.viewMode !== 'stream') return;
-                this.renderBuffer();
-                const photo = this.state.videos[this.state.currentIndex];
-                if (!photo) return;
+
+                this.renderBuffer(); // 确保 DOM 就位
+
+                const videoData = this.state.videos[this.state.currentIndex];
+                if (!videoData) return;
                 this.toggleLoading(false);
-                this.fetchPersonInfo(photo);
-                this.scheduleSlideshow();
+                this.fetchPersonInfo(videoData);
             }
 
             async fetchPersonInfo(videoData) {
@@ -1510,9 +1666,7 @@
                     if (!server || !token || !userId) return;
 
                     const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People,Tags,TagItems`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (res.ok) {
                         const data = await res.json();
@@ -1526,7 +1680,7 @@
                         const person = data.People && data.People.length > 0 ? data.People[0] : null;
                         if (person) {
                             btn.dataset.personName = person.Name;
-                            img.src = `${server}/emby/Persons/${encodeURIComponent(person.Name)}/Images/Primary?api_key=${token}`;
+                            img.src = EmbyXCommon.getPersonImageUrl(server, person.Name);
                             btn.classList.remove('hidden');
                             this.recalculateMetaInfoHeight();
                         }
@@ -1539,16 +1693,47 @@
             togglePlay() {
                 if (this.state.viewMode !== 'stream') return;
                 this.state.isSlideshowPaused = !this.state.isSlideshowPaused;
-                const slideIndex = (this.state.currentIndex % 3 + 3) % 3;
-                const button = document.getElementById(`playBtn-${slideIndex}`);
+                const app = document.getElementById('app');
+                if (app) app.classList.toggle('slideshow-paused', this.state.isSlideshowPaused);
+
                 if (this.state.isSlideshowPaused) {
                     this.clearSlideshowTimer();
-                    if (button) button.classList.add('paused');
+                    this.showCenterPlaybackFeedback('play', true);
                 } else {
-                    if (button) button.classList.remove('paused');
+                    this.showCenterPlaybackFeedback('pause', false);
                     this.scheduleSlideshow();
                 }
+                this.toggleLoading(false);
                 this.showInterfaceTemp();
+            }
+
+            updateCenterPlaybackButton(slotIndex = (this.state.currentIndex % 3 + 3) % 3) {
+                const btn = document.getElementById(`playBtn-${slotIndex}`);
+                if (!btn) return;
+                const isCurrent = slotIndex === ((this.state.currentIndex % 3 + 3) % 3);
+                const showPaused = isCurrent && this.state.isSlideshowPaused;
+                btn.innerHTML = `<i data-lucide="${showPaused ? 'play' : 'pause'}" class="stroke-white w-8 h-8"></i>`;
+                btn.classList.toggle('paused', showPaused);
+                lucide.createIcons({ root: btn });
+            }
+
+            showCenterPlaybackFeedback(icon, persist) {
+                if (this.playFeedbackTimer) {
+                    clearTimeout(this.playFeedbackTimer);
+                    this.playFeedbackTimer = null;
+                }
+                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                const btn = document.getElementById(`playBtn-${slideIdx}`);
+                if (!btn) return;
+                btn.innerHTML = `<i data-lucide="${icon}" class="stroke-white w-8 h-8"></i>`;
+                btn.classList.add('paused');
+                lucide.createIcons({ root: btn });
+                if (!persist) {
+                    this.playFeedbackTimer = setTimeout(() => {
+                        if (!this.state.isSlideshowPaused) btn.classList.remove('paused');
+                        this.playFeedbackTimer = null;
+                    }, 520);
+                }
             }
 
 
@@ -1557,31 +1742,20 @@
                 if (this.state.currentIndex === 0) {
                     return;
                 }
-                this.switchSlide(this.state.currentIndex - 1, 'down');
+                this.switchSlide(Math.max(0, this.state.currentIndex - this.getGalleryStep()), 'down');
             }
 
-            switchSlide(newIndex, direction) {
+            switchSlide(newIndex, direction, isAuto = false) {
                 this.clearSlideshowTimer();
-                if (this.dom.slides) {
-                    const destSlideIdx = (newIndex % 3 + 3) % 3;
-                    const destSlide = this.dom.slides[destSlideIdx];
-                    if (destSlide) {
-                        destSlide.style.transform = `translateX(${newIndex * 100}%)`;
-                        destSlide.style.display = 'block';
-                    }
-                }
-
-                this.state.currentIndex = newIndex;
+                this.state.currentIndex = Math.min(Math.max(0, newIndex), Math.max(0, this.state.videos.length - 1));
+                newIndex = this.state.currentIndex;
 
                 if (newIndex >= this.state.videos.length - 5 && this.state.videos.length < (this.state.totalCount || 999999)) {
+
                     if (!this._fetchingAppend) {
                         this._fetchingAppend = true;
                         this.fetchVideos(null, null, false, this.state.playMode === 'random', true).finally(() => { this._fetchingAppend = false; });
                     }
-                }
-
-                if (this.dom.videoContainer) {
-                    this.dom.videoContainer.style.transform = `translateX(-${newIndex * 100}%)`;
                 }
 
                 requestAnimationFrame(() => {
@@ -1589,19 +1763,10 @@
                 });
             }
 
+            // --- 辅助Action ---
+
             getImageSrc(video) {
-                const { server, token } = this.config;
-                const fallbackUrl = './poster.webp';
-
-                if (typeof video === 'object' && video !== null) {
-                    if (video.ImageTags && video.ImageTags.Primary) {
-                        return fixUrlForJellyfin(`${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`);
-                    }
-                    return fallbackUrl;
-                }
-
-                if (!video) return fallbackUrl;
-                return fixUrlForJellyfin(`${server}/emby/Items/${video}/Images/Primary?api_key=${token}`);
+                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, './poster.webp');
             }
 
             renderLibraryItems(playlistsData, viewsDataRaw) {
@@ -1609,7 +1774,7 @@
                 if (!list) return;
                 list.innerHTML = '';
 
-                const allowedTypes = ['photos'];
+                const allowedTypes = ['homevideos', 'photos'];
                 const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => {
                     if (!item.CollectionType) return true;
                     const cType = item.CollectionType.toLowerCase();
@@ -1651,7 +1816,9 @@
                         const isSelected = pl.Id === this.state.currentLibraryId;
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="${isSelected ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${pl.Name}</span>`;
+                        div.innerHTML = `<i data-lucide="${isSelected ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>`;
+                        // pl.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
+                        div.querySelector('span').textContent = pl.Name;
                         div.onclick = () => {
                             this.state.currentPerson = null;
                             this.state.isFilteredByPerson = false;
@@ -1681,12 +1848,16 @@
                         let iconName = isSelected ? 'check-circle' : 'clapperboard';
                         if (!isSelected) {
                             if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                            else if (lib.CollectionType === 'homevideos') iconName = 'video';
+                            else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
                             else if (lib.CollectionType === 'boxsets') iconName = 'archive';
                         }
 
                         div.setAttribute('tabindex', '0');
                         div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
-                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">${lib.Name}</span>`;
+                        div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>`;
+                        // lib.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
+                        div.querySelector('span').textContent = lib.Name;
                         div.onclick = () => {
                             this.state.currentPerson = null;
                             this.state.isFilteredByPerson = false;
@@ -1711,7 +1882,7 @@
                 const list = document.getElementById('librariesList');
                 if (!list) return;
 
-                // 1. Try to read cache for fast popup loading
+                // 1. 先尝试读取本地缓存实现秒开
                 let hasCache = false;
                 const cachedViewsStr = localStorage.getItem('emby_views_cache');
                 if (cachedViewsStr) {
@@ -1725,7 +1896,7 @@
                     } catch (e) {}
                 }
 
-                // Show spinner if no cache
+                // 如果没有缓存，则显示全屏转圈
                 if (!hasCache) {
                     this.toggleLoading(true);
                     list.innerHTML = '';
@@ -1733,32 +1904,11 @@
                 }
 
                 try {
-                    const userId = this.config.userId;
-
-                    let playlistsData = { Items: [] };
-                    try {
-                        const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                            }
-                        });
-                        if (playlistsRes.ok) {
-                            playlistsData = await playlistsRes.json();
-                        }
-                    } catch (e) {}
-
-                    const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
-                    });
-                    const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };
-
-                    localStorage.setItem('emby_views_cache', JSON.stringify({ playlists: playlistsData, views: viewsDataRaw }));
-
+                    const { playlistsData, viewsDataRaw } = await EmbyXCommon.fetchLibrariesData(this.config);
+                    // 静默刷新渲染
                     this.renderLibraryItems(playlistsData, viewsDataRaw);
                 } catch (e) {
-                    console.error('Failed to fetch Libraries:', e);
+                    console.error('Failed to fetch libraries:', e);
                     this.showToast('Failed to fetch Libraries');
                 } finally {
                     this.toggleLoading(false);
@@ -1769,10 +1919,12 @@
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
                 const id = String(item.Id);
+                // 以 Emby API 的 UserData.IsFavorite 为单一数据源
                 if (!item.UserData) item.UserData = {};
                 const isFav = item.UserData.IsFavorite === true;
                 const { server, token, userId } = this.config;
 
+                // 乐观更新：先修改内存和 UI
                 item.UserData.IsFavorite = !isFav;
                 if (!isFav) {
                     this.state.favorites.add(id);
@@ -1783,16 +1935,12 @@
                 }
                 this.updateUI();
 
+                // 远端同步 Emby API
                 if (server && token && userId) {
                     try {
-                        const method = isFav ? 'DELETE' : 'POST';
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${id}?api_key=${token}`, {
-                            method,
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                            }
-                        });
-                        if (!res.ok) {
+                        const ok = await EmbyXCommon.syncFavoriteStatus({ ...this.config, itemId: id, isFav: !isFav });
+                        if (!ok) {
+                            // 远端失败，回滚内存状态
                             item.UserData.IsFavorite = isFav;
                             if (isFav) this.state.favorites.add(id); else this.state.favorites.delete(id);
                             this.updateUI();
@@ -1800,6 +1948,10 @@
                         }
                     } catch (e) {
                         console.error('Favorite sync failed:', e);
+                        item.UserData.IsFavorite = isFav;
+                        if (isFav) this.state.favorites.add(id); else this.state.favorites.delete(id);
+                        this.updateUI();
+                        this.showToast('Action failed, try again');
                     }
                 }
             }
@@ -1853,7 +2005,7 @@
                         const { server, token, userId } = this.config;
                         const res = await fetch(
                             `${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`,
-                            { headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` } }
+                            { headers: this.getAuthHeaders(token) }
                         );
                         if (res.ok) playlists = (await res.json()).Items || [];
                     } catch (e) {
@@ -1863,9 +2015,11 @@
                     }
                 }
 
+                // 直接从全量内存反向索引中读取当前照片所在的Playlists
                 const itemIdStr = String(item.Id);
                 const containedSet = this.state.itemPlaylistsMap[itemIdStr] || new Set();
 
+                // 排序：Last选择的Playlists优先置顶
                 if (this.state.lastSelectedPlaylist) {
                     const lastIdStr = String(this.state.lastSelectedPlaylist.id);
                     playlists.sort((a, b) => {
@@ -1879,10 +2033,11 @@
                 const headerCreateBtn = document.getElementById('modalCreatePlaylistBtn');
                 if (headerCreateBtn) headerCreateBtn.onclick = () => this.createNewPlaylist(item.Id);
 
+                // 2. 渲染已有Playlists
                 if (playlists.length === 0) {
                     const emptyTip = document.createElement('div');
                     emptyTip.className = 'col-span-2 p-3 text-center text-gray-400 text-xs';
-                    emptyTip.textContent = 'No playlists available';
+                    emptyTip.textContent = 'No playlists yet';
                     list.appendChild(emptyTip);
                 } else {
                     playlists.forEach(pl => {
@@ -1924,15 +2079,16 @@
                         `${server}/emby/Playlists?Name=${encodeURIComponent(playlistName)}&Ids=${itemId}&UserId=${userId}&api_key=${token}`,
                         {
                             method: 'POST',
-                            headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            headers: this.getAuthHeaders(token)
                         }
                     );
                     if (res.ok) {
                         const data = await res.json();
                         const plId = data.Id;
-                        this.showToast(`✅ Created & added to "${playlistName}"`);
+                        this.showToast(`✅ Created & added to 「${playlistName}」`);
                         localStorage.removeItem('emby_views_cache');
                         
+                        // 关联记录
                         const itemIdStr = String(itemId);
                         if (!this.state.itemPlaylistsMap[itemIdStr]) this.state.itemPlaylistsMap[itemIdStr] = new Set();
                         if (plId) this.state.itemPlaylistsMap[itemIdStr].add(String(plId));
@@ -1964,13 +2120,13 @@
                                 `${server}/emby/Playlists/${plId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
                                 {
                                     method: 'DELETE',
-                                    headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                    headers: this.getAuthHeaders(token)
                                 }
                             );
                         } catch(e) {}
                     }));
                     this.state.itemPlaylistsMap[itemIdStr].clear();
-                    this.showToast('Removed from all playlists');
+                    this.showToast('Cleared all categorized playlists');
                     this.updateUI();
                 } catch(e) {
                     this.showToast('Failed to remove');
@@ -1993,7 +2149,7 @@
                             `${server}/emby/Playlists/${playlistId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
                             {
                                 method: 'DELETE',
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             }
                         );
                     } else {
@@ -2001,7 +2157,7 @@
                             `${server}/emby/Playlists/${playlistId}/Items?Ids=${itemId}&UserId=${userId}&api_key=${token}`,
                             {
                                 method: 'POST',
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             }
                         );
                     }
@@ -2011,16 +2167,16 @@
                         
                         if (isRemove) {
                             this.state.itemPlaylistsMap[itemIdStr].delete(plIdStr);
-                            this.showToast(`Removed from "${playlistName}"`);
+                            this.showToast(`Removed from 「${playlistName}」`);
                         } else {
                             this.state.itemPlaylistsMap[itemIdStr].add(plIdStr);
                             this.state.lastSelectedPlaylist = { id: playlistId, name: playlistName };
-                            this.showToast(`✅ Added to "${playlistName}"`);
+                            this.showToast(`✅ Added to 「${playlistName}」`);
                         }
 
                         this.updateUI();
                         if (!isQuickAdd) {
-                            this.showAddToPlaylist();
+                            this.showAddToPlaylist(); // 重新洗牌渲染弹窗列表状态
                         }
                     } else {
                         this.showToast(isRemove ? 'Failed to remove' : 'Failed to add');
@@ -2032,7 +2188,6 @@
                 }
             }
 
-
             async filterByTag(tagName) {
                 if (!tagName) return;
                 this.toggleLoading(true);
@@ -2041,13 +2196,11 @@
                     const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
                     const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (res.ok) {
                         const data = await res.json();
-                        this.state.personVideos = data.Items || [];
+                        this.state.personVideos = this.filterDisplayPhotos(data.Items || []);
                         this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
                         this.state.currentTag = tagName;
                         this.state.isFilteredByTag = true;
@@ -2074,6 +2227,8 @@
                     this.toggleLoading(false);
                 }
             }
+
+            // --- UI 更新与交互 ---
 
             getMetaHeightLimitElement() {
                 const personBtn = document.getElementById('personBtn');
@@ -2131,23 +2286,10 @@
             updateUI() {
                 const item = this.state.videos[this.state.currentIndex];
                 if (item) {
-                    this.dom.videoTitle.textContent = item.Name;
+                    this.dom.videoTitle.textContent = this.getPhotoDisplayName(item);
                     this.collapseMetaInfo();
-                    
-                    let overviewText = item.Overview || 'No Description';
-                    let rawTags = [];
-                    if (Array.isArray(item.Tags) && item.Tags.length > 0) {
-                        rawTags = item.Tags.map(t => typeof t === 'string' ? t : (t.Name || ''));
-                    } else if (Array.isArray(item.TagItems) && item.TagItems.length > 0) {
-                        rawTags = item.TagItems.map(t => typeof t === 'string' ? t : (t.Name || ''));
-                    }
-                    rawTags = rawTags.filter(Boolean);
-
-                    let tagsHtml = '';
-                    if (rawTags.length > 0) {
-                        tagsHtml = ' ' + rawTags.map(tag => `<span class="tag-item font-bold text-primary hover:underline cursor-pointer mr-1.5 inline break-all" data-tag="${this.escapeHtml(tag)}">#${this.escapeHtml(tag)}</span>`).join(' ');
-                    }
-                    this.dom.videoDescription.innerHTML = this.escapeHtml(overviewText) + tagsHtml;
+                    this.dom.videoDescription.textContent = this.getPhotoMetadataText(item);
+                    this.ensurePhotoMetadata(item, true);
 
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = item.UserData?.IsFavorite === true;
@@ -2186,7 +2328,7 @@
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
-                this.dom.deleteFileName.textContent = 'Confirm delete ' + (item.Name || 'this photo') + '?';
+                this.dom.deleteFileName.textContent = 'Confirm Delete ' + (item.Name || 'this photo') + '?';
                 this.toggleModal('deleteConfirmModal', true);
                 lucide.createIcons();
             }
@@ -2196,27 +2338,21 @@
                 if (!item) return;
 
                 try {
-                    // Note: Emby DELETE API requires admin account; regular users get 403
-                    // Must check res.ok, otherwise 403/404 are silently treated as success
-                    const res = await fetch(`${this.config.server}/emby/Items/${item.Id}?api_key=${this.config.token}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
-                    });
+                    const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
-                    if (!res.ok) {
-                        if (res.status === 403) {
+                    if (!ok) {
+                        // 403：账号无管理权限；404：照片已不存在（也从列表移除）
+                        if (status === 403) {
                             this.showToast('❌ No permission. Use an admin account');
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        if (res.status !== 404) {
-                            this.showToast(`❌ Delete failed (${res.status})`);
+                        if (status !== 404) {
+                            this.showToast(`❌ Delete failed (${status})`);
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        // 404 means already deleted — still remove from list
+                        // 404 视为已删除，继续从列表移除
                     }
 
                     this.showToast('✅ Deleted');
@@ -2226,10 +2362,12 @@
                     if (this.state.viewMode === 'grid') {
                         this.renderGridView();
                     } else {
+                        // 如果删的是最后一个，回到上一个
                         if (this.state.currentIndex >= this.state.videos.length) {
                             this.state.currentIndex = Math.max(0, this.state.videos.length - 1);
                         }
                         this.renderSlides();
+
                         if (this.state.videos.length > 0) {
                             this.loadPhoto(this.state.currentIndex);
                         }
@@ -2244,23 +2382,31 @@
                 const app = document.getElementById('app');
                 if (this.csTimer) clearTimeout(this.csTimer);
 
+                // 只有在流模式且处于全屏状态，且界面当前处于显示状态，
+                // 且当前没有任何弹窗遮罩时，才开启自动隐藏计时。
                 if (this.state.viewMode === 'grid') return;
                 if (this.isAnyModalOpen()) return;
 
                 if ((document.fullscreenElement || app.classList.contains('ios-pwa-fullscreen')) && !app.classList.contains('interface-hidden')) {
+                    // 全局自动清屏倒计时：默认三秒 (3000ms)
+                    // 注释：如果你想修改清屏等待时长，请修改下方的 3000 数值
                     this.csTimer = setTimeout(() => {
                         app.classList.add('interface-hidden');
                     }, 3000);
                 }
             }
 
+            // 随机模式：原地洗牌 videos 数组，保持 currentIndex 不变
+            // 这样 +1 下一个就是随机照片，且三槽预缓冲完全生效
             _shuffleAroundCurrent() {
                 const idx = this.state.currentIndex;
                 const cur = this.state.videos[idx];
+                // 整体洗牌
                 for (let i = this.state.videos.length - 1; i > 0; i--) {
                     const j = Math.floor(Math.random() * (i + 1));
                     [this.state.videos[i], this.state.videos[j]] = [this.state.videos[j], this.state.videos[i]];
                 }
+                // 将当前照片放回其在数组中的原位置
                 const newPos = this.state.videos.findIndex(v => v.Id === cur.Id);
                 [this.state.videos[newPos], this.state.videos[idx]] = [this.state.videos[idx], this.state.videos[newPos]];
             }
@@ -2275,11 +2421,16 @@
                 lucide.createIcons();
 
                 if (isSeq) {
+                    // 切换随机：Save原始列表，就地洗牌
+                    // currentIndex/物理 slot 不变，当前照片完全不受干扰
                     this.state.originalVideos = [...this.state.videos];
                     this._shuffleAroundCurrent();
+                    // 刷新相邻插槽（当前插槽内容不变，两侧插槽更新为随机顺序）
                     if (this.dom.slides) this.renderBuffer();
-                    this.showToast('🔀 Shuffle mode');
+                    this.showToast('🔀 Shuffle photos');
                 } else {
+                    // 切回顺序：恢复原始列表，将当前照片对换到 currentIndex 位置
+                    // 确保物理 slot 不变、currentIndex 不变，当前照片零干扰
                     const curId = this.state.videos[this.state.currentIndex]?.Id;
                     this.state.videos = [...this.state.originalVideos];
                     this.state.originalVideos = [];
@@ -2290,19 +2441,21 @@
                                 [this.state.videos[this.state.currentIndex], this.state.videos[origPos]];
                         }
                     }
+                    // 刷新相邻插槽
                     if (this.dom.slides) this.renderBuffer();
-                    this.showToast('🔁 Sequence mode');
+                    this.showToast('🔁 Browse in order');
                 }
             }
 
 
+            // 删除旧的 _buildShuffledQueue，nextVideo 恢复纯顺序逻辑
             nextVideo(isAuto = false) {
-                const nextIndex = this.state.currentIndex + 1;
+                const nextIndex = this.state.currentIndex + this.getGalleryStep();
                 if (nextIndex >= this.state.videos.length) {
                     if (!isAuto) this.showToast('You reached the last photo');
                     return;
                 }
-                this.switchSlide(nextIndex, 'up');
+                this.switchSlide(nextIndex, 'up', isAuto);
             }
 
             toggleViewMode() {
@@ -2344,6 +2497,7 @@
                 lucide.createIcons();
 
                 if (this.state.viewMode === 'grid') {
+                    // 无限流切格子的神之一手：重算页码对齐
                     const PAGE_SIZE = 150;
                     if (this.state.videos.length > PAGE_SIZE) {
                         const pageIndex = Math.floor(this.state.currentIndex / PAGE_SIZE);
@@ -2356,7 +2510,7 @@
                     const app = document.getElementById('app');
                     if (app) {
                         app.classList.remove('interface-hidden');
-                        app.classList.add('grid-active');
+                        app.classList.add('grid-active'); // 特殊清屏状态：只留底部栏
                         if (this.csTimer) clearTimeout(this.csTimer);
                     }
                     this.dom.videoContainer.style.touchAction = 'auto';
@@ -2368,31 +2522,35 @@
                     this.dom.videoContainer.style.touchAction = 'pan-y';
                     this.renderSlides();
                     this.loadPhoto(this.state.currentIndex);
+                    // 切回流模式后重新开启自动清屏计时
                     this.showInterfaceTemp();
                 }
             }
 
             toggleScaleMode() {
+                this.clearSlideshowTimer();
                 this.state.isScaleFill = !this.state.isScaleFill;
                 localStorage.setItem('emby_is_scale_fill', this.state.isScaleFill);
-                [0, 1, 2].forEach(index => {
-                    const thumb = document.getElementById(`thumb-${index}`);
-                    const poster = document.getElementById(`poster-${index}`);
-                    const overlay = document.getElementById(`overlay-${index}`);
+                [0, 1, 2].forEach((index) => {
+                    ['', '2'].forEach((suffix) => {
+                        const thumb = document.getElementById(`thumb${suffix}-${index}`);
+                        const poster = document.getElementById(`poster${suffix}-${index}`);
+                        const overlay = document.getElementById(`overlay${suffix}-${index}`);
 
-                    if (thumb) {
-                        thumb.style.opacity = '1';
-                        thumb.classList.remove('object-cover', 'object-contain');
-                        thumb.classList.add(this.state.isScaleFill ? 'object-cover' : 'object-contain');
-                    }
+                        if (thumb) {
+                            thumb.style.opacity = thumb.getAttribute('src') ? '1' : '0';
+                            thumb.classList.remove('object-cover', 'object-contain');
+                            thumb.classList.add(this.state.isScaleFill ? 'object-cover' : 'object-contain');
+                        }
 
-                    if (this.state.isScaleFill) {
-                        if (poster) poster.style.opacity = '0';
-                        if (overlay) overlay.style.opacity = '0';
-                    } else {
-                        if (poster) poster.style.opacity = '0.7';
-                        if (overlay) overlay.style.opacity = '1';
-                    }
+                        if (this.state.isScaleFill) {
+                            if (poster) poster.style.opacity = '0';
+                            if (overlay) overlay.style.opacity = '0';
+                        } else {
+                            if (poster) poster.style.opacity = poster.style.backgroundImage ? '0.7' : '0';
+                            if (overlay) overlay.style.opacity = poster?.style.backgroundImage ? '1' : '0';
+                        }
+                    });
                 });
 
                 const scaleBtn = this.dom.scaleBtn;
@@ -2406,56 +2564,63 @@
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
+                this.clearSlideshowTimer();
                 this.dom.mediaInfoModal.classList.remove('hidden');
+                // 打开详情面板也是交互，且属于遮罩状态，需Reset/停止计时
                 this.showInterfaceTemp();
                 this.dom.mediaInfoContent.innerHTML = `<div class="flex justify-center py-4"><i data-lucide="loader-2" class="w-6 h-6 animate-spin text-gray-500"></i></div>`;
                 lucide.createIcons();
 
                 try {
-                    const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources,Path`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
+                    const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
+                        headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) throw new Error('API Error');
                     const data = await res.json();
-                    const source = data.MediaSources?.[0] || {};
-                    const width = data.Width || source.Width || '?';
-                    const height = data.Height || source.Height || '?';
-                    const container = (source.Container || data.Container || 'Unknown').toUpperCase();
-                    const fileSize = source.Size
-                        ? (source.Size > 1024 * 1024 * 1024
-                            ? (source.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB'
-                            : (source.Size / (1024 * 1024)).toFixed(1) + ' MB')
-                        : 'Unknown';
-                    const path = this.escapeHtml(data.Path || source.Path || '-');
+
+                    const src = data?.MediaSources?.[0] || {};
+                    const imageStream = src.MediaStreams?.find(s => s.Type === 'Image') || {};
+                    const w = imageStream.Width || data.Width || item.Width || '?';
+                    const h = imageStream.Height || data.Height || item.Height || '?';
+                    const format = (src.Container || item.Container || item.Path?.split('.').pop() || 'Unknown').toUpperCase();
+                    const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : 'Unknown';
+                    const metaText = this.getPhotoMetadataText(item);
 
                     this.dom.mediaInfoContent.innerHTML = `
                         <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                            <span class="text-gray-500 text-right">Dimensions</span>
-                            <span class="col-span-2 text-gray-200 font-mono">${width}x${height}</span>
+                            <span class="text-gray-500 text-right">Filename</span>
+                            <span class="col-span-2 text-gray-200 break-all">${this.escapeHtml(this.getPhotoDisplayName(item))}</span>
                         </div>
                         <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                            <span class="text-gray-500 text-right">Format</span>
-                            <span class="col-span-2 text-gray-200">${container}</span>
+                            <span class="text-gray-500 text-right">Dimensions</span>
+                            <span class="col-span-2 text-gray-200 font-mono">${w}x${h}</span>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
+                            <span class="text-gray-500 text-right">Image Format</span>
+                            <span class="col-span-2 text-gray-200 font-mono">${this.escapeHtml(format)}</span>
                         </div>
                         <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
                             <span class="text-gray-500 text-right">File Size</span>
-                            <span class="col-span-2 text-gray-200 font-mono">${fileSize}</span>
+                            <span class="col-span-2 text-gray-200 font-mono">${fileSizeStr}</span>
                         </div>
-                        <div class="grid grid-cols-3 gap-2 py-2 items-start">
-                            <span class="text-gray-500 text-right">Path</span>
-                            <span class="col-span-2 text-gray-200 break-all select-text">${path}</span>
+                        <div class="grid grid-cols-3 gap-2 py-2">
+                            <span class="text-gray-500 text-right">EXIF/XMP</span>
+                            <span class="col-span-2 text-gray-200 whitespace-pre-wrap break-all">${this.escapeHtml(metaText)}</span>
                         </div>
                     `;
                 } catch (e) {
-                    this.dom.mediaInfoContent.innerHTML = `<div class="text-center text-red-400 py-4">Failed to fetch photo information</div>`;
+                    this.dom.mediaInfoContent.innerHTML = `<div class="text-center text-red-400 py-4">Failed to get data</div>`;
                 }
             }
 
-
+            // --- 事件绑定 ---
             bindEvents() {
-                const recalcMetaInfo = () => this.recalculateMetaInfoHeight();
+                const recalcMetaInfo = () => {
+                    this.recalculateMetaInfoHeight();
+                    if (this.state.viewMode === 'stream' && this.dom.slides) {
+                        this.renderBuffer();
+                    }
+                };
                 window.addEventListener('resize', recalcMetaInfo);
                 window.addEventListener('orientationchange', recalcMetaInfo);
 
@@ -2486,8 +2651,10 @@
                         const itemIdStr = String(item.Id);
                         const set = this.state.itemPlaylistsMap[itemIdStr];
                         if (set && set.size > 0) {
+                            // 已添加过Playlists：长按取消加入的所有Playlists
                             this.removeAllPlaylistsFromItem(item.Id);
                         } else if (this.state.lastSelectedPlaylist) {
+                            // 未添加过Playlists：快捷加入Last选择的列表
                             const lastPl = this.state.lastSelectedPlaylist;
                             this.toggleItemPlaylist(lastPl.id, lastPl.name, item.Id, false, true);
                         } else {
@@ -2552,12 +2719,14 @@
                     e.stopPropagation();
                     this.dom.mediaInfoModal.classList.add('hidden');
                     this.showInterfaceTemp();
+                    this.scheduleSlideshow();
                 };
 
                 this.dom.mediaInfoModal.onclick = (e) => {
                     if (e.target === e.currentTarget) {
                         this.dom.mediaInfoModal.classList.add('hidden');
                         this.showInterfaceTemp();
+                        this.scheduleSlideshow();
                     }
                 };
 
@@ -2577,10 +2746,11 @@
                         (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
                     const isStandalone = window.navigator.standalone === true || window.matchMedia('(display-mode: standalone)').matches;
 
-                    // Detect if embedded in iframe
+                    // 检测是否被嵌入在 iframe 中
                     const isEmbedded = window.self !== window.top;
 
-                    // Compel to use immersive pseudo-fullscreen in iOS PWA or embedded environment
+                    // 方案一：向 iOS 妥协，采用“沉浸式融合”伪全屏
+                    // 只要在 iOS PWA 状态，或者【处于嵌入状态时】，一律强制走“沉浸式伪全屏”分支
                     if ((isIOS && isStandalone) || isEmbedded) {
                         if (!app.classList.contains('ios-pwa-fullscreen')) {
                             app.classList.add('ios-pwa-fullscreen');
@@ -2604,6 +2774,7 @@
                         return;
                     }
 
+                    // 正常的 安卓/PC 系统调用原生全屏
                     if (!document.fullscreenElement) {
                         app.classList.add('interface-hidden');
                         document.documentElement.requestFullscreen().catch(() => {
@@ -2648,14 +2819,11 @@
                                 const { server, token, userId } = this.config;
                                 const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Person=${encodeURIComponent(personName)}`;
                                 const res = await fetch(url, {
-                                    headers: {
-                                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                                    }
+                                    headers: this.getAuthHeaders(token)
                                 });
                                 if (res.ok) {
                                     const data = await res.json();
-                                    this.state.personVideos = data.Items || [];
-                                    // Isolate person count from library totalCount
+                                    this.state.personVideos = this.filterDisplayPhotos(data.Items || []);
                                     this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
                                     this.state.currentPerson = personName;
                                     this.state.viewMode = 'grid';
@@ -2690,16 +2858,18 @@
                 this.dom.libraryBtn.onclick = () => this.showLibraries();
                 this.dom.myBtn.onclick = () => this.toggleModal('profilePage', true);
 
+                // Material Design 3 液体波纹点击反馈
                 document.querySelectorAll('.nav-btn').forEach(btn => {
                     btn.addEventListener('click', function () {
                         if (this.navTimer) clearTimeout(this.navTimer);
                         this.classList.remove('nav-clicked');
+                        // 强制重绘，重启CSS动画
                         void this.offsetWidth;
                         this.classList.add('nav-clicked');
 
                         this.navTimer = setTimeout(() => {
                             this.classList.remove('nav-clicked');
-                        }, 1000);
+                        }, 1000); // 1秒后过渡消失
                     });
                 });
 
@@ -2725,9 +2895,11 @@
                     }
                 };
 
+                // 图片画廊手势
                 const container = document.getElementById('app');
                 this.bindGestures(container);
 
+                // 键盘与遥控器适配
                 this.bindKeyboard();
             }
 
@@ -2739,103 +2911,34 @@
                     const profileActive = document.getElementById('profilePage').classList.contains('active');
                     const libraryActive = !document.getElementById('libraryModal').classList.contains('hidden');
 
+                    // 如果正在输入（且不是在处理遥控器方向键时），不触发全局快捷键
+                    // 但我们要允许在输入框内通过上下键跳转焦点
                     const isInput = ['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase());
 
                     const key = e.key;
                     const keyCode = e.keyCode;
-                    const lowKey = key.toLowerCase();
+                    const lowKey = key.toLowerCase(); // 提前声明，全局可用
 
+                    // --- Profile / 弹窗 / 网格列表内的空间导航 (Remote Control / Keyboard Focus) ---
                     if (profileActive || libraryActive || document.getElementById('app').classList.contains('grid-active')) {
-                        if (isInput) return;
-                        const items = Array.from(document.querySelectorAll(
-                            profileActive ? '#profilePage .focusable-item' :
-                                libraryActive ? '#libraryModal .focusable-item' :
-                                    '#videoContainer .focusable-item'
-                        ));
-                        let currentIndex = items.indexOf(document.activeElement);
-                        if (!isInput && (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' ||
-                            lowKey === 'w' || lowKey === 'a' || lowKey === 's' || lowKey === 'd' ||
-                            [38, 40, 37, 39].includes(keyCode))) {
-                            e.preventDefault();
-                            if (currentIndex === -1) {
-                                let startItem = items[0];
-                                if (document.getElementById('app').classList.contains('grid-active')) {
-                                    startItem = items.find(it => it.dataset.index == this.state.currentIndex) || items[0];
-                                }
-                                startItem?.focus();
-                            } else {
-                                const isVideoGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
-                                if (isVideoGrid) {
-                                    let nextIdx = currentIndex;
-                                    if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) nextIdx += 3;
-                                    else if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) nextIdx -= 3;
-                                    else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) nextIdx += 1;
-                                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) nextIdx -= 1;
+                        const isPhotoGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
+                        const container = profileActive ? document.getElementById('profilePage') :
+                            libraryActive ? document.getElementById('libraryModal') :
+                                document.getElementById('videoContainer');
 
-                                    if (nextIdx >= 0 && nextIdx < items.length) {
-                                        items[nextIdx].focus();
-                                        items[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    }
-                                } else if (libraryActive) {
-                                    const cur = items[currentIndex];
-                                    const curR = cur.getBoundingClientRect();
-                                    const curCx = curR.left + curR.width / 2;
-                                    const curCy = curR.top + curR.height / 2;
-
-                                    let dir;
-                                    if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) dir = 'down';
-                                    else if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) dir = 'up';
-                                    else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) dir = 'right';
-                                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) dir = 'left';
-
-                                    let best = null, bestScore = Infinity;
-                                    items.forEach(item => {
-                                        if (item === cur) return;
-                                        const r = item.getBoundingClientRect();
-                                        const cx = r.left + r.width / 2;
-                                        const cy = r.top + r.height / 2;
-                                        const dx = cx - curCx, dy = cy - curCy;
-                                        if (dir === 'down' && dy <= 2) return;
-                                        if (dir === 'up' && dy >= -2) return;
-                                        if (dir === 'right' && dx <= 2) return;
-                                        if (dir === 'left' && dx >= -2) return;
-                                        const score = (dir === 'down' || dir === 'up')
-                                            ? Math.abs(dy) + Math.abs(dx) * 3
-                                            : Math.abs(dx) + Math.abs(dy) * 3;
-                                        if (score < bestScore) { bestScore = score; best = item; }
-                                    });
-
-                                    if (best) {
-                                        best.focus();
-                                        best.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                                    }
-                                } else {
-                                    if (key === 'ArrowDown' || lowKey === 's' || key === 'ArrowRight' || lowKey === 'd' || [40, 39].includes(keyCode)) {
-                                        currentIndex = (currentIndex + 1) % items.length;
-                                    } else {
-                                        currentIndex = (currentIndex - 1 + items.length) % items.length;
-                                    }
-                                    items[currentIndex].focus();
-                                }
-                            }
-                            return;
-                        }
-
-                        if (key === 'Enter' || keyCode === 13) {
-                            if (document.activeElement && document.activeElement.classList.contains('focusable-item')) {
-                                const tagName = document.activeElement.tagName.toLowerCase();
-                                if (tagName === 'textarea' || (tagName === 'input' && document.activeElement.type !== 'checkbox')) {
-                                    return;
-                                }
-                                e.preventDefault();
-                                document.activeElement.click();
-                                return;
-                            }
-                        }
+                        const consumed = this.nav.handleKey(e, {
+                            isInput,
+                            isGrid: isPhotoGrid,
+                            currentGridIndex: this.state.currentIndex,
+                            isSpatial: libraryActive,
+                            container
+                        });
+                        if (consumed) return;
                     }
 
                     if (isInput) return;
 
+                    // 1. 上下方向键 / WS：打开相册选择
                     if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) {
                         e.preventDefault();
                         this.toggleModal('libraryModal', true);
@@ -2843,6 +2946,7 @@
                         e.preventDefault();
                         this.toggleModal('libraryModal', true);
                     }
+                    // 2. 左右方向键 / AD：在画册模式下切换Previous / Next Photo (符合看图直觉)
                     else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) {
                         e.preventDefault();
                         this.prevVideo();
@@ -2850,11 +2954,14 @@
                         e.preventDefault();
                         this.nextVideo();
                     }
+                    // 3. 确认逻辑：空格键 (Keyboard) & OK键 (Remote)
                     else if (key === ' ' || key === 'Enter' || keyCode === 13) {
                         e.preventDefault();
                         if (key === ' ') {
+                            // 键盘空格：暂停/播放
                             this.togglePlay();
                         } else {
+                            // 遥控器 OK 键: 单击暂停/播放，Double-tap收藏
                             okClickCount++;
                             if (okClickCount === 1) {
                                 okClickTimer = setTimeout(() => {
@@ -2864,10 +2971,12 @@
                             } else if (okClickCount === 2) {
                                 clearTimeout(okClickTimer);
                                 okClickCount = 0;
+                                // 在屏幕中心弹出收藏动画与逻辑
                                 this.handleDoubleTap(window.innerWidth / 2, window.innerHeight / 2);
                             }
                         }
                     }
+                    // 4. 菜单键/缩放键 (j / Menu)
                     else if (key.toLowerCase() === 'j' || keyCode === 18 || keyCode === 93 || keyCode === 118) {
                         if (key.toLowerCase() === 'j' || [18, 93, 118].includes(keyCode)) {
                             e.preventDefault();
@@ -2875,13 +2984,15 @@
                             this.showInterfaceTemp();
                         }
                     }
+                    // 5. 新增快捷键适配 (R, E, F, G, V, I, U)
                     else {
-                        if (lowKey === 'r') {
-                            this.dom.playModeBtn.click();
+                        // 屏蔽 Cmd+R/Ctrl+R/Alt+R 刷新热键，防止被误判为切换播放模式
+                        if (lowKey === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                            this.dom.playModeBtn.click(); // 触发视觉反馈
                         } else if (lowKey === 'f') {
                             this.dom.fullscreenBtn.click();
                         } else if (lowKey === 'e') {
-                            this.dom.viewModeBtn.click();
+                            this.dom.viewModeBtn.click(); // 触发视觉反馈
                         } else if (lowKey === 'g') {
                             const modal = document.getElementById('libraryModal');
                             if (modal && !modal.classList.contains('hidden')) {
@@ -2905,6 +3016,7 @@
                                 setTimeout(() => this.dom.myBtn.classList.remove('nav-clicked'), 1000);
                             }
                         } else if (lowKey === 'v') {
+                            // 格子视图模式下屏蔽照片详情快捷键
                             const isGridActive = document.getElementById('app').classList.contains('grid-active');
                             if (!isGridActive) {
                                 if (!this.dom.mediaInfoModal.classList.contains('hidden')) {
@@ -2914,7 +3026,7 @@
                                 }
                             }
                         } else if (lowKey === 'u') {
-                            // Instant center heart burst (pure SVG + high performance CSS)
+                            // 立即展示中心爱心特效
                             const heart = document.createElement('div');
                             heart.className = 'heart-anim absolute pointer-events-none z-50';
                             heart.style.cssText = `left:calc(50% - 32px);top:calc(50% - 32px);--rot:${Math.floor(Math.random() * 40) - 20}deg`;
@@ -2935,7 +3047,7 @@
                                 this.showAddToPlaylist();
                                 this.showInterfaceTemp();
                             }
-                        } else if (lowKey === 'y') {
+                        } else if (lowKey === 'y' ) {
                             // Y: toggle person filter - enter if person, exit if already filtering
                             if (this.state.isFilteredByPerson) {
                                 this.toggleViewMode();
@@ -2949,179 +3061,16 @@
             }
 
             bindGestures(container) {
-                let x0 = 0, y0 = 0;
-                let t0 = 0;
-                let clickTimer = null;
-                let clickCount = 0;
-                let lastTap = { x: 0, y: 0 };
-                let gestureActive = false;
-
-                container.style.touchAction = 'none';
-                container.style.userSelect = 'none';
-                container.style.webkitUserSelect = 'none';
-
-                const isCenterTap = (x, y) => (
-                    x > window.innerWidth * 0.25 &&
-                    x < window.innerWidth * 0.75 &&
-                    y > window.innerHeight * 0.18 &&
-                    y < window.innerHeight * 0.82
-                );
-
-                const isExcludedTarget = target => [
-                    '.bottom-nav',
-                    '.bottom-info',
-                    '.right-toolbar',
-                    '#favoriteBtn',
-                    '#addToPlaylistBtn',
-                    '#scaleBtn',
-                    '#personBtn',
-                    '#fullscreenBtn',
-                    '#deleteBtn',
-                    '#libraryModal',
-                    '#addToPlaylistModal',
-                    '#mediaInfoModal',
-                    '#deleteConfirmModal',
-                    '.profile-layer',
-                ].some(selector => target.closest(selector));
-
-                const startHandler = e => {
-                    if (this.state.viewMode !== 'stream' || this.isAnyModalOpen() || isExcludedTarget(e.target)) {
-                        gestureActive = false;
-                        return;
-                    }
-                    gestureActive = true;
-                    const point = e.touches ? e.touches[0] : e;
-                    x0 = point.clientX;
-                    y0 = point.clientY;
-                    t0 = Date.now();
-                };
-
-                const moveHandler = e => {
-                    if (!gestureActive || this.state.viewMode !== 'stream' || this.isAnyModalOpen()) return;
-                    const point = e.touches ? e.touches[0] : e;
-                    const diffX = point.clientX - x0;
-                    const diffY = point.clientY - y0;
-                    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 8 && e.cancelable) {
-                        e.preventDefault();
-                    }
-                };
-
-                const endHandler = e => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') return;
-                    gestureActive = false;
-                    const point = e.changedTouches ? e.changedTouches[0] : e;
-                    const diffX = point.clientX - x0;
-                    const diffY = point.clientY - y0;
-                    const elapsed = Date.now() - t0;
-
-                    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-                        diffX < 0 ? this.nextVideo() : this.prevVideo();
-                        return;
-                    }
-                    if (Math.abs(diffY) > 50 && Math.abs(diffY) > Math.abs(diffX)) {
-                        this.toggleModal('libraryModal', true);
-                        return;
-                    }
-                    if (Math.abs(diffX) >= 10 || Math.abs(diffY) >= 10 || elapsed >= 300) return;
-
-                    lastTap = { x: point.clientX, y: point.clientY };
-                    clickCount++;
-                    if (clickCount === 1) {
-                        clickTimer = setTimeout(() => {
-                            const app = document.getElementById('app');
-                            if (isCenterTap(lastTap.x, lastTap.y)) {
-                                this.togglePlay();
-                            } else if (app.classList.contains('interface-hidden')) {
-                                app.classList.remove('interface-hidden');
-                                this.showInterfaceTemp();
-                            }
-                            clickCount = 0;
-                        }, 250);
-                    } else {
-                        clearTimeout(clickTimer);
-                        clickCount = 0;
-                        if (isCenterTap(point.clientX, point.clientY)) {
-                            this.handleDoubleTap(point.clientX, point.clientY);
-                        } else {
-                            this.showInterfaceTemp();
-                        }
-                    }
-                };
-
-                container.addEventListener('contextmenu', e => {
-                    if (e.target.closest('.touch-layer') || e.target.tagName.toLowerCase() === 'img') {
-                        e.preventDefault();
-                    }
-                });
-                container.addEventListener('touchstart', startHandler, { passive: true });
-                container.addEventListener('touchmove', moveHandler, { passive: false });
-
-                let lastTouchEnd = 0;
-                container.addEventListener('touchend', e => {
-                    lastTouchEnd = Date.now();
-                    endHandler(e);
-                });
-                container.addEventListener('touchcancel', () => { gestureActive = false; });
-
-                let isMouseDown = false;
-                container.addEventListener('mousedown', e => {
-                    if (e.button !== 0 || Date.now() - lastTouchEnd < 500) return;
-                    isMouseDown = true;
-                    e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    startHandler(e);
-                });
-                container.addEventListener('mousemove', e => {
-                    if (!isMouseDown) return;
-                    e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    moveHandler(e);
-                });
-                const mouseEndHandler = e => {
-                    if (!isMouseDown) return;
-                    isMouseDown = false;
-                    e.changedTouches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    endHandler(e);
-                };
-                container.addEventListener('mouseup', mouseEndHandler);
-                container.addEventListener('mouseleave', mouseEndHandler);
+                if (this.gallery) this.gallery.bindGestures(container);
             }
-
 
             async handleDoubleTap(x, y) {
-                // 1. Point animation DOM generation (pure SVG + high performance CSS)
-                const heart = document.createElement('div');
-                heart.className = 'heart-anim absolute pointer-events-none z-50';
-                heart.style.cssText = `left:${x - 32}px;top:${y - 32}px;--rot:${Math.floor(Math.random() * 40) - 20}deg`;
-                heart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="drop-shadow-xl"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
-                document.getElementById('app').appendChild(heart);
-                heart.addEventListener('animationend', () => heart.remove());
-
-                const currentVideo = this.state.videos[this.state.currentIndex];
-                if (currentVideo && !currentVideo.UserData?.IsFavorite) {
-                    try {
-                        const { server, token, userId } = this.config;
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${currentVideo.Id}?api_key=${token}`, {
-                            method: 'POST',
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                            }
-                        });
-                        if (res.ok) {
-                            if (!currentVideo.UserData) currentVideo.UserData = {};
-                            currentVideo.UserData.IsFavorite = true;
-                            this.state.favorites.add(String(currentVideo.Id));
-
-                            const favBtn = document.getElementById('favoriteBtn');
-                            if (favBtn) {
-                                favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="text-secondary fill-secondary w-6 h-6 drop-shadow-md"></i></div>`;
-                                lucide.createIcons({ root: favBtn });
-                            }
-                            this.showToast('❤️ Favorited');
-                        }
-                    } catch (e) { console.error('Double tap favorite failed:', e); }
-                }
+                if (this.gallery) return this.gallery.handleDoubleTap(x, y);
             }
 
+            // --- 通用辅助 ---
             toggleModal(id, show) {
+                if (show) this.clearSlideshowTimer();
                 const el = document.getElementById(id);
                 if (id === 'profilePage') {
                     if (show) { el.classList.add('active'); this.state.currentTab = 'my'; }
@@ -3131,26 +3080,23 @@
                     if (show) el.classList.remove('hidden'); else el.classList.add('hidden');
                 }
 
+                // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
-                    setTimeout(() => {
-                        const allItems = Array.from(el.querySelectorAll('.focusable-item'));
-                        const selected = allItems.find(i => i.classList.contains('bg-primary/20'));
-                        const target = selected || allItems[0];
-                        if (target) target.focus();
-                    }, 300);
+                    this.nav.focusModal(el);
                 } else {
-                    if (document.activeElement && document.activeElement.closest(`#${id}`)) {
-                        document.activeElement.blur();
-                    }
+                    this.nav.blurModal(el);
                 }
 
+                // 核心逻辑：无论打开还是Close弹窗，都调用 showInterfaceTemp
                 this.showInterfaceTemp();
+                if (!show) this.scheduleSlideshow();
             }
 
             toggleLoading(show) {
                 const el = this.dom.loading;
                 if (show) {
                     el.classList.remove('hidden');
+                    // 加载中强制隐藏当前播放按钮，避免状态冲突导致的闪烁
                     const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
                     const btn = document.getElementById(`playBtn-${slideIdx}`);
                     if (btn) btn.classList.remove('paused');
@@ -3160,6 +3106,8 @@
             }
 
             showToast(msg, duration = 3000) {
+                // 清除上一个计时器，防止快速连发 Toast 时提前消失
+                // duration: 显示时长（ms），默认 3000。重要提示可传更大值，如 5000
                 if (this._toastTimer) clearTimeout(this._toastTimer);
                 const t = this.dom.toast;
                 t.textContent = msg;
@@ -3182,6 +3130,7 @@
             lucide.createIcons();
             window.app = new EmbyApp();
 
+            // 注册 Service Worker 以满足安卓 PWA 安装要求
             if ('serviceWorker' in navigator) {
                 navigator.serviceWorker.register('./sw.js').catch(() => { });
             }

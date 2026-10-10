@@ -79,7 +79,6 @@ embyx/
 ├── zh/               # Chinese Version
 ├── en/               # English Version
 ├── pic/              # Marketing & demo screenshots
-├── live/             # live-redirect proxy service
 ├── docker/           # Docker deployment configurations
 ├── README.md         # English Documentation
 └── README_zh.md      # Chinese Documentation
@@ -107,7 +106,6 @@ docker run -d \
   --network host \
   -e APP_LANG=en \
   -e APP_PORT=8090 \
-  -e LIVE_PORT=8091 \
   ghcr.io/juneix/embyx
 ```
 #### Docker Compose:
@@ -122,7 +120,6 @@ services:
     environment:
       - APP_LANG=en # English Version
       - APP_PORT=8090 # Access Port
-      - LIVE_PORT=8091 # Live Proxy Port
 ```
 
 ## ❤️ Support & Community

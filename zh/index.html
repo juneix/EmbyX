@@ -31,6 +31,10 @@
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/hls.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/mpegts.min.js';document.head.appendChild(s)"></script>
+    <script src="js/common.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/player.js"></script>
+    <script src="js/stage.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {
@@ -668,32 +672,20 @@
         // § 0. 工具函数
         // ═══════════════════════════════════════
 
-        // Jellyfin 前缀兼容拦截
-        function enableJellyfinFetchProxy() {
-            if (window._jellyfinProxyEnabled) return;
-            const origFetch = window.fetch;
-            window.fetch = function (url, options) {
-                if (typeof url === 'string' && url.includes('/emby/')) {
-                    url = url.replace('/emby/', '/');
-                }
-                return origFetch(url, options);
-            };
-            window._jellyfinProxyEnabled = true;
-        }
-
-        // Jellyfin 媒体与图片地址修正
-        function fixUrlForJellyfin(url) {
-            if (typeof url === 'string' && localStorage.getItem('emby_is_jellyfin') === 'true') {
-                return url.replace('/emby/', '/');
-            }
-            return url;
-        }
+        // Jellyfin 与鉴权工具函数（委托至 common.js）
+        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
+        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
+        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
 
         // ═══════════════════════════════════════
         // § 1. EmbyApp 类 — 构造与基础方法
         // ═══════════════════════════════════════
 
         class EmbyApp {
+            getAuthHeaders(token = '', extra = {}) {
+                return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);
+            }
+
             constructor() {
                 this._isFirstLoad = true; // 启动加载锁，防时间戳自污染
                 // 应用状态
@@ -734,6 +726,21 @@
 
 
                 this.dom = {}; // DOM 元素缓存
+                this.nav = new SpatialNavigator({ app: this });
+                this.player = new VideoPlayer({
+                    app: this,
+                    onEnded: () => {
+                        if (this.state.viewMode === 'stream' && this.state.isAutoplay) {
+                            this.nextVideo();
+                        }
+                    },
+                    onTimeUpdate: (currentTime, duration, pct) => {
+                        if (this.dom.progressLine) this.dom.progressLine.style.width = `${pct}%`;
+                        if (this.dom.currentTime) this.dom.currentTime.textContent = this.formatTime(currentTime);
+                        if (this.dom.totalTime) this.dom.totalTime.textContent = this.formatTime(duration);
+                    }
+                });
+                this.stage = null;
                 this.config.deviceName = this.getDeviceName();
                 this.init();
             }
@@ -780,6 +787,12 @@
             // ═══ 初始化 ═══
             init() {
                 this.cacheDOM();
+                this.stage = new StageEngine({
+                    app: this,
+                    container: this.dom.videoContainer,
+                    onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
+                    onDoubleTapSkip: (dir, x, y) => this.handleDoubleTapSkip(dir, x, y)
+                });
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
@@ -845,41 +858,12 @@
                 const badge = document.getElementById('appVersionBadge');
                 if (!badge) return;
 
-                // 频率限制：24小时检查一次
-                const lastCheck = localStorage.getItem('embyx_last_update_check');
-                const now = Date.now();
-                if (lastCheck && now - parseInt(lastCheck) < 24 * 60 * 60 * 1000) return;
-
-                try {
-                    const response = await fetch('https://api.github.com/repos/juneix/EmbyX/releases/latest');
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    localStorage.setItem('embyx_last_update_check', now.toString());
-
-                    const latestTag = data.tag_name; // 例如 v1.2
-                    const latestVersion = latestTag.replace('v', '').trim();
-                    const currentVersion = this.config.appVersion;
-
-                    // 语义化版本对比函数 (支持 1.1 < 1.1.2 等)
-                    const isNewer = (latest, current) => {
-                        const l = latest.split('.').map(Number);
-                        const c = current.split('.').map(Number);
-                        for (let i = 0; i < Math.max(l.length, c.length); i++) {
-                            if ((l[i] || 0) > (c[i] || 0)) return true;
-                            if ((l[i] || 0) < (c[i] || 0)) return false;
-                        }
-                        return false;
-                    };
-
-                    if (isNewer(latestVersion, currentVersion)) {
-                        // 发现新版本：变橙并激活点击
-                        badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
-                        badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
-                        badge.title = '发现新版本，点击前往下载';
-                        badge.onclick = () => window.open('https://github.com/juneix/EmbyX/releases', '_blank');
-                    }
-                } catch (err) {
-                    console.error('Update check failed:', err);
+                const res = await EmbyXCommon.checkGitHubUpdate(this.config.appVersion);
+                if (res && res.hasUpdate) {
+                    badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
+                    badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
+                    badge.title = '发现新版本，点击前往下载';
+                    badge.onclick = () => window.open(res.releaseUrl || 'https://github.com/juneix/EmbyX/releases', '_blank');
                 }
             }
 
@@ -960,7 +944,7 @@
                 }
 
                 // Jellyfin 初始化挂载
-                if (localStorage.getItem('emby_is_jellyfin') === 'true') {
+                if (EmbyXCommon.getServerType() === 'jellyfin') {
                     enableJellyfinFetchProxy();
                 }
             }
@@ -1084,17 +1068,7 @@
             }
 
             async detectFnOS(server) {
-                try {
-                    const res = await fetch(`${server}/v/api/v1/sys/version`, {
-                        headers: { 'Accept': 'application/json' }
-                    });
-                    if (!res.ok) return false;
-
-                    const data = await res.json();
-                    return data?.code === 0 && !!data?.data?.version;
-                } catch (e) {
-                    return false;
-                }
+                return EmbyXCommon.detectFnOS(server);
             }
 
             async saveConfig() {
@@ -1112,70 +1086,13 @@
                 this.toggleLoading(true);
 
                 // 自动补全协议头和端口
-                let isAutoFilled = false;
-                if (server && !server.startsWith('http')) {
-                    const host = server.split(':')[0];
-                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
-
-                    // HTTPS 下输入局域网 IP：飞牛 App WebView 会拦截 HTTP 混合请求，重写为同源代理地址绕过沙箱限制
-                    if (location.protocol === 'https:' && isIP) {
-                        server = location.origin + '/app/juneix-embyx/proxy/8096';
-                        isAutoFilled = true;
-                    } else if (isIP && !server.includes(':')) {
-                        server = `http://${server}:8096`;
-                        isAutoFilled = true;
-                    } else {
-                        server = (isIP ? 'http://' : 'https://') + server;
-                    }
-                }
-
-                // 封装登录验证流程（8096: Emby/Jellyfin 标准端口, 8090: 飞牛影视端口）
-                const performAuth = async (targetServer) => {
-                    // 探测飞牛影视 /v 接口，命中则走专用播放链
-                    const fnOS = await this.detectFnOS(targetServer);
-
-                    // Jellyfin 登录前置探测：标准路径无 /emby/ 前缀，兼容路径作为回退
-                    let isJellyfin = false;
-                    for (const path of ['/System/Info/Public', '/emby/System/Info/Public']) {
-                        try {
-                            const res = await fetch(`${targetServer}${path}`);
-                            if (!res.ok) continue;
-                            const d = await res.json();
-                            if (d.ProductName?.toLowerCase().includes('jellyfin')) { isJellyfin = true; break; }
-                        } catch (e) {}
-                    }
-
-                    if (isJellyfin) {
-                        localStorage.setItem('emby_is_jellyfin', 'true');
-                        enableJellyfinFetchProxy();
-                    } else {
-                        localStorage.removeItem('emby_is_jellyfin');
-                    }
-
-                    const res = await fetch(`${targetServer}/emby/Users/AuthenticateByName`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
-                        },
-                        body: JSON.stringify({ Username: user, Pw: pwd })
-                    });
-
-                    if (!res.ok) {
-                        throw { status: res.status };
-                    }
-
-                    const data = await res.json();
-                    if (!data.AccessToken) {
-                        throw { status: 'NO_TOKEN' };
-                    }
-                    return { data, fnOS };
-                };
+                const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
+                server = normalizedServer;
 
                 try {
-                    // 如果是用旧 token 更新设置，跳过登录
+                    // 如果是用旧 token 更新设置，跳过登录（仅当输入为掩码且旧密码长度大于0）
                     const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    const isUnchangedPwd = (/^\*+$/.test(pwd) && pwd.length === pwdLen) || (pwd === "" && pwdLen === 0);
+                    const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
                     if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
                         // 服务器未变，fnOS 状态沿用内存值，无需重新发探测请求
                         const fnOS = this.config.fnOS;
@@ -1193,40 +1110,24 @@
                         return;
                     }
 
-                    let auth;
-                    try {
-                        auth = await performAuth(server);
-                    } catch (err) {
-                        // 登录失败后，如果是自动补全的 8096 端口，自动尝试 8090 端口
-                        if (isAutoFilled && server.endsWith(':8096')) {
-                            const fallbackServer = server.replace(/:8096$/, ':8090');
-                            try {
-                                auth = await performAuth(fallbackServer);
-                                server = fallbackServer; // 成功登录，更新为 8090 地址以供后续保存
-                            } catch (fallbackErr) {
-                                throw err; // 8090 也失败，抛出原始错误
-                            }
-                        } else if (isAutoFilled && server.endsWith('/proxy/8096')) {
-                            // /proxy/8096（本机 Emby）失败：回退至飞牛影视同源代理根目录（Go 代理转发 8005 端口）
-                            const fallbackServer = server.replace(/\/proxy\/8096$/, '');
-                            try {
-                                auth = await performAuth(fallbackServer);
-                                server = fallbackServer;
-                            } catch (fallbackErr) {
-                                throw err;
-                            }
-                        } else {
-                            throw err;
-                        }
-                    }
+                    const auth = await EmbyXCommon.authenticate({
+                        server,
+                        user,
+                        pwd,
+                        deviceName: this.config.deviceName,
+                        deviceId: this.config.deviceId,
+                        appVersion: this.config.appVersion,
+                        isAutoFilled
+                    });
 
-                    const { data, fnOS } = auth;
+                    const { data, userId, fnOS, finalServer } = auth;
+                    server = finalServer;
 
                     // 登录成功后的处理
                     localStorage.setItem('emby_server', server);
                     localStorage.setItem('emby_user', user);
                     localStorage.setItem('emby_token', data.AccessToken);
-                    localStorage.setItem('emby_uid', data.SessionInfo.UserId);
+                    localStorage.setItem('emby_uid', userId);
                     localStorage.setItem('emby_static', isStatic);
                     localStorage.setItem('emby_autoplay', autoplay);
                     localStorage.setItem('emby_shortdrama', shortDrama);
@@ -1234,7 +1135,7 @@
                     if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                     else localStorage.removeItem('emby_fnOS');
 
-                    this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
+                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
 
                     // 将密码位数存入 localStorage，不存密码本身，空密码记为 0
                     const pwdLen2 = pwd.length;
@@ -1290,25 +1191,11 @@
             // ═══ 数据管理 ═══
 
             async loadFavorites() {
-                const { server, token, userId } = this.config;
-                if (!server || !token || !userId) {
-                    const saved = localStorage.getItem('emby_favorites');
-                    if (saved) this.state.favorites = new Set(JSON.parse(saved));
-                    return;
-                }
                 try {
-                    const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&Fields=Id`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.Items) {
-                            this.state.favorites = new Set(data.Items.map(i => String(i.Id)));
-                            localStorage.setItem('emby_favorites', JSON.stringify([...this.state.favorites]));
-                            this.updateUI();
-                        }
+                    const favs = await EmbyXCommon.fetchFavorites(this.config);
+                    if (favs) {
+                        this.state.favorites = favs;
+                        this.updateUI();
                     }
                 } catch (e) {
                     console.error('加载远端收藏夹失败:', e);
@@ -1322,7 +1209,7 @@
                 if (!server || !token || !userId) return;
                 try {
                     const res = await fetch(`${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`, {
-                        headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (!res.ok) return;
                     const data = await res.json();
@@ -1332,7 +1219,7 @@
                     await Promise.all(playlists.map(async pl => {
                         try {
                             const cRes = await fetch(`${server}/emby/Playlists/${pl.Id}/Items?UserId=${userId}&api_key=${token}&Limit=10000&Fields=Id`, {
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             });
                             if (cRes.ok) {
                                 const cData = await cRes.json();
@@ -1404,9 +1291,7 @@
                     }
 
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) {
                         throw new Error(`服务器错误: ${res.status}`);
@@ -1484,54 +1369,16 @@
             }
 
             renderSlides() {
-
-                this.dom.videoContainer.innerHTML = '';
-                this.dom.videoContainer.className = 'relative w-full h-full transition-transform duration-300 ease-out';
-                // 暂时剥夺动画权限，执行无缝硬切瞬移
-                this.dom.videoContainer.style.transition = 'none';
-                this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
-                // 强制浏览器重绘，应用上面的瞬移坐标
-                void this.dom.videoContainer.offsetHeight;
-                // 复原过渡动画，供后续手指上下滑动使用
-                this.dom.videoContainer.style.transition = '';
-
-                // 只初始化 3 个物理槽位
-                for (let i = 0; i < 3; i++) {
-                    const el = document.createElement('div');
-                    el.className = 'slide-item';
-                    el.id = `slide-${i}`;
-                    el.style.display = 'none';
-                    el.innerHTML = `
-                        <div class="w-full h-full relative bg-black">
-                            <!-- 封面缩略图：缩放填充模式同步视频（cover 或 contain），始终可见以作为视频加载前的清晰占位 -->
-                            <img id="thumb-${i}" class="absolute inset-0 w-full h-full z-0 transition-opacity duration-300 ${this.state.isScaleFill ? 'object-cover' : 'object-contain'}" src="" alt="" />
-                            <!-- 高斯模糊背景（contain 模式下可见，cover 模式下透明）。使用 scale-[1.15] 避免模糊边缘向内渐隐导致光晕/暗角特效 -->
-                            <div id="poster-${i}" class="absolute inset-0 bg-cover bg-center scale-[1.15] blur-xl transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-70'}"></div>
-                            <div id="overlay-${i}" class="absolute inset-0 bg-black/40 transition-opacity duration-300 z-0 ${this.state.isScaleFill ? 'opacity-0' : 'opacity-100'}"></div>
-                            
-                            <!-- 视频层：初始透明，于 canplay 时淡入覆盖封面 -->
-                            <video id="video-p${i}"
-                                class="video-fullscreen ${this.state.isScaleFill ? 'object-cover' : 'object-contain'} opacity-0 transition-opacity duration-500 z-10"
-                                playsinline webkit-playsinline muted autoplay
-                                poster="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"></video>
-                            
-                            <!-- 遅罩层：置于视频之上以屏蔽长按啇出的系统原生下载菜单 -->
-                            <div class="touch-layer absolute inset-0 z-20" style="-webkit-touch-callout: none;"></div>
-                            
-                            <div id="playBtn-${i}" class="play-pause-btn">
-                                <i data-lucide="play" class="stroke-white w-8 h-8"></i>
-                            </div>
-                        </div>
-                    `;
-                    this.dom.videoContainer.appendChild(el);
+                if (!this.stage) {
+                    this.stage = new StageEngine({
+                        app: this,
+                        container: this.dom.videoContainer,
+                        onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
+                        onDoubleTapSkip: (dir, x, y) => this.handleDoubleTapSkip(dir, x, y)
+                    });
                 }
-                this.dom.slides = [
-                    document.getElementById('slide-0'),
-                    document.getElementById('slide-1'),
-                    document.getElementById('slide-2')
-                ];
-
-                lucide.createIcons();
+                this.stage.init();
+                this.dom.slides = this.stage.slides;
                 this.updateUI();
             }
 
@@ -1895,96 +1742,18 @@
                 lucide.createIcons();
             }
 
-            // ═══ 缓冲与播放控制 ═══
+            // ═══ 缓冲与播放控制（委托至 Player & Stage 引擎） ═══
             renderBuffer() {
                 if (this.state.viewMode !== 'stream' || !this.dom.slides) return;
-
-                this.dom.videoContainer.style.transform = `translateY(-${this.state.currentIndex * 100}%)`;
-
-                const offsets = [-1, 0, 1];
-                offsets.forEach((offset) => {
-                    const videoIdx = this.state.currentIndex + offset;
-                    if (videoIdx < 0 || videoIdx >= this.state.videos.length) return;
-
-                    const slideIdx = (videoIdx % 3 + 3) % 3;
-                    const slideEl = this.dom.slides[slideIdx];
-                    const videoData = this.state.videos[videoIdx];
-
-                    slideEl.style.transform = `translateY(${videoIdx * 100}%)`;
-                    slideEl.style.display = 'block';
-
-                    if (slideEl.dataset.id !== videoData.Id) {
-                        slideEl.dataset.id = videoData.Id;
-                        const posterSrc = this.getImageSrc(videoData);
-
-                        // 《修复点②》 封面图层：直接赋値，密集型封面直接服务于动画过度
-                        const thumbEl = document.getElementById(`thumb-${slideIdx}`);
-                        if (thumbEl) {
-                            thumbEl.src = posterSrc;
-                            thumbEl.onerror = () => { thumbEl.src = this.getImageSrc(null); };
-                        }
-
-                        // 模糊背景（contain 模式下用）
-                        const posterEl = document.getElementById(`poster-${slideIdx}`);
-                        if (posterEl) posterEl.style.backgroundImage = `url('${posterSrc}')`;
-
-                        // 《修复点①》 视频重置为透明（封面图作为占位）
-                        const videoEl = document.getElementById(`video-p${slideIdx}`);
-                        videoEl.style.opacity = '0';
-                        videoEl.onerror = null;
-
-                        // ── iOS 平台特异性极简优化：iOS 限制并发多流 Range 请求，不预加载相邻视频 ──
-                        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-                            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
-
-                        if (isIOS && offset !== 0) {
-                            // iOS 下对相邻视频只清理，不预加载
-                            if (videoEl.src) {
-                                videoEl.removeAttribute('src');
-                                videoEl.load();
-                            }
-                        } else {
-                            // 非 iOS 设备，或当前正在播放的视频：正常预加载
-                            const preloadSrc = this.getVideoSrc(videoData.Id, videoData, false);
-                            this.setVideoSource(videoEl, preloadSrc, videoIdx, videoData, {
-                                preloadOnly: offset !== 0
-                            });
-                        }
-
-                        // 【关键修复】防止声音重叠：
-                        // 预加载的视频（offset != 0）必须强制静音，
-                        // 只有当前视频（offset == 0）遵循全局静音状态。
-                        videoEl.muted = (offset === 0) ? this.state.isMuted : true;
-
-                        document.getElementById(`playBtn-${slideIdx}`).classList.remove('paused');
-                    }
-                });
-
-                // 隐藏范围外的卡片（只清空 src，不调 load()）
-                for (let i = 0; i < 3; i++) {
-                    const activeIndices = offsets.map(o => (this.state.currentIndex + o));
-                    const currentSlideVideoIdx = activeIndices.find(idx => ((idx % 3 + 3) % 3) === i);
-                    if (currentSlideVideoIdx === undefined || currentSlideVideoIdx < 0 || currentSlideVideoIdx >= this.state.videos.length) {
-                        this.dom.slides[i].style.display = 'none';
-                        this.dom.slides[i].dataset.id = '';
-                        const videoEl = document.getElementById(`video-p${i}`);
-                        if (videoEl) {
-                            videoEl.onerror = null;
-                            videoEl.pause();
-                            videoEl.style.opacity = '0';
-                            videoEl.removeAttribute('src');
-                            videoEl.load();
-                        }
-                    }
-                }
+                this.stage.renderBuffer();
                 this.updateUI();
             }
 
             loadVideo(index) {
                 if (this.state.viewMode !== 'stream') return;
 
-                this.state.playSessionId = 'ex_' + Date.now().toString(16); // 每次加载新视频生成唯一会话 ID
-                this.renderBuffer(); // 确保 DOM 就位
+                this.state.playSessionId = 'ex_' + Date.now().toString(16);
+                this.renderBuffer();
 
                 const videoData = this.state.videos[this.state.currentIndex];
                 const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
@@ -2000,7 +1769,6 @@
                     // 非首次加载时同步上报，防止启动污染时间戳
                     if (!this._isFirstLoad) {
                         localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
-                        // 1秒延迟防抖，避开高频滑动并发写冲突
                         clearTimeout(this._syncTimer);
                         this._syncTimer = setTimeout(() => {
                             this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
@@ -2010,79 +1778,22 @@
                     }
                 }
 
-                // renderBuffer 已预载相邻项；当前项在这里按浏览器能力选择原生播放或 Hls.js
                 const src = this.getVideoSrc(videoData.Id, videoData, true);
                 this.setVideoSource(videoEl, src, index, videoData, { autoplay: true });
 
                 // 同步全局静音状态（精准更新 SVG）
                 videoEl.muted = this.state.isMuted;
-                const muteIcon = this.dom.muteBtn.querySelector('svg');
+                const muteIcon = this.dom.muteBtn?.querySelector('svg');
                 if (muteIcon) {
                     const iconName = this.state.isMuted ? 'volume-x' : 'volume-2';
                     const iconColor = this.state.isMuted ? 'text-secondary' : 'stroke-white';
                     this.dom.muteBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${iconName}" class="${iconColor} w-6 h-6 drop-shadow-md"></i></div>`;
-                    lucide.createIcons({ nameAttr: 'data-lucide', attrs: {}, nodes: [this.dom.muteBtn] });
+                    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+                        lucide.createIcons({ nameAttr: 'data-lucide', attrs: {}, nodes: [this.dom.muteBtn] });
+                    }
                 }
 
-                // 《修复点③》 加载圈延迟 300ms：局域网正常情况下用户完全不会看到加载圈
-                videoEl.onwaiting = () => {
-                    clearTimeout(this._waitingTimer);
-                    this._waitingTimer = setTimeout(() => this.toggleLoading(true), 300);
-                };
-                videoEl.onplaying = () => {
-                    clearTimeout(this._waitingTimer);
-                    this.toggleLoading(false);
-                    // 确保播放时图层可见，应对部分系统/浏览器事件次序差异
-                    videoEl.style.opacity = '1';
-                    this.reportPlayback('playing', videoEl);
-                };
-
-                // 《修复点①》 canplay 时视频淡入覆盖封面
-                videoEl.oncanplay = () => {
-                    clearTimeout(this._waitingTimer);
-                    this.toggleLoading(false);
-                    videoEl.style.opacity = '1';
-                };
-
-                // 处理预加载已经就绪的情况（readyState >= 3 表示已可播放）
-                if (videoEl.readyState >= 3) {
-                    clearTimeout(this._waitingTimer);
-                    this.toggleLoading(false);
-                    videoEl.style.opacity = '1';
-                }
-
-                videoEl.ontimeupdate = () => {
-                    if (!videoEl.duration) return;
-                    // DOM 更新限流 250ms，避免 timeupdate 高频触发导致布局抖动
-                    const nowMs = Date.now();
-                    if (nowMs - (this._lastDomUpdate || 0) >= 250) {
-                        this._lastDomUpdate = nowMs;
-                        const pct = (videoEl.currentTime / videoEl.duration) * 100;
-                        this.dom.progressLine.style.width = `${pct}%`;
-                        this.dom.currentTime.textContent = this.formatTime(videoEl.currentTime);
-                        this.dom.totalTime.textContent = this.formatTime(videoEl.duration);
-                    }
-                    this.reportPlayback('progress', videoEl); // 内部已有 5s 节流
-                };
-                videoEl.onpause = () => this.reportPlayback('progress', videoEl);
-
-                videoEl.onended = () => {
-                    this.reportPlayback('stopped', videoEl);
-                    if (this.state.viewMode === 'stream' && this.state.isAutoplay) {
-                        this.nextVideo();
-                    }
-                };
-
-                videoEl.onerror = () => {
-                    if (videoEl.dataset.hlsFatalHandled === 'true') {
-                        delete videoEl.dataset.hlsFatalHandled;
-                        return;
-                    }
-                    console.warn('视频播放失败，处理降级重试逻辑');
-                    this.toggleLoading(false);
-                    this.retryWithAltMode(this.state.currentIndex, videoData);
-                };
-
+                this.player.bindVideoEvents(videoEl, index, videoData);
                 videoEl.dataset.retryCount = '0';
                 this.fetchPersonInfo(videoData);
             }
@@ -2104,9 +1815,7 @@
                     if (!server || !token || !userId) return;
 
                     const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People,Tags,TagItems`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (res.ok) {
                         const data = await res.json();
@@ -2120,7 +1829,7 @@
                         const person = data.People && data.People.length > 0 ? data.People[0] : null;
                         if (person) {
                             btn.dataset.personName = person.Name;
-                            img.src = `${server}/emby/Persons/${encodeURIComponent(person.Name)}/Images/Primary?api_key=${token}`;
+                            img.src = EmbyXCommon.getPersonImageUrl(server, person.Name);
                             btn.classList.remove('hidden');
                             this.recalculateMetaInfoHeight();
                         }
@@ -2131,464 +1840,40 @@
             }
 
             isCurrentPlayback(videoEl, videoId, requestedSrc, playAttempt = null) {
-                const current = this.state.videos[this.state.currentIndex];
-                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                return this.state.viewMode === 'stream' &&
-                    current && String(current.Id) === String(videoId) &&
-                    document.getElementById(`video-p${slideIdx}`) === videoEl &&
-                    videoEl.dataset.requestedSrc === requestedSrc &&
-                    (playAttempt === null || videoEl.dataset.playAttempt === playAttempt);
+                return this.player.isCurrentPlayback(videoEl, videoId, requestedSrc, playAttempt);
             }
 
             setVideoSource(videoEl, src, index, item, options = {}) {
-                if (!videoEl || !src) return;
-                const { preloadOnly = false, autoplay = false, forceHls = false, live = false } = options;
-                const isHls = forceHls || /\.m3u8(?:$|[?#])/i.test(src);
-                const nativeHls = !!videoEl.canPlayType('application/vnd.apple.mpegurl');
-
-                if (isHls && !nativeHls && typeof Hls !== 'undefined' && Hls.isSupported()) {
-                    if (preloadOnly) {
-                        if (window.activeHls?.media === videoEl) {
-                            window.activeHls.destroy();
-                            window.activeHls = null;
-                        }
-                        videoEl.pause();
-                        videoEl.removeAttribute('src');
-                        videoEl.load();
-                        videoEl.dataset.requestedSrc = src;
-                        return;
-                    }
-
-                    if (window.activeHls?.media === videoEl && videoEl.dataset.requestedSrc === src) {
-                        if (autoplay && videoEl.dataset.hlsLoading === 'true') {
-                            videoEl.dataset.pendingPlay = 'true';
-                        }
-                        return;
-                    }
-
-                    if (window.activeHls) window.activeHls.destroy();
-                    videoEl.pause();
-                    videoEl.removeAttribute('src');
-                    videoEl.load();
-                    videoEl.dataset.requestedSrc = src;
-                    videoEl.dataset.hlsLoading = 'true';
-                    if (autoplay) videoEl.dataset.pendingPlay = 'true';
-
-                    const hls = new Hls(live ? {
-                        maxBufferSize: 0,
-                        liveSyncDurationCount: 3
-                    } : {
-                        maxBufferLength: 30,
-                        backBufferLength: 15
-                    });
-                    window.activeHls = hls;
-
-                    hls.on(Hls.Events.MEDIA_ATTACHED, () => {
-                        if (window.activeHls === hls && videoEl.dataset.requestedSrc === src) {
-                            hls.loadSource(src);
-                        }
-                    });
-                    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-                        if (window.activeHls !== hls || !this.isCurrentPlayback(videoEl, item.Id, src)) return;
-                        videoEl.dataset.hlsLoading = 'false';
-                        if (videoEl.dataset.pendingPlay === 'true') {
-                            delete videoEl.dataset.pendingPlay;
-                            this.playVideo(index);
-                        }
-                    });
-                    hls.on(Hls.Events.ERROR, (_event, data) => {
-                        if (!data.fatal || window.activeHls !== hls) return;
-                        const isCurrent = this.isCurrentPlayback(videoEl, item.Id, src);
-                        hls.destroy();
-                        window.activeHls = null;
-                        videoEl.dataset.hlsLoading = 'false';
-                        videoEl.dataset.hlsFatalHandled = 'true';
-                        if (isCurrent) this.retryWithAltMode(index, item);
-                    });
-                    hls.attachMedia(videoEl);
-                    return;
-                }
-
-                if (!preloadOnly && window.activeHls) {
-                    window.activeHls.destroy();
-                    window.activeHls = null;
-                }
-                videoEl.pause();
-                videoEl.dataset.requestedSrc = src;
-                videoEl.dataset.hlsLoading = 'false';
-                videoEl.onerror = () => {
-                    const isCurrent = this.isCurrentPlayback(videoEl, item.Id, src);
-                    if (isCurrent) this.retryWithAltMode(index, item);
-                };
-                videoEl.src = src;
-                videoEl.load();
+                return this.player.setVideoSource(videoEl, src, index, item, options);
             }
 
             playVideo(index) {
-                if (this.state.viewMode !== 'stream') return;
-                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-
-                // 停止非当前视频
-                [0, 1, 2].forEach(i => {
-                    const vi = document.getElementById(`video-p${i}`);
-                    if (vi && i !== slideIdx) {
-                        vi.pause();
-                        vi.currentTime = 0;
-                        // 优化：切换视频时，旧视频只需静默停止，不要显示暂停按钮，防止闪烁穿帮
-                        const btn = document.getElementById(`playBtn-${i}`);
-                        if (btn) btn.classList.remove('paused');
-                    }
-                });
-
-                const v = document.getElementById(`video-p${slideIdx}`);
-                const btn = document.getElementById(`playBtn-${slideIdx}`);
-                if (v) {
-                    if (v.dataset.hlsLoading === 'true') {
-                        v.dataset.pendingPlay = 'true';
-                        return;
-                    }
-                    const videoId = this.state.videos[this.state.currentIndex]?.Id;
-                    const requestedSrc = v.dataset.requestedSrc || v.currentSrc || v.src;
-                    const playAttempt = String((parseInt(v.dataset.playAttempt || '0') + 1));
-                    v.dataset.playAttempt = playAttempt;
-                    if (!this.state.isMuted) v.muted = false;
-                    const playPromise = v.play();
-
-                    if (playPromise !== undefined) {
-                        playPromise.then(() => {
-                            if (!this.isCurrentPlayback(v, videoId, requestedSrc, playAttempt)) return;
-                            this.state.isPlaying = true;
-                            if (btn) btn.classList.remove('paused');
-                        }).catch(error => {
-                            if (error?.name === 'AbortError' || !this.isCurrentPlayback(v, videoId, requestedSrc, playAttempt)) return;
-                            console.warn('视频播放失败:', error);
-                            if (error?.name !== 'NotAllowedError') return;
-                            this.state.isPlaying = false;
-                            this.toggleLoading(false);
-                            if (btn) btn.classList.add('paused');
-
-                            this.showToast('浏览器限制，请手动播放');
-                            const app = document.getElementById('app');
-                            if (app.classList.contains('interface-hidden')) {
-                                app.classList.remove('interface-hidden');
-                                this.showInterfaceTemp();
-                            }
-                        });
-                    }
-                }
+                return this.player.playVideo(index);
             }
 
             retryWithAltMode(index, item) {
-                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                const v = document.getElementById(`video-p${slideIdx}`);
-                if (!v) return;
-
-                const retryCount = parseInt(v.dataset.retryCount || '0');
-                v.dataset.retryCount = String(retryCount + 1);
-
-                const { server, token } = this.config;
-                const deviceId = this.config.deviceId || 'EmbyX-Device';
-
-                if (this.config.useStatic) {
-                    // ── A. 直接播放模式下的自适应兼容回退 ───────────────────────
-                    if (retryCount === 0) {
-                        if (window.activeHls) {
-                            window.activeHls.destroy();
-                            window.activeHls = null;
-                        }
-                        if (window.activeMpegtsPlayer) {
-                            window.activeMpegtsPlayer.destroy();
-                            window.activeMpegtsPlayer = null;
-                        }
-
-                        // 智能判定是否是 strm 直播流视频源
-                        const isStrm = (item.Path && item.Path.endsWith('.strm')) || 
-                                       (item.MediaSources && item.MediaSources[0] && 
-                                        (item.MediaSources[0].Path.startsWith('http') || 
-                                         item.MediaSources[0].Container === 'strm'));
-                        
-                        if (isStrm) {
-                            this.state.isStrmSource = true;
-                            const msId = item.MediaSources?.[0]?.Id || '';
-                            const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
-
-                            const mediaSource = item.MediaSources?.[0];
-                            const container = (mediaSource?.Container || '').toLowerCase();
-                            const path = (mediaSource?.Path || '').toLowerCase();
-                            const isFlv = container === 'flv' || path.includes('.flv') || path.includes('flv=') || path.includes('/flv');
-
-                            const playUrl = mediaSource?.Path && mediaSource.Path.startsWith('http') 
-                                ? mediaSource.Path 
-                                : fixUrlForJellyfin(`${server}/emby/Videos/${item.Id}/stream?Static=true&api_key=${token}&MediaSourceId=${msId}&DeviceId=${deviceId}&PlaySessionId=${playSessionId}`);
-
-                            if (isFlv && typeof mpegts !== 'undefined' && mpegts.isSupported()) {
-                                this.state.playbackMethod = 'DirectPlay';
-                                v.removeAttribute('src');
-                                v.onerror = null;
-
-                                const player = mpegts.createPlayer({
-                                    type: 'mse',
-                                    isLive: true,
-                                    url: playUrl
-                                }, {
-                                    enableWorker: true,
-                                    enableStashBuffer: false,
-                                    stashInitialSize: 128,
-                                    liveBufferLatencyChasing: true,
-                                    liveBufferLatencyMaxLatency: 1.5,
-                                    liveBufferLatencyMinRemain: 0.5
-                                });
-                                v.dataset.requestedSrc = playUrl;
-                                v.dataset.hlsLoading = 'false';
-                                player.attachMediaElement(v);
-                                player.load();
-                                window.activeMpegtsPlayer = player;
-                                this.playVideo(index);
-                            } else if (v.canPlayType('application/vnd.apple.mpegurl') ||
-                                (typeof Hls !== 'undefined' && Hls.isSupported())) {
-                                this.state.playbackMethod = 'DirectPlay';
-                                this.setVideoSource(v, playUrl, index, item, {
-                                    autoplay: true,
-                                    forceHls: true,
-                                    live: true
-                                });
-                                this.playVideo(index);
-                            }
-                        } else {
-                            // 普通视频降级：若不曾尝试过 DirectStream 则降级走 DirectStream (HLS fMP4 流拷贝，已带 hvc1 精确宣告)
-                            if (this.state.playbackMethod !== 'DirectStream' && this.state.playbackMethod !== 'Transcode') {
-                                if (window.activeHls) { window.activeHls.destroy(); window.activeHls = null; }
-                                if (window.activeMpegtsPlayer) { window.activeMpegtsPlayer.destroy(); window.activeMpegtsPlayer = null; }
-                                this.state.playbackMethod = 'DirectStream';
-                                this.setVideoSource(v, this._buildHlsSrc(item.Id, item, false), index, item, { autoplay: true });
-                                this.playVideo(index);
-                            } else {
-                                // 若 DirectStream 依然无法播放，自适应降级走服务端转码 (Transcode)
-                                if (window.activeHls) { window.activeHls.destroy(); window.activeHls = null; }
-                                if (window.activeMpegtsPlayer) { window.activeMpegtsPlayer.destroy(); window.activeMpegtsPlayer = null; }
-                                this.state.playbackMethod = 'Transcode';
-                                this.setVideoSource(v, this._buildHlsSrc(item.Id, item, true), index, item, { autoplay: true });
-                                this.playVideo(index);
-                            }
-                        }
-                    } else if (retryCount === 1) {
-                        // 首次降级转码重试
-                        if (window.activeHls) { window.activeHls.destroy(); window.activeHls = null; }
-                        if (window.activeMpegtsPlayer) { window.activeMpegtsPlayer.destroy(); window.activeMpegtsPlayer = null; }
-                        this.state.playbackMethod = 'Transcode';
-                        this.setVideoSource(v, this._buildHlsSrc(item.Id, item, true), index, item, { autoplay: true });
-                        this.playVideo(index);
-                    } else {
-                        this.toggleLoading(false);
-                        this.state.playbackMethod = 'Failed';
-                        this.showToast('播放失败，请检查 Emby 设置');
-                    }
-                } else {
-                    // ── B. 转码模式下的兼容失效回退 ───────────────────────────
-                    if (retryCount === 0) {
-                        this.state.playbackMethod = 'Transcode';
-                        this.setVideoSource(v, this._buildHlsSrc(item.Id, item, true), index, item, { autoplay: true });
-                        this.playVideo(index);
-                    } else {
-                        this.toggleLoading(false);
-                        this.state.playbackMethod = 'Failed';
-                        this.showToast('转码失败，请检查 Emby 设置');
-                    }
-                }
-            }
-
-            async fetchPlaybackInfoUrl(item) {
-                const id = item?.Id;
-                if (!id) return '';
-                const { server, token } = this.config;
-                try {
-                    const res = await fetch(`${server}/emby/Items/${id}/PlaybackInfo?api_key=${token}`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        },
-                        body: JSON.stringify({
-                            DeviceProfile: {
-                                MaxStreamingBitrate: 140000000,
-                                DirectPlayProfiles: [
-                                    { Container: 'mp4,m4v,mov', Type: 'Video', VideoCodec: 'h264,hevc', AudioCodec: 'aac,mp3' }
-                                ]
-                            }
-                        })
-                    });
-                    if (!res.ok) return '';
-                    const data = await res.json();
-                    const ms = data?.MediaSources?.[0];
-                    const directStreamUrl = ms?.DirectStreamUrl;
-                    if (directStreamUrl) {
-                        return fixUrlForJellyfin(directStreamUrl.startsWith('http') ? directStreamUrl : `${server}${directStreamUrl}`);
-                    }
-                } catch (e) {
-                    console.warn('PlaybackInfo error:', e);
-                }
-                return '';
+                return this.player.retryWithAltMode(index, item);
             }
 
             _buildHlsSrc(id, mediaItem, forceReencode = false) {
-                const { server, token } = this.config;
-                const mediaSource = mediaItem?.MediaSources?.[0];
-                const mediaSourceId = mediaSource?.Id || '';
-                const playSessionId = this.state.playSessionId || ('hls_' + id + '_' + Date.now());
-                const deviceId = this.config.deviceId || 'EmbyX-Device';
-
-                const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
-                const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
-                const useTsContainer = forceReencode || codec === 'h264';
-                const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
-                const isApple = isSafari || isIOS;
-
-                const params = [
-                    `api_key=${token}`,
-                    mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
-                    `DeviceId=${deviceId}`,
-                    `PlaySessionId=${playSessionId}`,
-                    `EnableDirectStream=true`,
-                    `EnableVideoTranscoding=${forceReencode ? 'true' : 'false'}`,
-                    `EnableAudioTranscoding=true`,
-                    `EnableAudioStreamCopy=true`,
-                    forceReencode ? `VideoCodec=h264` : (isApple ? `VideoCodec=hvc1,h264` : `VideoCodec=h264,hevc,hvc1,vp9,av1`), // 苹果设备（macOS Safari & iOS）流拷贝时精准宣告 hvc1,h264（严禁出现 hevc/hev1 子串），强引导 Emby/Jellyfin 服务端自动重写 hev1 标签为 Safari 可解的 hvc1
-                    `AudioCodec=aac,mp3,ac3,eac3,opus,flac,vorbis`,
-                    forceReencode ? `VideoBitrate=20000000` : '',   // 仅强转码时限制码率（局域网 20Mbps 上限）；流拷贝时不限制，按源码率传输
-                    `AudioBitrate=320000`,
-                    isSafari ? `TranscodingMaxAudioChannels=6` : `TranscodingMaxAudioChannels=2`, // Safari 支持多声道无损硬解，避免 CPU 音频降混
-                    useTsContainer ? `SegmentContainer=ts` : `SegmentContainer=mp4`,  // H264 强制用 TS 容器；HEVC fMP4 无损重封装为 hvc1
-                    `MinSegments=1`,
-                    useTsContainer ? `BreakOnNonKeyFrames=True` : '',  // 仅 TS 容器需要此关键帧优化
-                    forceReencode ? `AllowVideoStreamCopy=false` : `AllowVideoStreamCopy=true`,
-                    `AllowAudioStreamCopy=true`
-                ].filter(Boolean).join('&');
-
-                return fixUrlForJellyfin(`${server}/emby/Videos/${id}/master.m3u8?${params}`);
+                return this.player._buildHlsSrc(id, mediaItem, forceReencode);
             }
 
             togglePlay() {
-                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                const v = document.getElementById(`video-p${slideIdx}`);
-                const btn = document.getElementById(`playBtn-${slideIdx}`);
-                if (!v) return;
-
-                if (v.paused) {
-                    this.playVideo(this.state.currentIndex);
-                } else {
-                    v.pause();
-                    this.state.isPlaying = false;
-                    if (btn) btn.classList.add('paused');
-                }
+                return this.player.togglePlay();
             }
 
-
-
             prevVideo() {
-                if (this.state.currentIndex === 0) {
-                    return;
-                }
+                if (this.state.currentIndex === 0) return;
                 this.switchSlide(this.state.currentIndex - 1, 'down');
             }
 
             switchSlide(newIndex, direction) {
-                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                const curV = document.getElementById(`video-p${slideIdx}`);
-                if (curV) {
-                    curV.pause();
-                    if (window.activeMpegtsPlayer) {
-                        window.activeMpegtsPlayer.destroy();
-                        window.activeMpegtsPlayer = null;
-                    }
-                    this.reportPlayback('stopped', curV);
-                }
-
-                // 同步预就位目标 slide，再同步触发 container 位移动画
-
-                // 这样浏览器能在同一帧内确认 slide 位置，动画由 GPU 合成层完成，不会闪现
-                if (this.dom.slides) {
-                    const destSlideIdx = (newIndex % 3 + 3) % 3;
-                    const destSlide = this.dom.slides[destSlideIdx];
-                    if (destSlide) {
-                        // 预就位：让 slide 在动画帧前就已经在正确位置
-                        destSlide.style.transform = `translateY(${newIndex * 100}%)`;
-                        destSlide.style.display = 'block';
-                    }
-                }
-
-                this.state.currentIndex = newIndex;
-
-                if (newIndex >= this.state.videos.length - 5 && this.state.videos.length < (this.state.totalCount || 999999)) {
-
-                    if (!this._fetchingAppend) {
-                        this._fetchingAppend = true;
-                        this.fetchVideos(null, null, false, this.state.playMode === 'random', true).finally(() => { this._fetchingAppend = false; });
-                    }
-                }
-
-                if (this.dom.videoContainer) {
-
-                    this.dom.videoContainer.style.transform = `translateY(-${newIndex * 100}%)`;
-                }
-
-                requestAnimationFrame(() => {
-
-                    this.loadVideo(newIndex);
-                    this.playVideo(newIndex);
-                });
+                this.stage.switchSlide(newIndex, direction);
             }
 
             reportPlayback(event, videoEl, isKeepAlive = false) {
-                if (!this.config.server || !this.config.token || this.state.videos.length === 0) return;
-
-                const now = Date.now();
-
-                if (event === 'progress' && now - (this.state.lastReportTime || 0) < 5000) return;
-                if (event === 'progress') this.state.lastReportTime = now;
-
-                const videoData = this.state.videos[this.state.currentIndex];
-                if (!videoData || !videoEl) return;
-
-                const eventMap = { 'playing': 'TimeUpdate', 'progress': 'TimeUpdate', 'stopped': 'Stopped' };
-
-                const eventName = videoEl.paused ? 'Pause' : (eventMap[event] || 'TimeUpdate');
-                const mediaSourceId = videoData.MediaSources?.[0]?.Id || '';
-
-                if (event === 'playing') {
-                    this.reportCapabilities();
-                }
-
-                const ticks = Math.floor(videoEl.currentTime * 10000000);
-
-                let endpoint = '/Sessions/Playing';
-                if (event === 'progress') endpoint = '/Sessions/Playing/Progress';
-                if (event === 'stopped') endpoint = '/Sessions/Playing/Stopped';
-
-                const payload = {
-                    ItemId: videoData.Id,
-                    PositionTicks: ticks,
-                    IsPaused: videoEl.paused || event === 'stopped',
-                    IsMuted: videoEl.muted,
-                    VolumeLevel: Math.floor(videoEl.volume * 100),
-                    PlayMethod: this.state.playbackMethod || (this.config.useStatic ? 'DirectPlay' : 'Transcode'),
-                    EventName: eventName,
-                    CanSeek: true,
-                    PlaySessionId: this.state.playSessionId,
-                    QueueableMediaTypes: ["Video"]
-                };
-                if (mediaSourceId) payload.MediaSourceId = mediaSourceId;
-
-                fetch(`${this.config.server}/emby${endpoint}?api_key=${this.config.token}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                    },
-                    body: JSON.stringify(payload),
-                    keepalive: isKeepAlive
-                }).catch(() => { });
+                return this.player.reportPlayback(event, videoEl, isKeepAlive);
             }
 
             // ═══ 续播与云同步 ═══
@@ -2611,10 +1896,7 @@
 
                     fetch(url, {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        },
+                        headers: this.getAuthHeaders(token, { 'Content-Type': 'application/json' }),
                         body: JSON.stringify(prefs)
                     }).catch(() => { });
                 } catch (e) { }
@@ -2627,9 +1909,7 @@
                     const { server, token, userId } = this.config;
                     const url = `${server}/emby/DisplayPreferences/EmbyX-Resume-Drama?userId=${userId}&api_key=${token}`;
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (!res.ok) return;
 
@@ -2703,113 +1983,17 @@
             }
 
             reportCapabilities() {
-                if (this.state._capabilitiesReported) return;
-                const { server, token } = this.config;
-                if (!server || !token) return;
-                this.state._capabilitiesReported = true;
-                fetch(`${server}/emby/Sessions/Capabilities/Full?api_key=${token}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                    },
-                    body: JSON.stringify({
-                        PlayableMediaTypes: ["Video"],
-                        SupportsMediaControl: true,
-                        SupportsPersistentConnections: false
-                    })
-                }).catch(() => { });
+                return this.player.reportCapabilities();
             }
 
             // --- 辅助功能 ---
 
             getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
-                if (isPrimaryPlayback) this.state.isStrmSource = false;
-                const { server, token, useStatic } = this.config;
-
-                // 获取视频流元数据
-                const mediaSource = mediaItem?.MediaSources?.[0];
-                const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
-                const codec = (vStream?.Codec || mediaSource?.VideoCodec || '').toLowerCase();
-                const container = (mediaSource?.Container || '').toLowerCase();
-                const codecTag = (vStream?.CodecTag || mediaSource?.VideoCodecTag || '').toLowerCase();
-
-                if (this.config.fnOS) {
-                    // 飞牛兼容层的 item.Id 就是原生 media_guid，流鉴权由 Go 代理补 Authorization。
-                    const mediaGuid = mediaItem?.Id || id;
-                    if (mediaGuid) {
-                        if (isPrimaryPlayback) this.state.playbackMethod = 'DirectPlay';
-                        return `${server}/v/api/v1/media/range/${encodeURIComponent(mediaGuid)}?api_key=${encodeURIComponent(token)}`;
-                    }
-                    if (isPrimaryPlayback) this.showToast('飞牛影视缺少 media_guid，无法播放');
-                    return '';
-                }
-
-                // ── 情况 1: 未勾选【直接播放】 (允许转码/稳妥模式) ──────────────────────
-                // 直接交给 Emby 服务端决策，使用 HLS 接口（允许流拷贝，排除 av1 宣告）
-                if (!useStatic) {
-                    if (isPrimaryPlayback) this.state.playbackMethod = 'Transcode';
-                    return this._buildHlsSrc(id, mediaItem);
-                }
-
-                // ── 情况 2: 已勾选【直接播放】 (绝不重编码/极限硬解模式) ────────────────────
-                const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-                    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
-                const isSafari = /^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-                const isApple = isSafari || isIOS;
-
-                // 苹果设备 (macOS Safari & iOS WebKit) 对 HEVC hev1 裸文件原生无法渲染画面，强制走 HLS fMP4 流拷贝由 Emby/Jellyfin 修正为 hvc1
-                const isHev1Mp4 = codec === 'hevc' && !codecTag.includes('hvc1');
-                if (isApple && isHev1Mp4) {
-                    if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
-                    return this._buildHlsSrc(id, mediaItem, false);
-                }
-
-                // 浏览器对 MKV/TS 等容器的原生支持不稳定，优先让服务端无损转封装为 MP4。
-                const isNativeContainer = ['mp4', 'm4v', 'mov', 'webm'].some(type => container.includes(type));
-                if (!isIOS && !isNativeContainer) {
-                    const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
-                    const deviceId = this.config.deviceId || 'EmbyX-Device';
-                    const msId = mediaSource?.Id || '';
-                    const params = [
-                        `api_key=${token}`,
-                        msId ? `MediaSourceId=${msId}` : '',
-                        `DeviceId=${deviceId}`,
-                        `PlaySessionId=${playSessionId}`,
-                        `VideoCodec=h264,hevc,vp9,av1`,
-                        `AudioCodec=aac,mp3,ac3,opus,flac,vorbis`,
-                        `AllowVideoStreamCopy=true`,
-                        `AllowAudioStreamCopy=true`
-                    ].filter(Boolean).join('&');
-                    if (isPrimaryPlayback) this.state.playbackMethod = 'DirectStream';
-                    return fixUrlForJellyfin(`${server}/emby/Videos/${id}/stream.mp4?${params}`);
-                }
-
-                // 余下所有情况（非苹果设备、或是苹果下完美兼容 of h264+mp4）执行原画直连 (Direct Play)
-                const playSessionId = this.state.playSessionId || ('ex_' + Date.now().toString(16));
-                const deviceId = this.config.deviceId || 'EmbyX-Device';
-                const msId = mediaSource?.Id || '';
-
-                const params = [
-                    `api_key=${token}`,
-                    `Static=true`,
-                    msId ? `MediaSourceId=${msId}` : '',
-                    `DeviceId=${deviceId}`,
-                    `PlaySessionId=${playSessionId}`
-                ].filter(Boolean).join('&');
-
-                if (isPrimaryPlayback) this.state.playbackMethod = 'DirectPlay';
-                return fixUrlForJellyfin(`${server}/emby/Videos/${id}/stream?${params}`);
+                return this.player.getVideoSrc(id, mediaItem, isPrimaryPlayback);
             }
 
             getImageSrc(video) {
-                const { server, token } = this.config;
-                const fallbackUrl = 'poster.webp';
-
-                if (video && video.ImageTags && video.ImageTags.Primary) {
-                    return fixUrlForJellyfin(`${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`);
-                }
-                return fallbackUrl;
+                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'poster.webp');
             }
 
             // ═══ UI 组件 ═══
@@ -2944,30 +2128,7 @@
                 }
 
                 try {
-                    const userId = this.config.userId;
-
-                    let playlistsData = { Items: [] };
-                    try {
-                        const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                            }
-                        });
-                        if (playlistsRes.ok) {
-                            playlistsData = await playlistsRes.json();
-                        }
-                    } catch (e) {}
-
-                    const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
-                    });
-                    const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };
-
-                    // 缓存完整的视图和列表数据供网格模式提取名称
-                    localStorage.setItem('emby_views_cache', JSON.stringify({ playlists: playlistsData, views: viewsDataRaw }));
-
+                    const { playlistsData, viewsDataRaw } = await EmbyXCommon.fetchLibrariesData(this.config);
                     // 静默刷新渲染
                     this.renderLibraryItems(playlistsData, viewsDataRaw);
                 } catch (e) {
@@ -3001,14 +2162,8 @@
                 // 远端同步 Emby API
                 if (server && token && userId) {
                     try {
-                        const method = isFav ? 'DELETE' : 'POST';
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${id}?api_key=${token}`, {
-                            method,
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                            }
-                        });
-                        if (!res.ok) {
+                        const ok = await EmbyXCommon.syncFavoriteStatus({ ...this.config, itemId: id, isFav: !isFav });
+                        if (!ok) {
                             // 远端失败，回滚内存状态
                             item.UserData.IsFavorite = isFav;
                             if (isFav) this.state.favorites.add(id); else this.state.favorites.delete(id);
@@ -3074,7 +2229,7 @@
                         const { server, token, userId } = this.config;
                         const res = await fetch(
                             `${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`,
-                            { headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` } }
+                            { headers: this.getAuthHeaders(token) }
                         );
                         if (res.ok) playlists = (await res.json()).Items || [];
                     } catch (e) {
@@ -3148,7 +2303,7 @@
                         `${server}/emby/Playlists?Name=${encodeURIComponent(playlistName)}&Ids=${itemId}&UserId=${userId}&api_key=${token}`,
                         {
                             method: 'POST',
-                            headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            headers: this.getAuthHeaders(token)
                         }
                     );
                     if (res.ok) {
@@ -3189,7 +2344,7 @@
                                 `${server}/emby/Playlists/${plId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
                                 {
                                     method: 'DELETE',
-                                    headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                    headers: this.getAuthHeaders(token)
                                 }
                             );
                         } catch(e) {}
@@ -3218,7 +2373,7 @@
                             `${server}/emby/Playlists/${playlistId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
                             {
                                 method: 'DELETE',
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             }
                         );
                     } else {
@@ -3226,7 +2381,7 @@
                             `${server}/emby/Playlists/${playlistId}/Items?Ids=${itemId}&UserId=${userId}&api_key=${token}`,
                             {
                                 method: 'POST',
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             }
                         );
                     }
@@ -3265,9 +2420,7 @@
                     const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                     const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (res.ok) {
                         const data = await res.json();
@@ -3424,24 +2577,17 @@
                 if (!item) return;
 
                 try {
-                    // 注意：Emby 删除 API 需要管理员账号，普通用户会返回 403
-                    // 必须检查 res.ok，否则 403/404 也会被当成成功处理，导致前端假删除
-                    const res = await fetch(`${this.config.server}/emby/Items/${item.Id}?api_key=${this.config.token}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
-                    });
+                    const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
-                    if (!res.ok) {
+                    if (!ok) {
                         // 403：账号无管理权限；404：视频已不存在（也从列表移除）
-                        if (res.status === 403) {
+                        if (status === 403) {
                             this.showToast('❌ 权限不足，请使用管理员账号');
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        if (res.status !== 404) {
-                            this.showToast(`❌ 删除失败 (${res.status})`);
+                        if (status !== 404) {
+                            this.showToast(`❌ 删除失败 (${status})`);
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
@@ -3669,9 +2815,7 @@
 
                 try {
                     const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) throw new Error('API Error');
                     const data = await res.json();
@@ -3965,9 +3109,7 @@
                                 const { server, token, userId } = this.config;
                                 const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Person=${encodeURIComponent(personName)}`;
                                 const res = await fetch(url, {
-                                    headers: {
-                                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                                    }
+                                    headers: this.getAuthHeaders(token)
                                 });
                                 if (res.ok) {
                                     const data = await res.json();
@@ -4119,101 +3261,20 @@
 
                     // --- 个人中心 / 弹窗 / 网格列表内的空间导航 (Remote Control / Keyboard Focus) ---
                     if (profileActive || libraryActive || playlistActive || document.getElementById('app').classList.contains('grid-active')) {
-                        if (isInput) return;
-                        const items = Array.from(document.querySelectorAll(
-                            profileActive ? '#profilePage .focusable-item' :
-                                libraryActive ? '#libraryModal .focusable-item' :
-                                    playlistActive ? '#addToPlaylistModal .focusable-item' :
-                                        '#videoContainer .focusable-item'
-                        ));
-                        let currentIndex = items.indexOf(document.activeElement);
-                        if (!isInput && (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' ||
-                            lowKey === 'w' || lowKey === 'a' || lowKey === 's' || lowKey === 'd' ||
-                            [38, 40, 37, 39].includes(keyCode))) {
-                            e.preventDefault();
-                            if (currentIndex === -1) {
-                                let startItem = items[0];
-                                if (document.getElementById('app').classList.contains('grid-active')) {
-                                    startItem = items.find(it => it.dataset.index == this.state.currentIndex) || items[0];
-                                }
-                                startItem?.focus();
-                            } else {
-                                const isVideoGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
-                                if (isVideoGrid) {
-                                    // 视频网格：3 列规则偏移
-                                    let nextIdx = currentIndex;
-                                    if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) nextIdx += 3;
-                                    else if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) nextIdx -= 3;
-                                    else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) nextIdx += 1;
-                                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) nextIdx -= 1;
+                        const isGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
+                        const container = profileActive ? document.getElementById('profilePage') :
+                            libraryActive ? document.getElementById('libraryModal') :
+                                playlistActive ? document.getElementById('addToPlaylistModal') :
+                                    document.getElementById('videoContainer');
 
-                                    if (nextIdx >= 0 && nextIdx < items.length) {
-                                        items[nextIdx].focus();
-                                        items[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    }
-                                } else if (libraryActive) {
-                                    // 媒体库弹窗：基于屏幕坐标的空间导航
-                                    // 正确处理带分区标题的不连续网格，无论多少列都精准匹配视觉方向
-                                    const cur = items[currentIndex];
-                                    const curR = cur.getBoundingClientRect();
-                                    const curCx = curR.left + curR.width / 2;
-                                    const curCy = curR.top + curR.height / 2;
-
-                                    let dir;
-                                    if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) dir = 'down';
-                                    else if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) dir = 'up';
-                                    else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) dir = 'right';
-                                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) dir = 'left';
-
-                                    let best = null, bestScore = Infinity;
-                                    items.forEach(item => {
-                                        if (item === cur) return;
-                                        const r = item.getBoundingClientRect();
-                                        const cx = r.left + r.width / 2;
-                                        const cy = r.top + r.height / 2;
-                                        const dx = cx - curCx, dy = cy - curCy;
-                                        // 仅保留目标方向的元素（留 2px 容差）
-                                        if (dir === 'down' && dy <= 2) return;
-                                        if (dir === 'up' && dy >= -2) return;
-                                        if (dir === 'right' && dx <= 2) return;
-                                        if (dir === 'left' && dx >= -2) return;
-                                        // 评分：主轴距离优先，副轴偏移加权惩罚
-                                        const score = (dir === 'down' || dir === 'up')
-                                            ? Math.abs(dy) + Math.abs(dx) * 3
-                                            : Math.abs(dx) + Math.abs(dy) * 3;
-                                        if (score < bestScore) { bestScore = score; best = item; }
-                                    });
-
-                                    if (best) {
-                                        best.focus();
-                                        best.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                                    }
-                                } else {
-                                    // 个人中心：线性跳转
-                                    if (key === 'ArrowDown' || lowKey === 's' || key === 'ArrowRight' || lowKey === 'd' || [40, 39].includes(keyCode)) {
-                                        currentIndex = (currentIndex + 1) % items.length;
-                                    } else {
-                                        currentIndex = (currentIndex - 1 + items.length) % items.length;
-                                    }
-                                    items[currentIndex].focus();
-                                }
-                            }
-                            return;
-                        }
-
-                        // OK / Enter 在焦点元素上触发点击
-                        if (key === 'Enter' || keyCode === 13) {
-                            if (document.activeElement && document.activeElement.classList.contains('focusable-item')) {
-                                // 如果是输入框或文本域，回车不拦截，允许系统处理
-                                const tagName = document.activeElement.tagName.toLowerCase();
-                                if (tagName === 'textarea' || (tagName === 'input' && document.activeElement.type !== 'checkbox')) {
-                                    return;
-                                }
-                                e.preventDefault();
-                                document.activeElement.click();
-                                return;
-                            }
-                        }
+                        const consumed = this.nav.handleKey(e, {
+                            isInput,
+                            isGrid,
+                            currentGridIndex: this.state.currentIndex,
+                            isSpatial: libraryActive,
+                            container
+                        });
+                        if (consumed) return;
                     }
 
                     if (isInput) return;
@@ -4354,239 +3415,7 @@
             }
 
             bindGestures(container) {
-                let state = 'IDLE'; // IDLE, SPEED, DRAG
-                let x0 = 0, y0 = 0;
-                let t0 = 0;
-                let longPressTimer = null;
-                let clickTimer = null;
-                let clickCount = 0;
-                let targetTime = 0;
-                let originalTime = 0;
-                let gestureActive = false; // 防止右侧工具栏误触活动手势状态机
-
-                // CSS 锁死: touch-action: none 禁止浏览器抢占所有方向的手势
-                // 不用 pan-y，否则 iOS 会在垂直 swipe 时触发 touchcancel，导致切换视频失效
-                container.style.touchAction = 'none';
-                container.style.userSelect = 'none';
-                container.style.webkitUserSelect = 'none';
-
-                const speedToast = document.createElement('div');
-                speedToast.className = 'absolute top-[calc(env(safe-area-inset-top)+20px)] left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-bold opacity-0 transition-opacity z-50 pointer-events-none flex items-center gap-2';
-                speedToast.innerHTML = '<i data-lucide="fast-forward" class="w-4 h-4 text-green-400"></i><span>2 倍速播放中</span>';
-                document.getElementById('app').appendChild(speedToast);
-                lucide.createIcons();
-
-                const resetSpeed = () => {
-                    clearTimeout(longPressTimer);
-                    speedToast.classList.add('opacity-0');
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const v = document.getElementById(`video-p${slideIdx}`);
-                    if (v && v.playbackRate !== 1.0) v.playbackRate = 1.0;
-                };
-
-                const startHandler = (e) => {
-                    if (this.state.viewMode !== 'stream') { gestureActive = false; resetSpeed(); return; }
-                    if (this.isAnyModalOpen()) { gestureActive = false; resetSpeed(); return; }
-
-                    // 黑名单：点击这些 UI 元素时不触发手势（播放/暂停/倍速/滑动）
-                    const excluded = [
-                        '.bottom-nav',    // 底部导航栏
-                        '.bottom-info',   // 底部进度条+标题区域
-                        '.right-toolbar', // 右侧侧边栏整块区域
-                        '#favoriteBtn',
-                        '#addToPlaylistBtn',
-                        '#scaleBtn',
-                        '#muteBtn',
-                        '#personBtn',
-                        '#fullscreenBtn', // 右上角全屏按钮
-                        '#deleteBtn',     // 左上角删除按钮
-                        'header',         // 顶部 safe header 栏
-                        '.safe-header',
-                        '#libraryModal',  // 媒体源选择弹窗
-                        '#addToPlaylistModal', // 播放列表弹窗
-                        '#mediaInfoModal',// 流媒体信息弹窗
-                        '#deleteConfirmModal', // 删除确认弹窗
-                        '.profile-layer', // 个人中心全屏面板
-                    ];
-                    if (excluded.some(sel => e.target.closest(sel))) {
-                        gestureActive = false;
-                        resetSpeed();
-                        return;
-                    }
-
-                    gestureActive = true;
-                    state = 'IDLE';
-                    const t = e.touches ? e.touches[0] : e;
-                    x0 = t.clientX;
-                    y0 = t.clientY;
-                    t0 = Date.now();
-
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const v = document.getElementById(`video-p${slideIdx}`);
-                    if (v) originalTime = v.currentTime;
-
-                    clearTimeout(longPressTimer);
-                    longPressTimer = setTimeout(() => {
-                        if (state === 'IDLE' && gestureActive && !this.isAnyModalOpen()) {
-                            state = 'SPEED';
-                            if (v) v.playbackRate = 2.0;
-                            speedToast.classList.remove('opacity-0');
-                        }
-                    }, 300);
-                };
-
-                const moveHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream' || this.isAnyModalOpen()) {
-                        if (state === 'SPEED') resetSpeed();
-                        return;
-                    }
-                    const t = e.touches ? e.touches[0] : e;
-                    const diffX = t.clientX - x0;
-                    const diffY = t.clientY - y0;
-
-                    if (Math.abs(diffX) > Math.abs(diffY)) {
-                        if (e.cancelable) e.preventDefault();
-                    }
-
-                    if (Math.abs(diffX) > 15 || Math.abs(diffY) > 15) {
-                        clearTimeout(longPressTimer);
-
-                        if (state === 'SPEED') {
-                            resetSpeed();
-                        }
-
-                        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
-                            state = 'DRAG';
-                        }
-                    }
-
-                    if (state === 'DRAG') {
-                        if (e.cancelable) e.preventDefault();
-                        const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                        const v = document.getElementById(`video-p${slideIdx}`);
-                        if (v && v.duration) {
-                            const ratio = diffX / (window.innerWidth / 2);
-                            targetTime = originalTime + (ratio * v.duration);
-                            targetTime = Math.max(0, Math.min(targetTime, v.duration));
-
-                            const progressEl = document.getElementById('progressLine');
-                            if (progressEl) progressEl.style.width = `${(targetTime / v.duration) * 100}%`;
-                        }
-                    }
-                };
-
-                const endHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') {
-                        resetSpeed();
-                        return;
-                    }
-                    gestureActive = false;
-                    clearTimeout(longPressTimer);
-
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const v = document.getElementById(`video-p${slideIdx}`);
-
-                    if (state === 'SPEED') {
-                        resetSpeed();
-                        state = 'IDLE';
-                        this.showInterfaceTemp();
-                        return;
-                    }
-
-                    if (state === 'DRAG') {
-                        if (v) v.currentTime = targetTime;
-                        state = 'IDLE';
-                        this.showInterfaceTemp();
-                        return;
-                    }
-
-                    state = 'IDLE';
-                    const t = e.changedTouches ? e.changedTouches[0] : e;
-                    const diffX = t.clientX - x0;
-                    const diffY = t.clientY - y0;
-                    const time = Date.now() - t0;
-
-                    if (Math.abs(diffY) > 50 && Math.abs(diffY) > Math.abs(diffX)) {
-                        diffY < 0 ? this.nextVideo() : this.prevVideo();
-                        return;
-                    }
-
-                    if (Math.abs(diffX) < 10 && Math.abs(diffY) < 10 && time < 300) {
-                        clickCount++;
-                        if (clickCount === 1) {
-                            clickTimer = setTimeout(() => {
-                                const app = document.getElementById('app');
-                                if (app.classList.contains('interface-hidden')) {
-                                    app.classList.remove('interface-hidden');
-                                    this.showInterfaceTemp();
-                                } else {
-                                    this.togglePlay();
-                                }
-                                clickCount = 0;
-                            }, 250);
-                        } else if (clickCount === 2) {
-                            clearTimeout(clickTimer);
-                            clickCount = 0;
-                            const w = window.innerWidth;
-                            if (t.clientX < w / 4) {
-                                this.handleDoubleTapSkip('rewind', t.clientX, t.clientY);
-                            } else if (t.clientX > w * 3 / 4) {
-                                this.handleDoubleTapSkip('forward', t.clientX, t.clientY);
-                            } else {
-                                this.handleDoubleTap(t.clientX, t.clientY);
-                            }
-                        }
-                    }
-                };
-
-                container.style.userSelect = 'none';
-                container.style.webkitUserSelect = 'none';
-
-                container.addEventListener('contextmenu', (e) => {
-                    if (e.target.closest('.touch-layer') || e.target.tagName.toLowerCase() === 'video') {
-                        e.preventDefault();
-                    }
-                });
-
-                container.addEventListener('touchstart', startHandler, { passive: true });
-                container.addEventListener('touchmove', moveHandler, { passive: false });
-
-                let lastTouchEnd = 0;
-                container.addEventListener('touchend', (e) => {
-                    lastTouchEnd = Date.now();
-                    endHandler(e);
-                });
-                container.addEventListener('touchcancel', () => { 
-                    gestureActive = false; 
-                    state = 'IDLE'; 
-                    resetSpeed();
-                });
-
-                let isMouseDown = false;
-                container.addEventListener('mousedown', (e) => {
-                    if (e.button !== 0) return;
-                    if (Date.now() - lastTouchEnd < 500) return;
-                    isMouseDown = true;
-                    e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    startHandler(e);
-                });
-                container.addEventListener('mousemove', (e) => {
-                    if (!isMouseDown) return;
-                    e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    moveHandler(e);
-                });
-                const mouseEndHandler = (e) => {
-                    if (!isMouseDown) return;
-                    isMouseDown = false;
-                    e.changedTouches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    endHandler(e);
-                };
-                container.addEventListener('mouseup', mouseEndHandler);
-                container.addEventListener('mouseleave', (e) => {
-                    mouseEndHandler(e);
-                    resetSpeed();
-                });
-                window.addEventListener('blur', resetSpeed);
+                if (this.stage) this.stage.bindGestures(container);
             }
 
             async handleDoubleTapSkip(direction, x, y) {
@@ -4649,9 +3478,7 @@
                         const { server, token, userId } = this.config;
                         const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${currentVideo.Id}?api_key=${token}`, {
                             method: 'POST',
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                            }
+                            headers: this.getAuthHeaders(token)
                         });
                         if (res.ok) {
                             if (!currentVideo.UserData) currentVideo.UserData = {};
@@ -4684,17 +3511,9 @@
 
                 // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
-                    setTimeout(() => {
-                        const allItems = Array.from(el.querySelectorAll('.focusable-item'));
-                        // 优先已选中项（带主题色背景），避免从第一项闪现的过渡
-                        const selected = allItems.find(i => i.classList.contains('bg-primary/20'));
-                        const target = selected || allItems[0];
-                        if (target) target.focus();
-                    }, 300);
+                    this.nav.focusModal(el);
                 } else {
-                    if (document.activeElement && document.activeElement.closest(`#${id}`)) {
-                        document.activeElement.blur();
-                    }
+                    this.nav.blurModal(el);
                 }
 
                 // 核心逻辑：无论打开还是关闭弹窗，都调用 showInterfaceTemp
@@ -4727,10 +3546,7 @@
             }
 
             formatTime(s) {
-                if (!s) return '00:00';
-                const m = Math.floor(s / 60);
-                const sec = Math.floor(s % 60);
-                return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+                return this.player.formatTime(s);
             }
 
             escapeHtml(str) {

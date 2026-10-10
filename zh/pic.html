@@ -27,6 +27,9 @@
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
     <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
+    <script src="js/common.js"></script>
+    <script src="js/nav.js"></script>
+    <script src="js/gallery.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {
@@ -627,28 +630,16 @@
     </div>
 
     <script>
-        // Jellyfin 前缀兼容拦截
-        function enableJellyfinFetchProxy() {
-            if (window._jellyfinProxyEnabled) return;
-            const origFetch = window.fetch;
-            window.fetch = function (url, options) {
-                if (typeof url === 'string' && url.includes('/emby/')) {
-                    url = url.replace('/emby/', '/');
-                }
-                return origFetch(url, options);
-            };
-            window._jellyfinProxyEnabled = true;
-        }
-
-        // Jellyfin 媒体与图片地址修正
-        function fixUrlForJellyfin(url) {
-            if (typeof url === 'string' && localStorage.getItem('emby_is_jellyfin') === 'true') {
-                return url.replace('/emby/', '/');
-            }
-            return url;
-        }
+        // Jellyfin 与鉴权工具函数（委托至 common.js）
+        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
+        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
+        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
 
         class EmbyApp {
+            getAuthHeaders(token = '', extra = {}) {
+                return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);
+            }
+
             constructor() {
                 // 应用状态
                 this.state = {
@@ -679,13 +670,12 @@
                 this.config = { server: '', user: '', token: '', userId: '', autoplay: true, slideshowInterval: 30, magazineMode: false, deleteMode: false, fnOS: false };
 
                 this.csTimer = null;
-                this.slideshowTimer = null;
                 this.playFeedbackTimer = null;
-                this.photoMetadataCache = new Map();
-                this.photoMetadataControllers = new Map();
-
-
                 this.dom = {}; // DOM 元素缓存
+                this.nav = new SpatialNavigator({ app: this });
+                this.gallery = new Gallery({ app: this });
+                this.photoMetadataCache = this.gallery.photoMetadataCache;
+                this.photoMetadataControllers = this.gallery.photoMetadataControllers;
                 this.config.deviceName = this.getDeviceName();
                 this.init();
             }
@@ -732,6 +722,9 @@
             // --- 初始化 ---
             init() {
                 this.cacheDOM();
+                if (this.gallery) {
+                    this.gallery.container = document.getElementById('app');
+                }
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
@@ -789,41 +782,12 @@
                 const badge = document.getElementById('appVersionBadge');
                 if (!badge) return;
 
-                // 频率限制：24小时检查一次
-                const lastCheck = localStorage.getItem('embyx_last_update_check');
-                const now = Date.now();
-                if (lastCheck && now - parseInt(lastCheck) < 24 * 60 * 60 * 1000) return;
-
-                try {
-                    const response = await fetch('https://api.github.com/repos/juneix/EmbyX/releases/latest');
-                    if (!response.ok) return;
-                    const data = await response.json();
-                    localStorage.setItem('embyx_last_update_check', now.toString());
-
-                    const latestTag = data.tag_name; // 例如 v1.2
-                    const latestVersion = latestTag.replace('v', '').trim();
-                    const currentVersion = this.config.appVersion;
-
-                    // 语义化版本对比函数 (支持 1.1 < 1.1.2 等)
-                    const isNewer = (latest, current) => {
-                        const l = latest.split('.').map(Number);
-                        const c = current.split('.').map(Number);
-                        for (let i = 0; i < Math.max(l.length, c.length); i++) {
-                            if ((l[i] || 0) > (c[i] || 0)) return true;
-                            if ((l[i] || 0) < (c[i] || 0)) return false;
-                        }
-                        return false;
-                    };
-
-                    if (isNewer(latestVersion, currentVersion)) {
-                        // 发现新版本：变橙并激活点击
-                        badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
-                        badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
-                        badge.title = '发现新版本，点击前往下载';
-                        badge.onclick = () => window.open('https://github.com/juneix/EmbyX/releases', '_blank');
-                    }
-                } catch (err) {
-                    console.error('Update check failed:', err);
+                const res = await EmbyXCommon.checkGitHubUpdate(this.config.appVersion);
+                if (res && res.hasUpdate) {
+                    badge.classList.remove('bg-primary/20', 'text-primary', 'border-primary/30');
+                    badge.classList.add('bg-orange-500/20', 'text-orange-500', 'border-orange-500/30', 'cursor-pointer', 'transition-all', 'hover:opacity-80', 'active:scale-95');
+                    badge.title = '发现新版本，点击前往下载';
+                    badge.onclick = () => window.open(res.releaseUrl || 'https://github.com/juneix/EmbyX/releases', '_blank');
                 }
             }
 
@@ -920,23 +884,13 @@
                 }
 
                 // Jellyfin 初始化挂载
-                if (localStorage.getItem('emby_is_jellyfin') === 'true') {
+                if (EmbyXCommon.getServerType() === 'jellyfin') {
                     enableJellyfinFetchProxy();
                 }
             }
 
             async detectFnOS(server) {
-                try {
-                    const res = await fetch(`${server}/v/api/v1/sys/version`, {
-                        headers: { 'Accept': 'application/json' }
-                    });
-                    if (!res.ok) return false;
-
-                    const data = await res.json();
-                    return data?.code === 0 && !!data?.data?.version;
-                } catch (e) {
-                    return false;
-                }
+                return EmbyXCommon.detectFnOS(server);
             }
 
             async saveConfig() {
@@ -955,70 +909,13 @@
                 this.toggleLoading(true);
 
                 // 自动补全协议头和端口
-                let isAutoFilled = false;
-                if (server && !server.startsWith('http')) {
-                    const host = server.split(':')[0];
-                    const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
-
-                    // HTTPS 下输入局域网 IP：飞牛 App WebView 会拦截 HTTP 混合请求，重写为同源代理地址绕过沙箱限制
-                    if (location.protocol === 'https:' && isIP) {
-                        server = location.origin + '/app/juneix-embyx/proxy/8096';
-                        isAutoFilled = true;
-                    } else if (isIP && !server.includes(':')) {
-                        server = `http://${server}:8096`;
-                        isAutoFilled = true;
-                    } else {
-                        server = (isIP ? 'http://' : 'https://') + server;
-                    }
-                }
-
-                // 封装登录验证流程（8096: Emby/Jellyfin 标准端口, 8090: 飞牛影视端口）
-                const performAuth = async (targetServer) => {
-                    // 探测飞牛影视 /v 接口，保留服务器兼容状态
-                    const fnOS = await this.detectFnOS(targetServer);
-
-                    // Jellyfin 登录前置探测：标准路径无 /emby/ 前缀，兼容路径作为回退
-                    let isJellyfin = false;
-                    for (const path of ['/System/Info/Public', '/emby/System/Info/Public']) {
-                        try {
-                            const res = await fetch(`${targetServer}${path}`);
-                            if (!res.ok) continue;
-                            const d = await res.json();
-                            if (d.ProductName?.toLowerCase().includes('jellyfin')) { isJellyfin = true; break; }
-                        } catch (e) {}
-                    }
-
-                    if (isJellyfin) {
-                        localStorage.setItem('emby_is_jellyfin', 'true');
-                        enableJellyfinFetchProxy();
-                    } else {
-                        localStorage.removeItem('emby_is_jellyfin');
-                    }
-
-                    const res = await fetch(`${targetServer}/emby/Users/AuthenticateByName`, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"`
-                        },
-                        body: JSON.stringify({ Username: user, Pw: pwd })
-                    });
-
-                    if (!res.ok) {
-                        throw { status: res.status };
-                    }
-
-                    const data = await res.json();
-                    if (!data.AccessToken) {
-                        throw { status: 'NO_TOKEN' };
-                    }
-                    return { data, fnOS };
-                };
+                const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
+                server = normalizedServer;
 
                 try {
-                    // 如果是用旧 token 更新设置，跳过登录
+                    // 如果是用旧 token 更新设置，跳过登录（仅当输入为掩码且旧密码长度大于0）
                     const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    const isUnchangedPwd = (/^\*+$/.test(pwd) && pwd.length === pwdLen) || (pwd === "" && pwdLen === 0);
+                    const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
                     if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
                         // 服务器未变，fnOS 状态沿用内存值，无需重新发探测请求
                         const fnOS = this.config.fnOS;
@@ -1036,40 +933,24 @@
                         return;
                     }
 
-                    let auth;
-                    try {
-                        auth = await performAuth(server);
-                    } catch (err) {
-                        // 登录失败后，如果是自动补全的 8096 端口，自动尝试 8090 端口
-                        if (isAutoFilled && server.endsWith(':8096')) {
-                            const fallbackServer = server.replace(/:8096$/, ':8090');
-                            try {
-                                auth = await performAuth(fallbackServer);
-                                server = fallbackServer; // 成功登录，更新为 8090 地址以供后续保存
-                            } catch (fallbackErr) {
-                                throw err; // 8090 也失败，抛出原始错误
-                            }
-                        } else if (isAutoFilled && server.endsWith('/proxy/8096')) {
-                            // /proxy/8096（本机 Emby）失败：回退至飞牛影视同源代理根目录（Go 代理转发 8005 端口）
-                            const fallbackServer = server.replace(/\/proxy\/8096$/, '');
-                            try {
-                                auth = await performAuth(fallbackServer);
-                                server = fallbackServer;
-                            } catch (fallbackErr) {
-                                throw err;
-                            }
-                        } else {
-                            throw err;
-                        }
-                    }
+                    const auth = await EmbyXCommon.authenticate({
+                        server,
+                        user,
+                        pwd,
+                        deviceName: this.config.deviceName,
+                        deviceId: this.config.deviceId,
+                        appVersion: this.config.appVersion,
+                        isAutoFilled
+                    });
 
-                    const { data, fnOS } = auth;
+                    const { data, userId, fnOS, finalServer } = auth;
+                    server = finalServer;
 
                     // 登录成功后的处理
                     localStorage.setItem('emby_server', server);
                     localStorage.setItem('emby_user', user);
                     localStorage.setItem('emby_token', data.AccessToken);
-                    localStorage.setItem('emby_uid', data.SessionInfo.UserId);
+                    localStorage.setItem('emby_uid', userId);
                     localStorage.setItem('emby_pic_autoplay', autoplay);
                     localStorage.setItem('emby_pic_slideshow_interval', slideshowInterval);
                     localStorage.setItem('emby_pic_magazine_mode', magazineMode);
@@ -1077,7 +958,7 @@
                     if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                     else localStorage.removeItem('emby_fnOS');
 
-                    this.config = { ...this.config, server, user, token: data.AccessToken, userId: data.SessionInfo.UserId, autoplay, slideshowInterval, magazineMode, deleteMode, fnOS };
+                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, autoplay, slideshowInterval, magazineMode, deleteMode, fnOS };
 
                     // 将密码位数存入 localStorage，不存密码本身，空密码记为 0
                     const pwdLen2 = pwd.length;
@@ -1131,25 +1012,11 @@
             }
 
             async loadFavorites() {
-                const { server, token, userId } = this.config;
-                if (!server || !token || !userId) {
-                    const saved = localStorage.getItem('emby_favorites');
-                    if (saved) this.state.favorites = new Set(JSON.parse(saved));
-                    return;
-                }
                 try {
-                    const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&Fields=Id`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        if (data && data.Items) {
-                            this.state.favorites = new Set(data.Items.map(i => String(i.Id)));
-                            localStorage.setItem('emby_favorites', JSON.stringify([...this.state.favorites]));
-                            this.updateUI();
-                        }
+                    const favs = await EmbyXCommon.fetchFavorites(this.config);
+                    if (favs) {
+                        this.state.favorites = favs;
+                        this.updateUI();
                     }
                 } catch (e) {
                     console.error('加载远端收藏夹失败:', e);
@@ -1163,7 +1030,7 @@
                 if (!server || !token || !userId) return;
                 try {
                     const res = await fetch(`${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`, {
-                        headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (!res.ok) return;
                     const data = await res.json();
@@ -1173,7 +1040,7 @@
                     await Promise.all(playlists.map(async pl => {
                         try {
                             const cRes = await fetch(`${server}/emby/Playlists/${pl.Id}/Items?UserId=${userId}&api_key=${token}&Limit=10000&Fields=Id`, {
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             });
                             if (cRes.ok) {
                                 const cData = await cRes.json();
@@ -1245,9 +1112,7 @@
                     }
 
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) {
                         throw new Error(`服务器错误: ${res.status}`);
@@ -1652,71 +1517,15 @@
                 lucide.createIcons();
             }
 
-            // 缓冲渲染逻辑
-            isMagazineModeActive() {
-                return !!(
-                    this.config.magazineMode &&
-                    this.state.viewMode === 'stream' &&
-                    window.innerWidth > window.innerHeight &&
-                    this.state.videos.length > 1
-                );
-            }
-
-            getGalleryStep() {
-                return this.isMagazineModeActive() ? 2 : 1;
-            }
-
-            getSlideshowIntervalMs() {
-                return this.clampSlideshowInterval(this.config.slideshowInterval) * 1000;
-            }
-
-            clearSlideshowTimer() {
-                if (this.slideshowTimer) {
-                    clearTimeout(this.slideshowTimer);
-                    this.slideshowTimer = null;
-                }
-            }
-
-            isSlideshowAllowed() {
-                return !!(
-                    this.config.autoplay !== false &&
-                    !this.state.isSlideshowPaused &&
-                    this.state.viewMode === 'stream' &&
-                    this.state.videos.length > 1 &&
-                    !this.isAnyModalOpen()
-                );
-            }
-
-            scheduleSlideshow() {
-                this.clearSlideshowTimer();
-                if (!this.isSlideshowAllowed()) return;
-                const step = this.getGalleryStep();
-                if (this.state.currentIndex + step >= this.state.videos.length) return;
-                this.slideshowTimer = setTimeout(() => {
-                    this.slideshowTimer = null;
-                    this.nextVideo(true);
-                }, this.getSlideshowIntervalMs());
-            }
-
-            restartPhotoMotion(img) {
-                if (!img) return;
-                if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
-                    img.classList.remove('photo-motion');
-                    img.style.transform = '';
-                    return;
-                }
-                img.style.setProperty('--photo-motion-duration', `${this.clampSlideshowInterval(this.config.slideshowInterval)}s`);
-                img.classList.remove('photo-motion');
-                void img.offsetWidth;
-                img.classList.add('photo-motion');
-            }
-
-            restartSlideMotion(slotIndex) {
-                ['', '2'].forEach((suffix) => {
-                    const img = document.getElementById(`thumb${suffix}-${slotIndex}`);
-                    if (img && img.getAttribute('src')) this.restartPhotoMotion(img);
-                });
-            }
+            // 缓冲渲染逻辑（委托至 Gallery 控制器）
+            isMagazineModeActive() { return this.gallery.isMagazineModeActive(); }
+            getGalleryStep() { return this.gallery.getGalleryStep(); }
+            getSlideshowIntervalMs() { return this.gallery.getSlideshowIntervalMs(); }
+            clearSlideshowTimer() { this.gallery.clearSlideshowTimer(); }
+            isSlideshowAllowed() { return this.gallery.isSlideshowAllowed(); }
+            scheduleSlideshow() { this.gallery.scheduleSlideshow(); }
+            restartPhotoMotion(img) { this.gallery.restartPhotoMotion(img); }
+            restartSlideMotion(slotIndex) { this.gallery.restartSlideMotion(slotIndex); }
 
             setPhotoFrame(slotIndex, item, suffix = '') {
                 const thumb = document.getElementById(`thumb${suffix}-${slotIndex}`);
@@ -1817,227 +1626,15 @@
                 this.scheduleSlideshow();
             }
 
-            abortInactivePhotoMetadata(activePhotoIds) {
-                this.photoMetadataControllers.forEach((controller, id) => {
-                    if (!activePhotoIds.has(id)) controller.abort();
-                });
-            }
-
-            getPhotoDisplayName(item) {
-                const raw = item?.Path || item?.Name || '';
-                let name = String(raw).split(/[\\/]/).pop() || String(raw);
-                try { name = decodeURIComponent(name); } catch (e) { }
-                name = name.split(/[?#]/)[0].trim();
-                name = name.replace(/\.[^./\\]+$/, '').trim();
-                return name || '-';
-            }
-
-            getPhotoMetadataText(item) {
-                if (!item?.Id) return '-';
-                return this.photoMetadataCache.get(String(item.Id))?.text || '-';
-            }
-
-            buildPhotoDownloadUrl(item) {
-                if (!item?.Id || !this.config.server || !this.config.token) return '';
-                return fixUrlForJellyfin(`${this.config.server}/emby/Items/${item.Id}/Download?api_key=${this.config.token}`);
-            }
-
-            ensurePhotoMetadata(item, shouldRefreshUi = false) {
-                if (!item?.Id) return;
-                const id = String(item.Id);
-                const cached = this.photoMetadataCache.get(id);
-                if (cached) {
-                    return;
-                }
-                if (this.photoMetadataControllers.has(id)) return;
-
-                this.photoMetadataCache.set(id, { status: 'loading', text: '-' });
-                const controller = new AbortController();
-                this.photoMetadataControllers.set(id, controller);
-                this.loadPhotoMetadata(item, controller.signal)
-                    .then(text => {
-                        this.photoMetadataCache.set(id, { status: 'done', text: text || '-' });
-                    })
-                    .catch((error) => {
-                        if (error?.name === 'AbortError') this.photoMetadataCache.delete(id);
-                        else this.photoMetadataCache.set(id, { status: 'error', text: '-' });
-                    })
-                    .finally(() => {
-                        this.photoMetadataControllers.delete(id);
-                        if (this.state.videos[this.state.currentIndex]?.Id === item.Id) this.updateUI();
-                    });
-            }
-
-            async loadPhotoMetadata(item, signal) {
-                const url = this.buildPhotoDownloadUrl(item);
-                if (!url) return '-';
-                const res = await fetch(url, {
-                    headers: {
-                        'Range': 'bytes=0-262143',
-                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                    },
-                    signal
-                });
-                if (!res.ok && res.status !== 206) return '-';
-                const buffer = await res.arrayBuffer();
-                return this.parseEmbeddedImageMetadata(buffer);
-            }
-
-            parseEmbeddedImageMetadata(buffer) {
-                const bytes = new Uint8Array(buffer);
-                if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return '-';
-
-                const exifChunks = [];
-                const xmpChunks = [];
-                let offset = 2;
-                while (offset + 4 < bytes.length) {
-                    if (bytes[offset] !== 0xff) break;
-                    const marker = bytes[offset + 1];
-                    if (marker === 0xda || marker === 0xd9) break;
-                    const length = (bytes[offset + 2] << 8) + bytes[offset + 3];
-                    if (length < 2 || offset + 2 + length > bytes.length) break;
-                    if (marker === 0xe1) {
-                        const dataStart = offset + 4;
-                        const dataEnd = offset + 2 + length;
-                        const header = this.asciiFromBytes(bytes, dataStart, Math.min(dataStart + 35, dataEnd));
-                        if (header.startsWith('Exif\0\0')) {
-                            exifChunks.push(bytes.slice(dataStart + 6, dataEnd));
-                        } else if (header.startsWith('http://ns.adobe.com/xap/1.0/\0')) {
-                            xmpChunks.push(bytes.slice(dataStart + 29, dataEnd));
-                        }
-                    }
-                    offset += 2 + length;
-                }
-
-                const exif = exifChunks.length ? this.parseExifTiff(exifChunks[0]) : {};
-                const xmp = xmpChunks.length ? this.parseXmpPacket(xmpChunks[0]) : {};
-                return this.formatPhotoMetadata({ ...exif, ...xmp });
-            }
-
-            asciiFromBytes(bytes, start, end) {
-                let out = '';
-                for (let i = start; i < end; i++) out += String.fromCharCode(bytes[i]);
-                return out;
-            }
-
-            decodeTextBytes(bytes) {
-                try {
-                    return new TextDecoder('utf-8').decode(bytes).replace(/\0+$/g, '').trim();
-                } catch (e) {
-                    return this.asciiFromBytes(bytes, 0, bytes.length).replace(/\0+$/g, '').trim();
-                }
-            }
-
-            parseExifTiff(tiffBytes) {
-                const view = new DataView(tiffBytes.buffer, tiffBytes.byteOffset, tiffBytes.byteLength);
-                if (view.byteLength < 8) return {};
-                const little = view.getUint16(0, false) === 0x4949;
-                if (view.getUint16(2, little) !== 42) return {};
-                const firstIfd = view.getUint32(4, little);
-                const tags = {};
-                const tagNames = {
-                    0x010f: 'make',
-                    0x0110: 'model',
-                    0x0132: 'dateTime',
-                    0x829a: 'exposureTime',
-                    0x829d: 'fNumber',
-                    0x8827: 'iso',
-                    0x9003: 'dateTimeOriginal',
-                    0x920a: 'focalLength',
-                    0xa434: 'lensModel'
-                };
-                const readValue = (type, count, valueOffset) => {
-                    const typeSize = { 1: 1, 2: 1, 3: 2, 4: 4, 5: 8, 7: 1, 9: 4, 10: 8 }[type] || 1;
-                    const size = typeSize * count;
-                    const ptr = size <= 4 ? valueOffset : view.getUint32(valueOffset, little);
-                    if (ptr < 0 || ptr + size > view.byteLength) return null;
-                    if (type === 2 || type === 7) return this.decodeTextBytes(tiffBytes.slice(ptr, ptr + size));
-                    if (type === 3) return count === 1 ? view.getUint16(ptr, little) : Array.from({ length: count }, (_, i) => view.getUint16(ptr + i * 2, little));
-                    if (type === 4) return count === 1 ? view.getUint32(ptr, little) : Array.from({ length: count }, (_, i) => view.getUint32(ptr + i * 4, little));
-                    if (type === 5) {
-                        const n = view.getUint32(ptr, little);
-                        const d = view.getUint32(ptr + 4, little);
-                        return d ? n / d : null;
-                    }
-                    return null;
-                };
-                const walkIfd = (ifdOffset, depth = 0) => {
-                    if (!ifdOffset || ifdOffset + 2 > view.byteLength || depth > 3) return;
-                    const count = view.getUint16(ifdOffset, little);
-                    for (let i = 0; i < count; i++) {
-                        const entry = ifdOffset + 2 + i * 12;
-                        if (entry + 12 > view.byteLength) break;
-                        const tag = view.getUint16(entry, little);
-                        const type = view.getUint16(entry + 2, little);
-                        const valueCount = view.getUint32(entry + 4, little);
-                        if (tag === 0x8769 || tag === 0x8825) {
-                            walkIfd(view.getUint32(entry + 8, little), depth + 1);
-                            continue;
-                        }
-                        const name = tagNames[tag];
-                        if (name && tags[name] == null) tags[name] = readValue(type, valueCount, entry + 8);
-                    }
-                };
-                walkIfd(firstIfd);
-                return tags;
-            }
-
-            parseXmpPacket(xmpBytes) {
-                const xml = this.decodeTextBytes(xmpBytes);
-                if (!xml) return {};
-                const decode = (value) => value
-                    .replace(/&amp;/g, '&')
-                    .replace(/&lt;/g, '<')
-                    .replace(/&gt;/g, '>')
-                    .replace(/&quot;/g, '"')
-                    .replace(/&#039;|&apos;/g, "'")
-                    .trim();
-                const pickAttr = (name) => {
-                    const re = new RegExp(`${name}="([^"]+)"`);
-                    const m = xml.match(re);
-                    return m ? decode(m[1]) : '';
-                };
-                const pickTag = (name) => {
-                    const re = new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`);
-                    const m = xml.match(re);
-                    if (!m) return '';
-                    const li = m[1].match(/<rdf:li[^>]*>([\s\S]*?)<\/rdf:li>/);
-                    return decode((li ? li[1] : m[1]).replace(/<[^>]+>/g, ' '));
-                };
-                return {
-                    make: pickAttr('tiff:Make') || pickTag('tiff:Make'),
-                    model: pickAttr('tiff:Model') || pickTag('tiff:Model'),
-                    lensModel: pickAttr('aux:Lens') || pickAttr('exifEX:LensModel') || pickTag('aux:Lens') || pickTag('exifEX:LensModel'),
-                    dateTimeOriginal: pickAttr('exif:DateTimeOriginal') || pickAttr('xmp:CreateDate') || pickAttr('photoshop:DateCreated'),
-                    description: pickTag('dc:description'),
-                    keywords: pickTag('dc:subject')
-                };
-            }
-
-            formatPhotoMetadata(meta) {
-                const lines = [];
-                const camera = [meta.make, meta.model].filter(Boolean).join(' ');
-                if (camera) lines.push(`相机：${camera}`);
-                if (meta.lensModel) lines.push(`镜头：${meta.lensModel}`);
-                const params = [];
-                if (meta.fNumber) params.push(`f/${Number(meta.fNumber).toFixed(1).replace(/\.0$/, '')}`);
-                if (meta.exposureTime) params.push(this.formatExposure(meta.exposureTime));
-                if (meta.iso) params.push(`ISO ${Array.isArray(meta.iso) ? meta.iso[0] : meta.iso}`);
-                if (meta.focalLength) params.push(`${Number(meta.focalLength).toFixed(0)}mm`);
-                if (params.length) lines.push(`参数：${params.join(' · ')}`);
-                const date = meta.dateTimeOriginal || meta.dateTime;
-                if (date) lines.push(`时间：${String(date).replace(/^(\d{4}):(\d{2}):(\d{2})/, '$1-$2-$3')}`);
-                if (meta.description) lines.push(`描述：${meta.description}`);
-                if (meta.keywords) lines.push(`关键词：${meta.keywords}`);
-                return lines.length ? lines.join('\n') : '-';
-            }
-
-            formatExposure(value) {
-                const n = Number(value);
-                if (!Number.isFinite(n) || n <= 0) return '';
-                if (n < 1) return `1/${Math.round(1 / n)}s`;
-                return `${n.toFixed(1).replace(/\.0$/, '')}s`;
-            }
+            abortInactivePhotoMetadata(activePhotoIds) { this.gallery.abortInactivePhotoMetadata(activePhotoIds); }
+            getPhotoDisplayName(item) { return this.gallery.getPhotoDisplayName(item); }
+            getPhotoMetadataText(item) { return this.gallery.getPhotoMetadataText(item); }
+            buildPhotoDownloadUrl(item) { return this.gallery.buildPhotoDownloadUrl(item); }
+            ensurePhotoMetadata(item, shouldRefreshUi = false) { this.gallery.ensurePhotoMetadata(item, shouldRefreshUi); }
+            loadPhotoMetadata(item, signal) { return this.gallery.loadPhotoMetadata(item, signal); }
+            parseEmbeddedImageMetadata(buffer) { return this.gallery.parseEmbeddedImageMetadata(buffer); }
+            formatPhotoMetadata(meta) { return this.gallery.formatPhotoMetadata(meta); }
+            formatExposure(value) { return this.gallery.formatExposure(value); }
 
             loadPhoto(index) {
                 if (this.state.viewMode !== 'stream') return;
@@ -2067,9 +1664,7 @@
                     if (!server || !token || !userId) return;
 
                     const res = await fetch(`${server}/emby/Users/${userId}/Items/${currentId}?api_key=${token}&Fields=People,Tags,TagItems`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (res.ok) {
                         const data = await res.json();
@@ -2083,7 +1678,7 @@
                         const person = data.People && data.People.length > 0 ? data.People[0] : null;
                         if (person) {
                             btn.dataset.personName = person.Name;
-                            img.src = `${server}/emby/Persons/${encodeURIComponent(person.Name)}/Images/Primary?api_key=${token}`;
+                            img.src = EmbyXCommon.getPersonImageUrl(server, person.Name);
                             btn.classList.remove('hidden');
                             this.recalculateMetaInfoHeight();
                         }
@@ -2169,13 +1764,7 @@
             // --- 辅助功能 ---
 
             getImageSrc(video) {
-                const { server, token } = this.config;
-                const fallbackUrl = './poster.webp';
-
-                if (video && video.ImageTags && video.ImageTags.Primary) {
-                    return fixUrlForJellyfin(`${server}/emby/Items/${video.Id}/Images/Primary?api_key=${token}`);
-                }
-                return fallbackUrl;
+                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, './poster.webp');
             }
 
             renderLibraryItems(playlistsData, viewsDataRaw) {
@@ -2313,30 +1902,7 @@
                 }
 
                 try {
-                    const userId = this.config.userId;
-
-                    let playlistsData = { Items: [] };
-                    try {
-                        const playlistsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${this.config.token}`, {
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                            }
-                        });
-                        if (playlistsRes.ok) {
-                            playlistsData = await playlistsRes.json();
-                        }
-                    } catch (e) {}
-
-                    const viewsRes = await fetch(`${this.config.server}/emby/Users/${userId}/Views?api_key=${this.config.token}`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
-                    });
-                    const viewsDataRaw = viewsRes.ok ? await viewsRes.json() : { Items: [] };
-
-                    // 缓存完整的视图和列表数据供网格模式提取名称
-                    localStorage.setItem('emby_views_cache', JSON.stringify({ playlists: playlistsData, views: viewsDataRaw }));
-
+                    const { playlistsData, viewsDataRaw } = await EmbyXCommon.fetchLibrariesData(this.config);
                     // 静默刷新渲染
                     this.renderLibraryItems(playlistsData, viewsDataRaw);
                 } catch (e) {
@@ -2370,14 +1936,8 @@
                 // 远端同步 Emby API
                 if (server && token && userId) {
                     try {
-                        const method = isFav ? 'DELETE' : 'POST';
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${id}?api_key=${token}`, {
-                            method,
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                            }
-                        });
-                        if (!res.ok) {
+                        const ok = await EmbyXCommon.syncFavoriteStatus({ ...this.config, itemId: id, isFav: !isFav });
+                        if (!ok) {
                             // 远端失败，回滚内存状态
                             item.UserData.IsFavorite = isFav;
                             if (isFav) this.state.favorites.add(id); else this.state.favorites.delete(id);
@@ -2443,7 +2003,7 @@
                         const { server, token, userId } = this.config;
                         const res = await fetch(
                             `${server}/emby/Users/${userId}/Items?Recursive=true&IncludeItemTypes=Playlist&api_key=${token}`,
-                            { headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` } }
+                            { headers: this.getAuthHeaders(token) }
                         );
                         if (res.ok) playlists = (await res.json()).Items || [];
                     } catch (e) {
@@ -2517,7 +2077,7 @@
                         `${server}/emby/Playlists?Name=${encodeURIComponent(playlistName)}&Ids=${itemId}&UserId=${userId}&api_key=${token}`,
                         {
                             method: 'POST',
-                            headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                            headers: this.getAuthHeaders(token)
                         }
                     );
                     if (res.ok) {
@@ -2558,7 +2118,7 @@
                                 `${server}/emby/Playlists/${plId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
                                 {
                                     method: 'DELETE',
-                                    headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                    headers: this.getAuthHeaders(token)
                                 }
                             );
                         } catch(e) {}
@@ -2587,7 +2147,7 @@
                             `${server}/emby/Playlists/${playlistId}/Items?ItemIds=${itemId}&EntryIds=${itemId}&api_key=${token}`,
                             {
                                 method: 'DELETE',
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             }
                         );
                     } else {
@@ -2595,7 +2155,7 @@
                             `${server}/emby/Playlists/${playlistId}/Items?Ids=${itemId}&UserId=${userId}&api_key=${token}`,
                             {
                                 method: 'POST',
-                                headers: { 'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}` }
+                                headers: this.getAuthHeaders(token)
                             }
                         );
                     }
@@ -2634,9 +2194,7 @@
                     const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
                     const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
                     const res = await fetch(url, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(token)
                     });
                     if (res.ok) {
                         const data = await res.json();
@@ -2778,24 +2336,17 @@
                 if (!item) return;
 
                 try {
-                    // 注意：Emby 删除 API 需要管理员账号，普通用户会返回 403
-                    // 必须检查 res.ok，否则 403/404 也会被当成成功处理，导致前端假删除
-                    const res = await fetch(`${this.config.server}/emby/Items/${item.Id}?api_key=${this.config.token}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
-                    });
+                    const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
-                    if (!res.ok) {
+                    if (!ok) {
                         // 403：账号无管理权限；404：照片已不存在（也从列表移除）
-                        if (res.status === 403) {
+                        if (status === 403) {
                             this.showToast('❌ 权限不足，请使用管理员账号');
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        if (res.status !== 404) {
-                            this.showToast(`❌ 删除失败 (${res.status})`);
+                        if (status !== 404) {
+                            this.showToast(`❌ 删除失败 (${status})`);
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
@@ -3020,9 +2571,7 @@
 
                 try {
                     const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
-                        headers: {
-                            'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${this.config.token ? `, Token="${this.config.token}"` : ''}`
-                        }
+                        headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) throw new Error('API Error');
                     const data = await res.json();
@@ -3268,9 +2817,7 @@
                                 const { server, token, userId } = this.config;
                                 const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems&Person=${encodeURIComponent(personName)}`;
                                 const res = await fetch(url, {
-                                    headers: {
-                                        'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                                    }
+                                    headers: this.getAuthHeaders(token)
                                 });
                                 if (res.ok) {
                                     const data = await res.json();
@@ -3372,100 +2919,19 @@
 
                     // --- 个人中心 / 弹窗 / 网格列表内的空间导航 (Remote Control / Keyboard Focus) ---
                     if (profileActive || libraryActive || document.getElementById('app').classList.contains('grid-active')) {
-                        if (isInput) return;
-                        const items = Array.from(document.querySelectorAll(
-                            profileActive ? '#profilePage .focusable-item' :
-                                libraryActive ? '#libraryModal .focusable-item' :
-                                    '#videoContainer .focusable-item'
-                        ));
-                        let currentIndex = items.indexOf(document.activeElement);
-                        if (!isInput && (key === 'ArrowUp' || key === 'ArrowDown' || key === 'ArrowLeft' || key === 'ArrowRight' ||
-                            lowKey === 'w' || lowKey === 'a' || lowKey === 's' || lowKey === 'd' ||
-                            [38, 40, 37, 39].includes(keyCode))) {
-                            e.preventDefault();
-                            if (currentIndex === -1) {
-                                let startItem = items[0];
-                                if (document.getElementById('app').classList.contains('grid-active')) {
-                                    startItem = items.find(it => it.dataset.index == this.state.currentIndex) || items[0];
-                                }
-                                startItem?.focus();
-                            } else {
-                                const isPhotoGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
-                                if (isPhotoGrid) {
-                                    // 照片网格：3 列规则偏移
-                                    let nextIdx = currentIndex;
-                                    if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) nextIdx += 3;
-                                    else if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) nextIdx -= 3;
-                                    else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) nextIdx += 1;
-                                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) nextIdx -= 1;
+                        const isPhotoGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
+                        const container = profileActive ? document.getElementById('profilePage') :
+                            libraryActive ? document.getElementById('libraryModal') :
+                                document.getElementById('videoContainer');
 
-                                    if (nextIdx >= 0 && nextIdx < items.length) {
-                                        items[nextIdx].focus();
-                                        items[nextIdx].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                                    }
-                                } else if (libraryActive) {
-                                    // 媒体库弹窗：基于屏幕坐标的空间导航
-                                    // 正确处理带分区标题的不连续网格，无论多少列都精准匹配视觉方向
-                                    const cur = items[currentIndex];
-                                    const curR = cur.getBoundingClientRect();
-                                    const curCx = curR.left + curR.width / 2;
-                                    const curCy = curR.top + curR.height / 2;
-
-                                    let dir;
-                                    if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) dir = 'down';
-                                    else if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) dir = 'up';
-                                    else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) dir = 'right';
-                                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) dir = 'left';
-
-                                    let best = null, bestScore = Infinity;
-                                    items.forEach(item => {
-                                        if (item === cur) return;
-                                        const r = item.getBoundingClientRect();
-                                        const cx = r.left + r.width / 2;
-                                        const cy = r.top + r.height / 2;
-                                        const dx = cx - curCx, dy = cy - curCy;
-                                        // 仅保留目标方向的元素（留 2px 容差）
-                                        if (dir === 'down' && dy <= 2) return;
-                                        if (dir === 'up' && dy >= -2) return;
-                                        if (dir === 'right' && dx <= 2) return;
-                                        if (dir === 'left' && dx >= -2) return;
-                                        // 评分：主轴距离优先，副轴偏移加权惩罚
-                                        const score = (dir === 'down' || dir === 'up')
-                                            ? Math.abs(dy) + Math.abs(dx) * 3
-                                            : Math.abs(dx) + Math.abs(dy) * 3;
-                                        if (score < bestScore) { bestScore = score; best = item; }
-                                    });
-
-                                    if (best) {
-                                        best.focus();
-                                        best.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-                                    }
-                                } else {
-                                    // 个人中心：线性跳转
-                                    if (key === 'ArrowDown' || lowKey === 's' || key === 'ArrowRight' || lowKey === 'd' || [40, 39].includes(keyCode)) {
-                                        currentIndex = (currentIndex + 1) % items.length;
-                                    } else {
-                                        currentIndex = (currentIndex - 1 + items.length) % items.length;
-                                    }
-                                    items[currentIndex].focus();
-                                }
-                            }
-                            return;
-                        }
-
-                        // OK / Enter 在焦点元素上触发点击
-                        if (key === 'Enter' || keyCode === 13) {
-                            if (document.activeElement && document.activeElement.classList.contains('focusable-item')) {
-                                // 如果是输入框或文本域，回车不拦截，允许系统处理
-                                const tagName = document.activeElement.tagName.toLowerCase();
-                                if (tagName === 'textarea' || (tagName === 'input' && document.activeElement.type !== 'checkbox')) {
-                                    return;
-                                }
-                                e.preventDefault();
-                                document.activeElement.click();
-                                return;
-                            }
-                        }
+                        const consumed = this.nav.handleKey(e, {
+                            isInput,
+                            isGrid: isPhotoGrid,
+                            currentGridIndex: this.state.currentIndex,
+                            isSpatial: libraryActive,
+                            container
+                        });
+                        if (consumed) return;
                     }
 
                     if (isInput) return;
@@ -3593,201 +3059,11 @@
             }
 
             bindGestures(container) {
-                let x0 = 0, y0 = 0;
-                let t0 = 0;
-                let clickTimer = null;
-                let clickCount = 0;
-                let lastTap = { x: 0, y: 0 };
-                let gestureActive = false;
-
-                container.style.touchAction = 'none';
-                container.style.userSelect = 'none';
-                container.style.webkitUserSelect = 'none';
-
-                const isCenterTap = (x, y) => (
-                    x > window.innerWidth * 0.25 &&
-                    x < window.innerWidth * 0.75 &&
-                    y > window.innerHeight * 0.18 &&
-                    y < window.innerHeight * 0.82
-                );
-
-                const isExcludedTarget = (target) => {
-                    const excluded = [
-                        '.bottom-nav',
-                        '.bottom-info',
-                        '.right-toolbar',
-                        '#favoriteBtn',
-                        '#addToPlaylistBtn',
-                        '#scaleBtn',
-                        '#personBtn',
-                        '#fullscreenBtn',
-                        '#deleteBtn',
-                        '#libraryModal',
-                        '#addToPlaylistModal',
-                        '#mediaInfoModal',
-                        '#deleteConfirmModal',
-                        '.profile-layer',
-                    ];
-                    return excluded.some(sel => target.closest(sel));
-                };
-
-                const startHandler = (e) => {
-                    if (this.state.viewMode !== 'stream' || this.isAnyModalOpen() || isExcludedTarget(e.target)) {
-                        gestureActive = false;
-                        return;
-                    }
-
-                    gestureActive = true;
-                    const t = e.touches ? e.touches[0] : e;
-                    x0 = t.clientX;
-                    y0 = t.clientY;
-                    t0 = Date.now();
-                };
-
-                const moveHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream' || this.isAnyModalOpen()) {
-                        return;
-                    }
-                    const t = e.touches ? e.touches[0] : e;
-                    const diffX = t.clientX - x0;
-                    const diffY = t.clientY - y0;
-
-                    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 8) {
-                        if (e.cancelable) e.preventDefault();
-                    }
-                };
-
-                const endHandler = (e) => {
-                    if (!gestureActive || this.state.viewMode !== 'stream') {
-                        return;
-                    }
-                    gestureActive = false;
-                    const t = e.changedTouches ? e.changedTouches[0] : e;
-                    const diffX = t.clientX - x0;
-                    const diffY = t.clientY - y0;
-                    const time = Date.now() - t0;
-
-                    // 默认左右滑动：切换上一张 / 下一张照片 (符合画册看图直觉)
-                    if (Math.abs(diffX) > 50 && Math.abs(diffX) > Math.abs(diffY)) {
-                        diffX < 0 ? this.nextVideo() : this.prevVideo();
-                        return;
-                    }
-
-                    // 次手势上下滑动：切换播放列表 / 媒体源相册弹窗
-                    if (Math.abs(diffY) > 50 && Math.abs(diffY) > Math.abs(diffX)) {
-                        this.toggleModal('libraryModal', true);
-                        return;
-                    }
-
-                    if (Math.abs(diffX) < 10 && Math.abs(diffY) < 10 && time < 300) {
-                        lastTap = { x: t.clientX, y: t.clientY };
-                        clickCount++;
-                        if (clickCount === 1) {
-                            clickTimer = setTimeout(() => {
-                                const app = document.getElementById('app');
-                                if (isCenterTap(lastTap.x, lastTap.y)) {
-                                    this.togglePlay();
-                                } else if (app.classList.contains('interface-hidden')) {
-                                    app.classList.remove('interface-hidden');
-                                    this.showInterfaceTemp();
-                                }
-                                clickCount = 0;
-                            }, 250);
-                        } else if (clickCount === 2) {
-                            clearTimeout(clickTimer);
-                            clickCount = 0;
-                            if (isCenterTap(t.clientX, t.clientY)) {
-                                this.handleDoubleTap(t.clientX, t.clientY);
-                            } else {
-                                this.showInterfaceTemp();
-                            }
-                        }
-                    }
-                };
-
-                container.style.userSelect = 'none';
-                container.style.webkitUserSelect = 'none';
-
-                container.addEventListener('contextmenu', (e) => {
-                    if (e.target.closest('.photo-frame') || e.target.tagName.toLowerCase() === 'img') {
-                        e.preventDefault();
-                    }
-                });
-
-                container.addEventListener('touchstart', startHandler, { passive: true });
-                container.addEventListener('touchmove', moveHandler, { passive: false });
-
-                let lastTouchEnd = 0;
-                container.addEventListener('touchend', (e) => {
-                    lastTouchEnd = Date.now();
-                    endHandler(e);
-                });
-                container.addEventListener('touchcancel', () => { 
-                    gestureActive = false; 
-                });
-
-                let isMouseDown = false;
-                container.addEventListener('mousedown', (e) => {
-                    if (e.button !== 0) return;
-                    if (Date.now() - lastTouchEnd < 500) return;
-                    isMouseDown = true;
-                    e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    startHandler(e);
-                });
-                container.addEventListener('mousemove', (e) => {
-                    if (!isMouseDown) return;
-                    e.touches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    moveHandler(e);
-                });
-                const mouseEndHandler = (e) => {
-                    if (!isMouseDown) return;
-                    isMouseDown = false;
-                    e.changedTouches = [{ clientX: e.clientX, clientY: e.clientY }];
-                    endHandler(e);
-                };
-                container.addEventListener('mouseup', mouseEndHandler);
-                container.addEventListener('mouseleave', (e) => {
-                    mouseEndHandler(e);
-                });
+                if (this.gallery) this.gallery.bindGestures(container);
             }
 
-            // 新增: 双击点赞动画与收藏逻辑
             async handleDoubleTap(x, y) {
-                // 1. 点赞动画 DOM 生成 (纯 SVG + 高性能 GPU 动画)
-                const heart = document.createElement('div');
-                heart.className = 'heart-anim absolute pointer-events-none z-50';
-                heart.style.cssText = `left:${x - 32}px;top:${y - 32}px;--rot:${Math.floor(Math.random() * 40) - 20}deg`;
-                heart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="drop-shadow-xl"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
-                document.getElementById('app').appendChild(heart);
-                heart.addEventListener('animationend', () => heart.remove());
-
-                // 2. 自动标记收藏（如未收藏则添加）
-                const currentPhoto = this.state.videos[this.state.currentIndex];
-                if (currentPhoto && !currentPhoto.UserData?.IsFavorite) {
-                    try {
-                        const { server, token, userId } = this.config;
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${currentPhoto.Id}?api_key=${token}`, {
-                            method: 'POST',
-                            headers: {
-                                'X-Emby-Authorization': `Emby Client="EmbyX", Device="${this.config.deviceName}", DeviceId="${this.config.deviceId}", Version="${this.config.appVersion}"${token ? `, Token="${token}"` : ''}`
-                            }
-                        });
-                        if (res.ok) {
-                            if (!currentPhoto.UserData) currentPhoto.UserData = {};
-                            currentPhoto.UserData.IsFavorite = true;
-                            // 同步到本地 Set
-                            this.state.favorites.add(String(currentPhoto.Id));
-
-                            // 高亮右侧收藏图标
-                            const favBtn = document.getElementById('favoriteBtn');
-                            if (favBtn) {
-                                favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="text-secondary fill-secondary w-6 h-6 drop-shadow-md"></i></div>`;
-                                lucide.createIcons({ root: favBtn });
-                            }
-                            this.showToast('❤️ 已收藏');
-                        }
-                    } catch (e) { console.error('Double tap favorite failed:', e); }
-                }
+                if (this.gallery) return this.gallery.handleDoubleTap(x, y);
             }
 
             // --- 通用辅助 ---
@@ -3804,17 +3080,9 @@
 
                 // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
-                    setTimeout(() => {
-                        const allItems = Array.from(el.querySelectorAll('.focusable-item'));
-                        // 优先已选中项（带主题色背景），避免从第一项闪现的过渡
-                        const selected = allItems.find(i => i.classList.contains('bg-primary/20'));
-                        const target = selected || allItems[0];
-                        if (target) target.focus();
-                    }, 300);
+                    this.nav.focusModal(el);
                 } else {
-                    if (document.activeElement && document.activeElement.closest(`#${id}`)) {
-                        document.activeElement.blur();
-                    }
+                    this.nav.blurModal(el);
                 }
 
                 // 核心逻辑：无论打开还是关闭弹窗，都调用 showInterfaceTemp
