@@ -409,14 +409,17 @@
                                         class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                                 </div>
                             </div>
-                            <div id="rowStatic" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
-                                onclick="document.getElementById('configStatic').click();">
-                                <label for="configStatic"
-                                    class="text-gray-300 text-sm cursor-pointer flex-1">Direct Play (No Transcoding)</label>
-                                <input type="checkbox" id="configStatic"
-                                    class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none"
-                                    checked>
+                            <div id="rowPlayQuality"
+                                class="flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all">
+                                <label for="configPlayQuality"
+                                    class="text-gray-300 text-sm cursor-pointer flex-1">Playback Quality</label>
+                                <select id="configPlayQuality"
+                                    class="focusable-item bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 outline-none border border-gray-700 focus:border-primary transition-colors cursor-pointer">
+                                    <option value="direct">Direct Play</option>
+                                    <option value="auto">Auto Transcode</option>
+                                    <option value="1080p">1080P - 8Mbps</option>
+                                    <option value="720p">720P - 4Mbps</option>
+                                </select>
                             </div>
                             <div id="rowAutoplay" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
@@ -706,7 +709,7 @@
                     isFilteredByTag: false
                 };
 
-                this.config = { server: '', user: '', token: '', userId: '', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false, fnOS: false };
+                this.config = { server: '', user: '', token: '', userId: '', playQuality: 'direct', useStatic: true, autoplay: true, shortDrama: false, deleteMode: false, fnOS: false };
 
                 this.csTimer = null;
 
@@ -863,7 +866,7 @@
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
                     'syncConfirmModal', 'confirmSyncBtn', 'cancelSyncBtn', 'syncFileName',
-                    'configServer', 'configUser', 'configPwd', 'configStatic', 'configAutoplay', 'configShortDrama', 'configDeleteMode'
+                    'configServer', 'configUser', 'configPwd', 'configPlayQuality', 'configAutoplay', 'configShortDrama', 'configDeleteMode'
                 ];
                 ids.forEach(id => this.dom[id] = document.getElementById(id));
                 this.dom.rightToolbar = document.querySelector('.right-toolbar');
@@ -875,7 +878,8 @@
                 this.config.user = localStorage.getItem('emby_user') || '';
                 this.config.token = localStorage.getItem('emby_token') || '';
                 this.config.userId = localStorage.getItem('emby_uid') || '';
-                this.config.useStatic = localStorage.getItem('emby_static') !== 'false';
+                this.config.playQuality = localStorage.getItem('emby_play_quality') || 'direct';
+                this.config.useStatic = (this.config.playQuality === 'direct');
                 this.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
                 this.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
                 this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
@@ -917,7 +921,7 @@
                     const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
                     this.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
                 }
-                if (this.dom.configStatic) this.dom.configStatic.checked = this.config.useStatic;
+                if (this.dom.configPlayQuality) this.dom.configPlayQuality.value = this.config.playQuality;
                 if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
                 if (this.dom.configShortDrama) this.dom.configShortDrama.checked = this.config.shortDrama;
                 if (this.dom.configDeleteMode) this.dom.configDeleteMode.checked = this.config.deleteMode;
@@ -1062,7 +1066,8 @@
                 const user = this.dom.configUser.value.trim();
                 const pwd = this.dom.configPwd.value.trim();
 
-                const isStatic = this.dom.configStatic.checked;
+                const playQuality = this.dom.configPlayQuality ? this.dom.configPlayQuality.value : 'direct';
+                const isStatic = playQuality === 'direct';
                 const autoplay = this.dom.configAutoplay.checked;
                 const shortDrama = this.dom.configShortDrama.checked;
                 const deleteMode = this.dom.configDeleteMode.checked;
@@ -1082,6 +1087,7 @@
                     if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
                         // 服务器未变，fnOS 状态沿用内存值，无需重新发探测请求
                         const fnOS = this.config.fnOS;
+                        localStorage.setItem('emby_play_quality', playQuality);
                         localStorage.setItem('emby_static', isStatic);
                         localStorage.setItem('emby_autoplay', autoplay);
                         localStorage.setItem('emby_shortdrama', shortDrama);
@@ -1114,6 +1120,7 @@
                     localStorage.setItem('emby_user', user);
                     localStorage.setItem('emby_token', data.AccessToken);
                     localStorage.setItem('emby_uid', userId);
+                    localStorage.setItem('emby_play_quality', playQuality);
                     localStorage.setItem('emby_static', isStatic);
                     localStorage.setItem('emby_autoplay', autoplay);
                     localStorage.setItem('emby_shortdrama', shortDrama);
@@ -1121,7 +1128,7 @@
                     if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                     else localStorage.removeItem('emby_fnOS');
 
-                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
+                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
 
                     // 将Password位数存入 localStorage，不存Password本身，空Password记为 0
                     const pwdLen2 = pwd.length;
@@ -1839,8 +1846,8 @@
                 return this.player.retryWithAltMode(index, item);
             }
 
-            _buildHlsSrc(id, mediaItem, forceReencode = false) {
-                return this.player._buildHlsSrc(id, mediaItem, forceReencode);
+            _buildHlsSrc(id, mediaItem, forceReencode = false, quality = null) {
+                return this.player._buildHlsSrc(id, mediaItem, forceReencode, quality);
             }
 
             togglePlay() {
@@ -2829,22 +2836,46 @@
                         const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
                         let transcodeState = 'Direct Play';
                         if (this.state.playbackMethod === 'Failed') {
-                            transcodeState = '播放失败';
+                            transcodeState = 'Playback Failed';
                         } else if (this.state.playbackMethod === 'DirectPlay') {
                             transcodeState = this.state.isStrmSource ? 'Direct Play (STRM)' : 'Direct Play';
                         } else if (this.state.playbackMethod === 'DirectStream') {
                             const audioCodec = (src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '').toLowerCase();
                             const isAudioNative = ['aac', 'mp3', 'ac3', 'eac3', 'aac_latm'].includes(audioCodec);
                             if (isAudioNative) {
-                                transcodeState = '直接串流';
+                                transcodeState = 'Direct Stream';
                             } else {
                                 const audioLabel = { 'dts': 'DTS', 'truehd': 'TrueHD', 'opus': 'Opus', 'flac': 'FLAC', 'vorbis': 'Vorbis' }[audioCodec] || audioCodec.toUpperCase();
-                                transcodeState = `直接串流（${audioLabel}→AAC）`;
+                                transcodeState = `Direct Stream (${audioLabel}→AAC)`;
                             }
                         } else if (this.state.playbackMethod === 'Transcode' || this.state.playbackMethod === 'TranscodeStream') {
-                            transcodeState = '转码播放';
+                            const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                            const videoEl = document.getElementById(`video-p${slideIdx}`);
+                            const realW = videoEl?.videoWidth || 0;
+                            const realH = videoEl?.videoHeight || 0;
+                            let resTag = '';
+                            if (realW && realH) {
+                                const shortEdge = Math.min(realW, realH);
+                                const longEdge = Math.max(realW, realH);
+                                if (shortEdge >= 2000 || longEdge >= 3500) resTag = '4K';
+                                else if (shortEdge >= 950 || longEdge >= 1700) resTag = '1080P';
+                                else if (shortEdge >= 650 || longEdge >= 1150) resTag = '720P';
+                                else if (shortEdge >= 400 || longEdge >= 700) resTag = '480P';
+                                else resTag = `${shortEdge}P`;
+                            }
+
+                            const q = this.config.playQuality;
+                            if (q === '1080p') {
+                                transcodeState = `Transcoding (${resTag || '1080P'} / H.264)`;
+                            } else if (q === '720p') {
+                                transcodeState = `Transcoding (${resTag || '720P'} / H.264)`;
+                            } else if (q === 'auto') {
+                                transcodeState = resTag ? `Transcoding (Auto ${resTag} / H.264)` : 'Transcoding (Auto / H.264)';
+                            } else {
+                                transcodeState = resTag ? `Transcoding (${resTag} / H.264)` : 'Transcoding (H.264)';
+                            }
                         } else {
-                            transcodeState = this.config.useStatic ? 'Direct Play' : '转码播放';
+                            transcodeState = this.config.useStatic ? 'Direct Play' : 'Transcoding';
                         }
 
                         // 布局说明：py-2 控制行高（间距），items-center 确保文字垂直居中
@@ -3233,7 +3264,7 @@
 
                     // 如果正在输入（且不是在处理遥控器方向键时），不触发全局快捷键
                     // 但我们要允许在输入框内通过上下键跳转焦点
-                    const isInput = ['input', 'textarea'].includes(document.activeElement.tagName.toLowerCase());
+                    const isInput = ['input', 'textarea', 'select'].includes(document.activeElement.tagName.toLowerCase());
 
                     const key = e.key;
                     const keyCode = e.keyCode;

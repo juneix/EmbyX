@@ -47,10 +47,11 @@
                 (playAttempt === null || videoEl.dataset.playAttempt === playAttempt);
         }
 
-        _buildHlsSrc(id, mediaItem, forceReencode = false) {
-            const { server, token } = this.app.config;
+        _buildHlsSrc(id, mediaItem, forceReencode = false, quality = null) {
+            const { server, token, playQuality } = this.app.config;
+            const currentQuality = quality || playQuality || 'auto';
             const mediaSource = mediaItem?.MediaSources?.[0];
-            const mediaSourceId = mediaSource?.Id || '';
+            const mediaSourceId = mediaSource?.Id || (mediaItem?.Id || id);
             const playSessionId = this.app.state.playSessionId || ('hls_' + id + '_' + Date.now());
             const deviceId = this.app.config.deviceId || 'EmbyX-Device';
 
@@ -62,18 +63,39 @@
                 (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
             const isApple = isSafari || isIOS;
 
+            // 分辨率与码率限制
+            let maxWidthParam = '';
+            let maxHeightParam = '';
+            let bitrateParam = '';
+
+            if (currentQuality === '1080p') {
+                maxWidthParam = 'MaxWidth=1920';
+                maxHeightParam = 'MaxHeight=1080';
+                bitrateParam = 'VideoBitrate=8000000';
+            } else if (currentQuality === '720p') {
+                maxWidthParam = 'MaxWidth=1280';
+                maxHeightParam = 'MaxHeight=720';
+                bitrateParam = 'VideoBitrate=4000000';
+            } else if (forceReencode) {
+                bitrateParam = 'VideoBitrate=20000000';
+            }
+
+            const isQualityLimited = (currentQuality === '1080p' || currentQuality === '720p');
+
             const params = [
                 `api_key=${token}`,
                 mediaSourceId ? `MediaSourceId=${mediaSourceId}` : '',
                 `DeviceId=${deviceId}`,
                 `PlaySessionId=${playSessionId}`,
                 `EnableDirectStream=true`,
-                `EnableVideoTranscoding=${forceReencode ? 'true' : 'false'}`,
+                `EnableVideoTranscoding=${(forceReencode || isQualityLimited || currentQuality === 'auto') ? 'true' : 'false'}`,
                 `EnableAudioTranscoding=true`,
                 `EnableAudioStreamCopy=true`,
-                forceReencode ? `VideoCodec=h264` : (isApple ? `VideoCodec=hvc1,h264` : `VideoCodec=h264,hevc,hvc1,vp9,av1`),
+                `VideoCodec=h264`,
                 `AudioCodec=aac,mp3,ac3,eac3,opus,flac,vorbis`,
-                forceReencode ? `VideoBitrate=20000000` : '',
+                maxWidthParam,
+                maxHeightParam,
+                bitrateParam,
                 `AudioBitrate=320000`,
                 isSafari ? `TranscodingMaxAudioChannels=6` : `TranscodingMaxAudioChannels=2`,
                 useTsContainer ? `SegmentContainer=ts` : `SegmentContainer=mp4`,
@@ -83,12 +105,14 @@
                 `AllowAudioStreamCopy=true`
             ].filter(Boolean).join('&');
 
-            return fixUrlForJellyfin(`${server}/emby/Videos/${id}/master.m3u8?${params}`);
+            const fixUrl = window.EmbyXCommon?.fixUrlForJellyfin || ((u) => u);
+            return fixUrl(`${server}/emby/Videos/${id}/master.m3u8?${params}`);
         }
 
         getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
             if (isPrimaryPlayback) this.app.state.isStrmSource = false;
-            const { server, token, useStatic } = this.app.config;
+            const { server, token } = this.app.config;
+            const quality = this.app.config.playQuality || (this.app.config.useStatic ? 'direct' : 'auto');
 
             const mediaSource = mediaItem?.MediaSources?.[0];
             const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
@@ -106,9 +130,9 @@
                 return '';
             }
 
-            if (!useStatic) {
-                if (isPrimaryPlayback) this.app.state.playbackMethod = 'Transcode';
-                return this._buildHlsSrc(id, mediaItem);
+            if (quality !== 'direct') {
+                if (isPrimaryPlayback) this.app.state.playbackMethod = (quality === 'auto' ? 'DirectStream' : 'Transcode');
+                return this._buildHlsSrc(id, mediaItem, false, quality);
             }
 
             const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
