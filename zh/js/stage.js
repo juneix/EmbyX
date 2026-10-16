@@ -245,7 +245,7 @@
                 const isEn = (document.documentElement.lang || '').startsWith('en');
                 speedToast = document.createElement('div');
                 speedToast.id = 'stageSpeedToast';
-                speedToast.className = 'absolute top-[calc(env(safe-area-inset-top)+20px)] left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm text-white px-4 py-2 rounded-full text-sm font-bold opacity-0 transition-opacity z-50 pointer-events-none flex items-center gap-2';
+                speedToast.className = 'absolute top-[10%] left-1/2 -translate-x-1/2 bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-white px-4 py-2 rounded-full text-sm font-bold opacity-0 transition-opacity z-50 pointer-events-none flex items-center gap-2';
                 speedToast.innerHTML = `<i data-lucide="fast-forward" class="w-4 h-4 text-green-400"></i><span>${isEn ? '2x Fast Forward' : '2 倍速播放中'}</span>`;
                 const appRoot = document.getElementById('app') || document.body;
                 appRoot.appendChild(speedToast);
@@ -333,6 +333,9 @@
                     if (state === 'SPEED') resetSpeed();
                     if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 15) {
                         state = 'DRAG';
+                        if (this.app) this.app.state.isDragging = true;
+                        const progressEl = document.getElementById('progressLine');
+                        if (progressEl) progressEl.style.transition = 'none';
                     }
                 }
 
@@ -341,12 +344,17 @@
                     const slideIdx = (this.app.state.currentIndex % 3 + 3) % 3;
                     const v = document.getElementById(`video-p${slideIdx}`);
                     if (v && v.duration) {
-                        const ratio = diffX / (window.innerWidth / 2);
-                        targetTime = originalTime + (ratio * v.duration);
+                        // 平滑横向滑动时间计算：自适应限制滑动灵敏度跨度，杜绝手抖导致剧烈跳变
+                        const maxSpan = Math.min(v.duration, Math.max(90, v.duration * 0.3));
+                        const ratio = diffX / (window.innerWidth * 0.75);
+                        targetTime = originalTime + (ratio * maxSpan);
                         targetTime = Math.max(0, Math.min(targetTime, v.duration));
 
-                        const progressEl = document.getElementById('progressLine');
-                        if (progressEl) progressEl.style.width = `${(targetTime / v.duration) * 100}%`;
+                        if (this.app?.input && typeof this.app.input.showProgressOSD === 'function') {
+                            this.app.input.showProgressOSD(targetTime, v.duration, false);
+                        } else if (typeof this.app.showProgressOSD === 'function') {
+                            this.app.showProgressOSD(targetTime, v.duration, false);
+                        }
                     }
                 }
             };
@@ -354,6 +362,12 @@
             const endHandler = (e) => {
                 if (!gestureActive || this.app.state.viewMode !== 'stream') {
                     resetSpeed();
+                    if (this.app) this.app.state.isDragging = false;
+                    if (this.app?.input && typeof this.app.input.hideProgressOSD === 'function') {
+                        this.app.input.hideProgressOSD();
+                    } else if (typeof this.app.hideProgressOSD === 'function') {
+                        this.app.hideProgressOSD();
+                    }
                     return;
                 }
                 gestureActive = false;
@@ -370,8 +384,16 @@
                 }
 
                 if (state === 'DRAG') {
+                    if (this.app) this.app.state.isDragging = false;
+                    const progressEl = document.getElementById('progressLine');
+                    if (progressEl) progressEl.style.transition = '';
                     if (v) v.currentTime = targetTime;
                     state = 'IDLE';
+                    if (this.app?.input && typeof this.app.input.hideProgressOSD === 'function') {
+                        this.app.input.hideProgressOSD(300);
+                    } else if (typeof this.app.hideProgressOSD === 'function') {
+                        this.app.hideProgressOSD(300);
+                    }
                     if (typeof this.app.showInterfaceTemp === 'function') this.app.showInterfaceTemp();
                     return;
                 }

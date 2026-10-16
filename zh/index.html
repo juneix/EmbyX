@@ -22,15 +22,11 @@
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX</title>
-    <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
-    <script src="https://cdn.tailwindcss.com" data-cfasync="false"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
-    <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@1.6.16/dist/hls.min.js" data-cfasync="false"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/hls.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
-    <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/mpegts.min.js';document.head.appendChild(s)"></script>
+    <!-- 核心第三方依赖库（全本地化同源加载） -->
+    <script src="lib/tailwind.min.js" data-cfasync="false"></script>
+    <script src="lib/lucide.min.js"></script>
+    <script src="lib/hls.min.js" data-cfasync="false"></script>
+    <script src="lib/mpegts.min.js"></script>
     <script src="js/common.js"></script>
     <script src="js/input.js"></script>
     <script src="js/auth.js"></script>
@@ -81,25 +77,33 @@
             /* 播放/暂停按钮动画 */
 
             .play-pause-btn {
-                @apply absolute top-1/2 left-1/2 w-16 h-16 rounded-full flex items-center justify-center z-20 opacity-0 pointer-events-none transition-all duration-200 ease-out bg-black/30;
-                transform: translate(-50%, -50%) scale(1.5);
+                @apply absolute top-1/2 left-1/2 w-16 h-16 rounded-full flex items-center justify-center z-20 opacity-0 pointer-events-none transition-all duration-200 ease-out bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)];
+                transform: translate(-50%, -50%) scale(1.2);
             }
             .play-pause-btn.paused {
                 @apply opacity-100;
-                transform: translate(-50%, -50%) scale(1.5);
+                transform: translate(-50%, -50%) scale(1);
             }
             .play-pause-btn i {
                 @apply text-2xl text-white;
             }
 
             /* 连播模式/清屏模式逻辑 */
-            .interface-hidden .bottom-info,
+            .interface-hidden .bottom-info:not(.show-progress),
             .interface-hidden .bottom-nav,
             .interface-hidden .right-toolbar,
             .interface-hidden #bottomScrim,
             .interface-hidden #fullscreenBtn,
             .interface-hidden #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
+            }
+
+            /* 全屏清屏下调整进度：临时浮现进度条与时间，隐藏标题与简介 */
+            .interface-hidden .bottom-info.show-progress {
+                @apply opacity-100 transition-opacity duration-300;
+            }
+            .interface-hidden .bottom-info.show-progress #metaInfoContainer {
+                @apply opacity-0 pointer-events-none;
             }
 
             /* 格子视图下的特殊“清屏”：保留底部栏，隐藏播放器相关 UI */
@@ -142,6 +146,9 @@
             /* 进度条 */
             .progress-line {
                 @apply h-full bg-white transition-[width] duration-[250ms] ease-linear;
+            }
+            .is-paused .progress-line {
+                @apply bg-primary;
             }
 
             /* MD3 & Liquid Glass: 底部导航反馈 */
@@ -199,8 +206,8 @@
             class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer"
             style="display:none;">
             <div class="text-center">
-                <div class="w-20 h-20 bg-black/50 rounded-full flex items-center justify-center animate-pulse mx-auto">
-                    <i data-lucide="play" class="text-white text-3xl"></i>
+                <div class="w-16 h-16 bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full flex items-center justify-center animate-pulse mx-auto">
+                    <i data-lucide="play" class="text-white text-2xl"></i>
                 </div>
                 <p class="text-white text-lg mt-4 font-medium">点击开始播放</p>
             </div>
@@ -247,7 +254,7 @@
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] left-4 z-30 transition-opacity duration-300"
             id="deleteBtn">
             <div
-                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full">
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
                 <i data-lucide="trash-2" class="stroke-white w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
@@ -256,7 +263,7 @@
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
-                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full">
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
                 <i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
@@ -329,6 +336,14 @@
         <!-- 底部渐变黑影遮罩 (Scrim) -->
         <div class="absolute bottom-0 left-0 right-0 h-[280px] bg-gradient-to-t from-black/60 via-black/20 to-transparent z-10 pointer-events-none transition-opacity duration-300" id="bottomScrim"></div>
 
+        <!-- 拖拽/快进进度悬浮 OSD (位于屏幕 65% 高度，黄金开阔区) -->
+        <div id="progressOSD"
+            class="absolute top-[65%] left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] flex items-center space-x-1.5 text-white font-mono text-sm tracking-wider opacity-0 pointer-events-none transition-opacity duration-200">
+            <span id="osdCurrentTime" class="font-medium text-white">00:00</span>
+            <span class="text-white/40">/</span>
+            <span id="osdTotalTime" class="text-white/70">00:00</span>
+        </div>
+
         <div
             class="bottom-info absolute bottom-20 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
             <div id="metaInfoContainer" class="mb-3 w-[85%] pr-4 pointer-events-auto transition-all duration-300">
@@ -340,8 +355,12 @@
                 </div>
             </div>
 
-            <div class="relative h-1 bg-white/30 cursor-pointer pointer-events-auto mb-1" id="progressBarContainer">
-                <div id="progressLine" class="progress-line w-0"></div>
+            <div class="relative py-2 -my-2 cursor-pointer pointer-events-auto mb-1 flex items-center group" id="progressBarContainer">
+                <div class="w-full h-1 bg-white/30 rounded-full relative overflow-visible">
+                    <div id="progressLine" class="progress-line h-full w-0 rounded-full relative">
+                        <div id="progressThumb" class="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1/2 w-2 h-2 bg-white rounded-full shadow-[0_0_4px_rgba(0,0,0,0.5)] pointer-events-none transition-transform group-hover:scale-125"></div>
+                    </div>
+                </div>
             </div>
 
             <div class="flex justify-between text-xs text-gray-300 drop-shadow">
@@ -673,7 +692,7 @@
         </div>
 
         <div id="toast"
-            class="fixed top-16 left-1/2 -translate-x-1/2 bg-black/50 px-4 py-2 rounded-2xl text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-sm">
+            class="fixed top-[10%] left-1/2 -translate-x-1/2 bg-black/25 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
             提示信息
         </div>
         <div id="loading"
@@ -755,6 +774,7 @@
                         }
                     },
                     onTimeUpdate: (currentTime, duration, pct) => {
+                        if (this.state.isDragging) return;
                         if (this.dom.progressLine) this.dom.progressLine.style.width = `${pct}%`;
                         if (this.dom.currentTime) this.dom.currentTime.textContent = this.formatTime(currentTime);
                         if (this.dom.totalTime) this.dom.totalTime.textContent = this.formatTime(duration);
@@ -791,17 +811,21 @@
                 return "Web Browser";
             }
 
+            // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
+            getActiveModalId() {
+                const modals = ['syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
+                return modals.find(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return false;
+                    if (id === 'profilePage') return el.classList.contains('active');
+                    return !el.classList.contains('hidden');
+                }) || null;
+            }
+
             // 检查当前是否有任何弹窗/面板处于打开状态
             // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
-                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'syncConfirmModal', 'profilePage', 'libraryModal', 'addToPlaylistModal'];
-                return modals.some(id => {
-                    const el = document.getElementById(id);
-                    if (!el) return false;
-                    // profilePage 使用 active 类名，其他使用 hidden 类名
-                    if (id === 'profilePage') return el.classList.contains('active');
-                    return !el.classList.contains('hidden');
-                });
+                return !!this.getActiveModalId();
             }
 
             // ═══ 初始化 ═══
@@ -901,7 +925,8 @@
             cacheDOM() {
                 const ids = [
                     'videoContainer', 'clickToPlayOverlay', 'loading', 'toast',
-                    'metaInfoContainer', 'videoTitle', 'videoDescriptionArea', 'videoDescriptionScroll', 'videoDescription', 'progressLine', 'currentTime', 'totalTime',
+                    'metaInfoContainer', 'videoTitle', 'videoDescriptionArea', 'videoDescriptionScroll', 'videoDescription', 'progressBarContainer', 'progressLine', 'progressThumb', 'currentTime', 'totalTime',
+                    'progressOSD', 'osdCurrentTime', 'osdTotalTime',
                     'playModeBtn', 'viewModeBtn', 'libraryBtn', 'myBtn',
                     'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
@@ -2034,6 +2059,21 @@
                 }
             }
 
+            showProgressOSD(current, duration, autoHide = false) {
+                return this.input?.showProgressOSD(current, duration, autoHide);
+            }
+
+            hideProgressOSD(delay = 0) {
+                return this.input?.hideProgressOSD(delay);
+            }
+
+            setPlayState(isPlaying) {
+                this.state.isPlaying = isPlaying;
+                if (this.dom.progressBarContainer) {
+                    this.dom.progressBarContainer.classList.toggle('is-paused', !isPlaying);
+                }
+            }
+
             // 随机模式：原地洗牌 videos 数组，保持 currentIndex 不变
             // 这样 +1 下一个就是随机视频，且三槽预缓冲完全生效
             _shuffleAroundCurrent() {
@@ -2107,33 +2147,42 @@
                 this.switchSlide(nextIndex, 'up');
             }
 
+            resetFilters() {
+                this.state.currentPerson = null;
+                this.state.isFilteredByPerson = false;
+                this.state.currentTag = null;
+                this.state.isFilteredByTag = false;
+                this.state.startIndex = 0;
+                this.state.viewMode = 'grid';
+
+                const btn = this.dom.viewModeBtn;
+                if (btn) {
+                    btn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
+                    lucide.createIcons();
+                }
+
+                const app = document.getElementById('app');
+                if (app) {
+                    app.classList.remove('interface-hidden');
+                    app.classList.add('grid-active');
+                }
+                this.dom.videoContainer.style.touchAction = 'auto';
+
+                const curLibId = this.state.currentLibraryId;
+                const libArg = curLibId === 'favorites' ? null : curLibId;
+                this.fetchVideos(libArg, null, false, false);
+            }
+
             toggleViewMode() {
                 const isStream = this.state.viewMode === 'stream';
 
                 if (isStream && (this.state.isFilteredByPerson || this.state.isFilteredByTag)) {
-                    this.state.currentPerson = null;
-                    this.state.isFilteredByPerson = false;
-                    this.state.currentTag = null;
-                    this.state.isFilteredByTag = false;
-                    this.state.viewMode = 'grid';
+                    this.resetFilters();
+                    return;
+                }
 
-                    const btn = this.dom.viewModeBtn;
-                    if (btn) {
-                        btn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
-                        lucide.createIcons();
-                    }
-
-                    const app = document.getElementById('app');
-                    if (app) {
-                        app.classList.remove('interface-hidden');
-                        app.classList.add('grid-active');
-                    }
-                    this.dom.videoContainer.style.touchAction = 'auto';
-
-                    this.state.startIndex = 0;
-                    const curLibId = this.state.currentLibraryId;
-                    const libArg = curLibId === 'favorites' ? null : curLibId;
-                    this.fetchVideos(libArg, null, false, false);
+                if (isStream && this.input && this.input.hasHistoryLayer('stream') && !this.input._isHandlingPop) {
+                    window.history.back();
                     return;
                 }
 
@@ -2172,6 +2221,7 @@
                     this.dom.videoContainer.style.touchAction = 'auto';
                     this.renderGridView();
                 } else {
+                    this.input?.pushLayer('stream');
                     this.state.currentPerson = null;
                     const app = document.getElementById('app');
                     if (app) app.classList.remove('grid-active');
@@ -2384,7 +2434,7 @@
                             app.classList.add('ios-pwa-fullscreen');
                             app.classList.add('interface-hidden');
                             const fullscreenBtn = this.dom.fullscreenBtn;
-                            fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="minimize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
+                            fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full"><i data-lucide="minimize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                             lucide.createIcons();
                         } else {
                             if (app.classList.contains('interface-hidden')) {
@@ -2395,7 +2445,7 @@
                                 app.classList.remove('interface-hidden');
                                 if (this.csTimer) clearTimeout(this.csTimer);
                                 const fullscreenBtn = this.dom.fullscreenBtn;
-                                fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
+                                fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full"><i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                                 lucide.createIcons();
                             }
                         }
@@ -2421,7 +2471,7 @@
                 document.addEventListener('fullscreenchange', () => {
                     const isFull = !!document.fullscreenElement;
                     const fullscreenBtn = this.dom.fullscreenBtn;
-                    fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="${isFull ? 'minimize' : 'maximize'}" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
+                    fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full"><i data-lucide="${isFull ? 'minimize' : 'maximize'}" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                     lucide.createIcons();
 
                     if (!isFull) {
@@ -2455,6 +2505,7 @@
                                     this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
                                     this.state.currentPerson = personName;
                                     this.state.viewMode = 'grid';
+                                    this.input?.pushLayer('filter', { type: 'person', name: personName });
 
                                     const vBtn = this.dom.viewModeBtn;
                                     if (vBtn) {
@@ -2535,20 +2586,15 @@
                     }
                 };
 
-                document.getElementById('progressBarContainer').onclick = (e) => {
-                    e.stopPropagation();
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const v = document.getElementById(`video-p${slideIdx}`);
-                    if (v && v.duration) v.currentTime = ((e.clientX - rect.left) / rect.width) * v.duration;
-                };
-
-                // 统一的复杂手势拦截挂载 (长按, 拖拽, 双击)
+                // 统一的复杂手势拦截挂载 (长按, 拖拽, 双击, 进度条拖动)
                 const container = document.getElementById('app');
                 this.bindGestures(container);
 
                 // 键盘与遥控器适配
                 this.bindKeyboard();
+
+                // 全平台移动端/浏览器返回手势与历史状态机
+                this.input.bindHistory();
 
                 // 网页卸载时上报 Stopped，清除 Session 残留并终止后台转码
                 const handleUnload = () => {
@@ -2582,6 +2628,10 @@
 
             // --- 通用辅助 ---
             toggleModal(id, show) {
+                if (!show && this.input && this.input.hasHistoryLayer('modal', id) && !this.input._isHandlingPop) {
+                    window.history.back();
+                    return;
+                }
                 const el = document.getElementById(id);
                 if (id === 'profilePage') {
                     if (show) { el.classList.add('active'); this.state.currentTab = 'my'; }
@@ -2594,6 +2644,7 @@
                 // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
                     this.nav.focusModal(el);
+                    this.input?.pushLayer('modal', { id });
                 } else {
                     this.nav.blurModal(el);
                 }

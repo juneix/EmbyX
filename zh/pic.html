@@ -22,11 +22,9 @@
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX - 画廊模式</title>
-    <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
-    <script src="https://cdn.tailwindcss.com" data-cfasync="false"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
-    <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
+    <!-- 核心第三方依赖库（全本地化同源加载） -->
+    <script src="lib/tailwind.min.js" data-cfasync="false"></script>
+    <script src="lib/lucide.min.js"></script>
     <script src="js/common.js"></script>
     <script src="js/input.js"></script>
     <script src="js/gallery.js"></script>
@@ -77,12 +75,12 @@
             /* 播放/暂停按钮动画 */
 
             .play-pause-btn {
-                @apply absolute top-1/2 left-1/2 w-16 h-16 rounded-full flex items-center justify-center z-20 opacity-0 pointer-events-none transition-all duration-200 ease-out bg-black/30;
-                transform: translate(-50%, -50%) scale(1.5);
+                @apply absolute top-1/2 left-1/2 w-16 h-16 rounded-full flex items-center justify-center z-20 opacity-0 pointer-events-none transition-all duration-200 ease-out bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)];
+                transform: translate(-50%, -50%) scale(1.2);
             }
             .play-pause-btn.paused {
                 @apply opacity-100;
-                transform: translate(-50%, -50%) scale(1.5);
+                transform: translate(-50%, -50%) scale(1);
             }
             .play-pause-btn i {
                 @apply text-2xl text-white;
@@ -247,7 +245,7 @@
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] left-4 z-30 transition-opacity duration-300"
             id="deleteBtn">
             <div
-                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full">
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
                 <i data-lucide="trash-2" class="stroke-white w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
@@ -256,7 +254,7 @@
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
-                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full">
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
                 <i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
@@ -620,7 +618,7 @@
         </div>
 
         <div id="toast"
-            class="fixed top-16 left-1/2 -translate-x-1/2 bg-black/50 px-4 py-2 rounded-2xl text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-sm">
+            class="fixed top-[10%] left-1/2 -translate-x-1/2 bg-black/25 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
             提示信息
         </div>
         <div id="loading"
@@ -673,6 +671,7 @@
                 this.playFeedbackTimer = null;
                 this.dom = {}; // DOM 元素缓存
                 this.nav = new SpatialNavigator({ app: this });
+                this.input = this.nav;
                 this.gallery = new Gallery({ app: this });
                 this.photoMetadataCache = this.gallery.photoMetadataCache;
                 this.photoMetadataControllers = this.gallery.photoMetadataControllers;
@@ -706,17 +705,21 @@
                 return "Web Browser";
             }
 
+            // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
+            getActiveModalId() {
+                const modals = ['deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
+                return modals.find(id => {
+                    const el = document.getElementById(id);
+                    if (!el) return false;
+                    if (id === 'profilePage') return el.classList.contains('active');
+                    return !el.classList.contains('hidden');
+                }) || null;
+            }
+
             // 检查当前是否有任何弹窗/面板处于打开状态
             // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
-                const modals = ['mediaInfoModal', 'deleteConfirmModal', 'profilePage', 'libraryModal', 'addToPlaylistModal'];
-                return modals.some(id => {
-                    const el = document.getElementById(id);
-                    if (!el) return false;
-                    // profilePage 使用 active 类名，其他使用 hidden 类名
-                    if (id === 'profilePage') return el.classList.contains('active');
-                    return !el.classList.contains('hidden');
-                });
+                return !!this.getActiveModalId();
             }
 
             // --- 初始化 ---
@@ -734,6 +737,7 @@
                 this.loadFavorites();
                 this.initGlobalPlaylistIndex();
                 this.bindEvents();
+                this.input.bindHistory();
 
                 this.state.isAutoplay = this.config.autoplay !== false;
 
@@ -2754,7 +2758,7 @@
                             app.classList.add('ios-pwa-fullscreen');
                             app.classList.add('interface-hidden');
                             const fullscreenBtn = this.dom.fullscreenBtn;
-                            fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="minimize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
+                            fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full"><i data-lucide="minimize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                             lucide.createIcons();
                         } else {
                             if (app.classList.contains('interface-hidden')) {
@@ -2765,7 +2769,7 @@
                                 app.classList.remove('interface-hidden');
                                 if (this.csTimer) clearTimeout(this.csTimer);
                                 const fullscreenBtn = this.dom.fullscreenBtn;
-                                fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
+                                fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full"><i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                                 lucide.createIcons();
                             }
                         }
@@ -2791,7 +2795,7 @@
                 document.addEventListener('fullscreenchange', () => {
                     const isFull = !!document.fullscreenElement;
                     const fullscreenBtn = this.dom.fullscreenBtn;
-                    fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/30 rounded-full"><i data-lucide="${isFull ? 'minimize' : 'maximize'}" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
+                    fullscreenBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full"><i data-lucide="${isFull ? 'minimize' : 'maximize'}" class="stroke-white w-5 h-5 drop-shadow-md"></i></div>`;
                     lucide.createIcons();
 
                     if (!isFull) {
@@ -3068,6 +3072,10 @@
 
             // --- 通用辅助 ---
             toggleModal(id, show) {
+                if (!show && this.input && this.input.hasHistoryLayer('modal', id) && !this.input._isHandlingPop) {
+                    window.history.back();
+                    return;
+                }
                 if (show) this.clearSlideshowTimer();
                 const el = document.getElementById(id);
                 if (id === 'profilePage') {
@@ -3081,6 +3089,7 @@
                 // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
                     this.nav.focusModal(el);
+                    this.input?.pushLayer('modal', { id });
                 } else {
                     this.nav.blurModal(el);
                 }

@@ -7,11 +7,9 @@
     <title>EmbyX - 视频性能检测</title>
     <link rel="icon" type="image/png" href="icon.png">
     <link rel="apple-touch-icon" href="icon.png">
-    <!-- CDN 优先，离线/CDN 故障时自动回退本地 lib/ 备份 -->
-    <script src="https://cdn.tailwindcss.com" data-cfasync="false"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/tailwind.min.js';s.setAttribute('data-cfasync','false');document.head.appendChild(s)"></script>
-    <script src="https://unpkg.com/lucide@1.21.0/dist/umd/lucide.min.js"
-        onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/lucide.min.js';document.head.appendChild(s)"></script>
+    <!-- 核心第三方依赖库（全本地化同源加载） -->
+    <script src="lib/tailwind.min.js" data-cfasync="false"></script>
+    <script src="lib/lucide.min.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
             theme: {

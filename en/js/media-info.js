@@ -45,15 +45,26 @@
                         const data = await res.json();
                         if (data && data.MediaSources && data.MediaSources.length > 0) {
                             const activeSourceId = item._activeMediaSourceId || (item.MediaSources && item.MediaSources[item._selectedMediaSourceIndex || 0]?.Id);
+                            const existingAdditional = (item.MediaSources || []).filter(s => s._isAdditionalVersion || s._isPart || (s.ItemId && s.ItemId !== item.Id));
                             item.MediaSources = data.MediaSources;
+                            item.MediaSources.forEach(s => {
+                                if (!s.ItemId) s.ItemId = item.Id;
+                            });
+                            if (existingAdditional.length > 0) {
+                                existingAdditional.forEach(s => {
+                                    if (!item.MediaSources.some(m => m.Id === s.Id)) {
+                                        item.MediaSources.push(s);
+                                    }
+                                });
+                            }
 
                             if (activeSourceId) {
-                                const matchedIdx = data.MediaSources.findIndex(s => s.Id === activeSourceId || s.ItemId === activeSourceId);
+                                const matchedIdx = item.MediaSources.findIndex(s => s.Id === activeSourceId || s.ItemId === activeSourceId);
                                 if (matchedIdx !== -1) {
                                     item._selectedMediaSourceIndex = matchedIdx;
                                 }
                             } else if (item._selectedMediaSourceIndex === undefined) {
-                                const defaultIdx = data.MediaSources.findIndex(s => s.Type === 'Default');
+                                const defaultIdx = item.MediaSources.findIndex(s => s.Type === 'Default');
                                 item._selectedMediaSourceIndex = defaultIdx !== -1 ? defaultIdx : 0;
                             }
                         }
@@ -149,35 +160,39 @@
                     nextBtn.classList.add('hidden');
                 }
 
+                const switchToSource = (newIndex) => {
+                    item._selectedMediaSourceIndex = newIndex;
+                    const curSrc = mediaSources[newIndex];
+                    if (curSrc?.Id) {
+                        item._activeMediaSourceId = curSrc.Id;
+                    }
+                    this.renderContent(item, mediaSources, newIndex);
+
+                    const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
+                    const curVideoEl = document.getElementById(`video-p${slideIdx}`);
+                    if (curVideoEl && app.player) {
+                        delete curVideoEl.dataset.requestedSrc;
+                        const newSrc = app.player.getVideoSrc(item.Id, item, true);
+                        if (newSrc) {
+                            app.player.setVideoSource(curVideoEl, newSrc, app.state.currentIndex, item, { autoplay: true });
+                        }
+                    }
+
+                    const nameLabel = curSrc?.Name || `#${newIndex + 1}`;
+                    app.showToast(`Switched to: ${nameLabel}`);
+                };
+
                 prevBtn.onclick = (e) => {
                     e.stopPropagation();
                     if ((item._selectedMediaSourceIndex || 0) > 0) {
-                        item._selectedMediaSourceIndex = (item._selectedMediaSourceIndex || 0) - 1;
-                        const curSrc = mediaSources[item._selectedMediaSourceIndex];
-                        if (curSrc?.Id) {
-                            item._activeMediaSourceId = curSrc.Id;
-                        }
-                        this.renderContent(item, mediaSources, item._selectedMediaSourceIndex);
-                        app.loadVideo(app.state.currentIndex);
-                        app.playVideo(app.state.currentIndex);
-                        const nameLabel = curSrc?.Name || `#${item._selectedMediaSourceIndex + 1}`;
-                        app.showToast(`Switched to: ${nameLabel}`);
+                        switchToSource((item._selectedMediaSourceIndex || 0) - 1);
                     }
                 };
 
                 nextBtn.onclick = (e) => {
                     e.stopPropagation();
                     if ((item._selectedMediaSourceIndex || 0) < total - 1) {
-                        item._selectedMediaSourceIndex = (item._selectedMediaSourceIndex || 0) + 1;
-                        const curSrc = mediaSources[item._selectedMediaSourceIndex];
-                        if (curSrc?.Id) {
-                            item._activeMediaSourceId = curSrc.Id;
-                        }
-                        this.renderContent(item, mediaSources, item._selectedMediaSourceIndex);
-                        app.loadVideo(app.state.currentIndex);
-                        app.playVideo(app.state.currentIndex);
-                        const nameLabel = curSrc?.Name || `#${item._selectedMediaSourceIndex + 1}`;
-                        app.showToast(`Switched to: ${nameLabel}`);
+                        switchToSource((item._selectedMediaSourceIndex || 0) + 1);
                     }
                 };
             }

@@ -236,13 +236,19 @@
                     e.preventDefault();
                     const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
                     const v = document.getElementById(`video-p${slideIdx}`);
-                    if (v) v.currentTime = Math.max(0, v.currentTime - 15);
+                    if (v && v.duration) {
+                        v.currentTime = Math.max(0, v.currentTime - 15);
+                        this.showProgressOSD(v.currentTime, v.duration, true);
+                    }
                     app.showInterfaceTemp();
                 } else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) {
                     e.preventDefault();
                     const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
                     const v = document.getElementById(`video-p${slideIdx}`);
-                    if (v && v.duration) v.currentTime = Math.min(v.duration, v.currentTime + 15);
+                    if (v && v.duration) {
+                        v.currentTime = Math.min(v.duration, v.currentTime + 15);
+                        this.showProgressOSD(v.currentTime, v.duration, true);
+                    }
                     app.showInterfaceTemp();
                 }
                 // 3. 确认逻辑：空格键 & OK键
@@ -343,12 +349,148 @@
         }
 
         // ══════════════════════════════════════════════════════════════
-        // 3. 触控与手势动画
+        // 3. 触控、手势与进度条交互
         // ══════════════════════════════════════════════════════════════
 
         bindGestures(container) {
             if (this.app?.stage) {
                 this.app.stage.bindGestures(container);
+            }
+            this.bindProgressBar();
+        }
+
+        /**
+         * 绑定进度条指针拖拽控制器 (PointerEvents 1:1 精确跟手抓取)
+         */
+        bindProgressBar() {
+            const bar = document.getElementById('progressBarContainer');
+            if (!bar || this._hasBoundProgressBar) return;
+            this._hasBoundProgressBar = true;
+
+            let isBarDragging = false;
+            let targetTime = 0;
+
+            const updateFromPointer = (e) => {
+                const app = this.app;
+                if (!app) return;
+                const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
+                const v = document.getElementById(`video-p${slideIdx}`);
+                if (!v || !v.duration) return;
+
+                const rect = bar.getBoundingClientRect();
+                const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                targetTime = ratio * v.duration;
+
+                this.showProgressOSD(targetTime, v.duration, false);
+            };
+
+            bar.addEventListener('pointerdown', (e) => {
+                e.stopPropagation();
+                try { bar.setPointerCapture(e.pointerId); } catch (_) {}
+                isBarDragging = true;
+                if (this.app) this.app.state.isDragging = true;
+
+                const progressLine = document.getElementById('progressLine');
+                if (progressLine) progressLine.style.transition = 'none';
+
+                updateFromPointer(e);
+            });
+
+            bar.addEventListener('pointermove', (e) => {
+                if (!isBarDragging) return;
+                e.stopPropagation();
+                updateFromPointer(e);
+            });
+
+            const endBarDrag = (e) => {
+                if (!isBarDragging) return;
+                e.stopPropagation();
+                isBarDragging = false;
+                if (this.app) this.app.state.isDragging = false;
+                try { bar.releasePointerCapture(e.pointerId); } catch (_) {}
+
+                const progressLine = document.getElementById('progressLine');
+                if (progressLine) progressLine.style.transition = '';
+
+                const app = this.app;
+                if (app) {
+                    const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
+                    const v = document.getElementById(`video-p${slideIdx}`);
+                    if (v && targetTime !== undefined) {
+                        v.currentTime = targetTime;
+                    }
+                    if (typeof app.showInterfaceTemp === 'function') {
+                        app.showInterfaceTemp();
+                    }
+                }
+
+                this.hideProgressOSD(300);
+            };
+
+            bar.addEventListener('pointerup', endBarDrag);
+            bar.addEventListener('pointercancel', endBarDrag);
+        }
+
+        /**
+         * 居中偏下进度预览 OSD (Pill OSD) 统一调度
+         */
+        showProgressOSD(current, duration, autoHide = false) {
+            const osd = document.getElementById('progressOSD');
+            if (!osd) return;
+
+            if (this._osdTimer) clearTimeout(this._osdTimer);
+
+            const formatTime = (seconds) => {
+                if (isNaN(seconds) || seconds < 0) return '00:00';
+                const s = Math.floor(seconds);
+                const m = Math.floor(s / 60);
+                const remSec = s % 60;
+                return `${m.toString().padStart(2, '0')}:${remSec.toString().padStart(2, '0')}`;
+            };
+
+            const curEl = document.getElementById('osdCurrentTime');
+            const totalEl = document.getElementById('osdTotalTime');
+            if (curEl) curEl.textContent = formatTime(current);
+            if (totalEl) totalEl.textContent = formatTime(duration);
+
+            osd.classList.remove('opacity-0');
+            osd.classList.add('opacity-100');
+
+            // 全屏模式下临时唤醒进度条
+            const bottomInfo = document.querySelector('.bottom-info');
+            if (bottomInfo) bottomInfo.classList.add('show-progress');
+
+            // 实时更新进度条宽度与底部时间
+            if (duration > 0) {
+                const line = document.getElementById('progressLine');
+                if (line) line.style.width = `${(current / duration) * 100}%`;
+            }
+            const curTimeEl = document.getElementById('currentTime');
+            if (curTimeEl) curTimeEl.textContent = formatTime(current);
+
+            if (autoHide) {
+                this._osdTimer = setTimeout(() => {
+                    this.hideProgressOSD();
+                }, 1200);
+            }
+        }
+
+        hideProgressOSD(delay = 0) {
+            if (this._osdTimer) clearTimeout(this._osdTimer);
+            const doHide = () => {
+                const osd = document.getElementById('progressOSD');
+                if (osd) {
+                    osd.classList.remove('opacity-100');
+                    osd.classList.add('opacity-0');
+                }
+                const bottomInfo = document.querySelector('.bottom-info');
+                if (bottomInfo) bottomInfo.classList.remove('show-progress');
+            };
+
+            if (delay > 0) {
+                this._osdTimer = setTimeout(doHide, delay);
+            } else {
+                doHide();
             }
         }
 
@@ -365,11 +507,12 @@
             } else {
                 v.currentTime = Math.min(v.duration, v.currentTime + 15);
             }
+            this.showProgressOSD(v.currentTime, v.duration, true);
             app.showInterfaceTemp();
 
             const bubble = document.createElement('div');
             bubble.innerHTML = `
-                <div class="flex flex-col items-center justify-center bg-black/40 backdrop-blur-md text-white rounded-full w-[80px] h-[80px] shadow-2xl space-y-1">
+                <div class="flex flex-col items-center justify-center bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-white rounded-full w-[80px] h-[80px] space-y-1">
                     <div class="flex items-center justify-center">
                         ${isRewind ? '<i data-lucide="chevrons-left" class="w-6 h-6"></i>' : '<i data-lucide="chevrons-right" class="w-6 h-6"></i>'}
                     </div>
@@ -442,6 +585,100 @@
                 } catch (e) {
                     console.error('Double tap favorite failed:', e);
                 }
+            }
+        }
+
+        // ══════════════════════════════════════════════════════════════
+        // 4. 全平台移动端/浏览器返回手势与历史状态机 (HistoryNavigator)
+        // ══════════════════════════════════════════════════════════════
+
+        bindHistory() {
+            if (typeof window === 'undefined' || !window.history || !window.history.pushState) return;
+            const app = this.app;
+            if (!app) return;
+
+            this._isHandlingPop = false;
+
+            // 根视图历史帧标定：确立以 grid（宫格模式）为底层基准
+            const currentMode = app.state?.viewMode || 'stream';
+            if (!window.history.state || !window.history.state.embyx) {
+                window.history.replaceState({ embyx: true, layer: 'grid' }, '');
+                // 若以 stream（全屏瀑布流播放）首屏启动，立即压入 stream 帧，确保初次侧滑返回退回 grid 而非直接退出网页
+                if (currentMode === 'stream') {
+                    window.history.pushState({ embyx: true, layer: 'stream' }, '');
+                }
+            }
+
+            window.addEventListener('popstate', (e) => {
+                this.handlePopState(e);
+            });
+        }
+
+        pushLayer(layer, detail = {}) {
+            if (this._isHandlingPop || typeof window === 'undefined' || !window.history?.pushState) return;
+            const curState = window.history.state;
+            // 避免连续推入重复同类型层级
+            if (curState && curState.embyx && curState.layer === layer) {
+                if (layer === 'modal' && curState.id === detail.id) return;
+                if (layer !== 'modal' && layer !== 'folder') return;
+            }
+            window.history.pushState({ embyx: true, layer, ...detail }, '');
+        }
+
+        hasHistoryLayer(layer, id = null) {
+            const state = window.history?.state;
+            if (!state || !state.embyx) return false;
+            if (state.layer !== layer) return false;
+            if (id != null && state.id !== id) return false;
+            return true;
+        }
+
+        handlePopState(e) {
+            const app = this.app;
+            if (!app) return;
+
+            this._isHandlingPop = true;
+            try {
+                // 1. 优先关闭激活的模态弹窗 / 全屏抽屉 (profilePage, mediaInfoModal, libraryModal, etc.)
+                const openModalId = typeof app.getActiveModalId === 'function' ? app.getActiveModalId() : null;
+                if (openModalId) {
+                    app.toggleModal(openModalId, false);
+                    return;
+                }
+
+                // 2. 检查并重置搜索态
+                if (app.state?.searchTerm) {
+                    if (app.grid && typeof app.grid.restorePreSearch === 'function') {
+                        app.grid.restorePreSearch();
+                        return;
+                    }
+                }
+
+                // 3. 检查并重置演员/标签筛选态
+                if (app.state?.currentPerson || app.state?.isFilteredByTag) {
+                    if (typeof app.resetFilters === 'function') {
+                        app.resetFilters();
+                        return;
+                    }
+                }
+
+                // 4. 检查全屏视频流 -> 回退到 3:4 宫格海报探索
+                if (app.state?.viewMode === 'stream') {
+                    app.toggleViewMode();
+                    return;
+                }
+
+                // 5. 检查短剧/分季文件夹多层下钻 -> 返回上一级目录
+                if (app.drama && app.drama.folderStack && app.drama.folderStack.length > 0) {
+                    app.drama.popFolder();
+                    return;
+                }
+
+                // 6. 若已在根视图（grid），不做拦截，浏览器执行原生后退/退出行为
+            } catch (err) {
+                console.warn('[InputManager] handlePopState error:', err);
+            } finally {
+                this._isHandlingPop = false;
             }
         }
     }

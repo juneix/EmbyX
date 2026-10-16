@@ -482,6 +482,7 @@
                     startIndex: app.state.startIndex,
                     currentIndex: app.state.currentIndex
                 };
+                app.input?.pushLayer('search');
             }
             app.state.searchTerm = term;
             app.state.startIndex = 0;
@@ -491,6 +492,10 @@
         restorePreSearch() {
             if (!this.app) return;
             const app = this.app;
+            if (app.input && app.input.hasHistoryLayer('search') && !app.input._isHandlingPop) {
+                window.history.back();
+                return;
+            }
             if (app.state.preSearchState) {
                 Object.assign(app.state, app.state.preSearchState);
                 app.state.preSearchState = null;
@@ -516,6 +521,7 @@
                     app.state.isFilteredByTag = true;
                     app.state.currentPerson = null;
                     app.state.viewMode = 'grid';
+                    app.input?.pushLayer('filter', { type: 'tag', name: tagName });
 
                     const vBtn = app.dom.viewModeBtn;
                     if (vBtn) {

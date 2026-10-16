@@ -193,20 +193,27 @@
                         const mainVideo = items[0];
                         const secVideo = items[1];
                         if (!mainVideo.MediaSources) mainVideo.MediaSources = [];
+                        mainVideo.MediaSources.forEach(s => {
+                            if (!s.ItemId) s.ItemId = mainVideo.Id;
+                        });
                         if (secVideo.MediaSources && secVideo.MediaSources.length > 0) {
                             secVideo.MediaSources.forEach(s => {
                                 if (!mainVideo.MediaSources.some(m => m.Id === s.Id)) {
+                                    s.ItemId = secVideo.Id;
+                                    s._isAdditionalVersion = true;
                                     mainVideo.MediaSources.push(s);
                                 }
                             });
                         } else {
                             mainVideo.MediaSources.push({
                                 Id: secVideo.Id,
+                                ItemId: secVideo.Id,
                                 Name: secVideo.Name || 'Part 2',
                                 Path: secVideo.Path,
                                 Container: secVideo.Container,
                                 RunTimeTicks: secVideo.RunTimeTicks,
-                                MediaStreams: secVideo.MediaStreams
+                                MediaStreams: secVideo.MediaStreams,
+                                _isAdditionalVersion: true
                             });
                         }
                         folderItem._resolvedVideo = mainVideo;
@@ -314,6 +321,7 @@
                     videos: [...app.state.videos],
                     totalCount: app.state.totalCount
                 });
+                app.input?.pushLayer('folder', { id: seriesItem.Id });
 
                 this.currentFolderId = seriesItem.Id;
                 this.currentFolderName = seriesItem.Name;
@@ -423,6 +431,7 @@
                     videos: [...app.state.videos],
                     totalCount: app.state.totalCount
                 });
+                app.input?.pushLayer('folder', { id: seasonItem.Id });
 
                 this.currentFolderId = seasonItem.Id;
                 this.currentFolderName = `${seasonItem.SeriesName || ''} ${seasonItem.Name || ''}`.trim();
@@ -493,6 +502,7 @@
                 videos: [...this.app.state.videos],
                 totalCount: this.app.state.totalCount
             });
+            this.app?.input?.pushLayer('folder', { id: folderId });
 
             this.currentFolderId = folderId;
             this.currentFolderName = folderName;
@@ -506,6 +516,11 @@
          * 返回上一级目录（严格保持单级返回）
          */
         popFolder() {
+            if (this.app?.input && this.app.input.hasHistoryLayer('folder') && !this.app.input._isHandlingPop) {
+                window.history.back();
+                return true;
+            }
+
             if (!this.app || this.folderStack.length === 0) return false;
 
             const prev = this.folderStack.pop();

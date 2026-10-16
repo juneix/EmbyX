@@ -55,9 +55,9 @@
             if (mediaItem && mediaSource?.Id) {
                 mediaItem._activeMediaSourceId = mediaSource.Id;
             }
-            const targetVideoId = (mediaSource?._isPart && mediaSource?.ItemId) ? mediaSource.ItemId : (mediaItem?.Id || id);
-            const mediaSourceId = mediaSource?._isPart ? '' : (mediaSource?.Id || (mediaItem?.Id || id));
-            const playSessionId = this.app.state.playSessionId || ('hls_' + targetVideoId + '_' + Date.now());
+            const targetVideoId = mediaSource?.ItemId || (mediaSource?._isPart ? '' : (mediaItem?.Id || id));
+            const mediaSourceId = mediaSource?._isPart ? '' : (mediaSource?.Id || '');
+            const playSessionId = 'hls_' + targetVideoId + '_' + (mediaSourceId ? mediaSourceId.replace(/[^a-zA-Z0-9]/g, '') : '0') + '_' + Date.now().toString(16);
             const deviceId = this.app.config.deviceId || 'EmbyX-Device';
 
             const vStream = mediaSource?.MediaStreams?.find(s => s.Type === 'Video');
@@ -101,7 +101,7 @@
                 `EnableAudioTranscoding=true`,
                 `EnableAudioStreamCopy=true`,
                 videoCodecDecl,
-                `AudioCodec=aac,mp3,ac3,eac3,opus,flac,vorbis`,
+                `AudioCodec=aac,mp3,opus,flac,vorbis`,
                 maxWidthParam,
                 maxHeightParam,
                 bitrateParam,
@@ -184,10 +184,10 @@
             }
 
             // 4. 其余所有正常格式（MP4/WebM，H.264/HEVC/AV1/VP9）全平台 100% 绝对裸流直连
-            const playSessionId = this.app.state.playSessionId || ('ex_' + Date.now().toString(16));
-            const deviceId = this.app.config.deviceId || 'EmbyX-Device';
-            const targetVideoId = (mediaSource?._isPart && mediaSource?.ItemId) ? mediaSource.ItemId : (mediaItem?.Id || id);
+            const targetVideoId = mediaSource?.ItemId || (mediaItem?.Id || id);
             const msId = mediaSource?._isPart ? '' : (mediaSource?.Id || '');
+            const deviceId = this.app.config.deviceId || 'EmbyX-Device';
+            const playSessionId = 'ex_' + targetVideoId + '_' + Date.now().toString(16);
 
             const params = [
                 `api_key=${token}`,
@@ -204,6 +204,10 @@
 
         setVideoSource(videoEl, src, index, item, options = {}) {
             if (!videoEl || !src) return;
+            const sidMatch = /[?&]PlaySessionId=([^&]+)/i.exec(src);
+            if (sidMatch) {
+                videoEl.dataset.playSessionId = decodeURIComponent(sidMatch[1]);
+            }
             const { preloadOnly = false, autoplay = false, forceHls = false, live = false } = options;
             const isHls = forceHls || /\.m3u8(?:$|[?#])/i.test(src);
             const nativeHls = !!videoEl.canPlayType('application/vnd.apple.mpegurl');
@@ -215,6 +219,7 @@
                         this.activeHls = null;
                         window.activeHls = null;
                     }
+                    videoEl.onerror = null;
                     videoEl.pause();
                     videoEl.removeAttribute('src');
                     videoEl.load();
@@ -233,6 +238,7 @@
                     this.activeHls.destroy();
                     this.activeHls = null;
                 }
+                videoEl.onerror = null;
                 videoEl.pause();
                 videoEl.removeAttribute('src');
                 videoEl.load();
@@ -287,6 +293,7 @@
             videoEl.dataset.hlsLoading = 'false';
             videoEl.onerror = () => {
                 if (preloadOnly) return;
+                if (videoEl.dataset.hlsLoading === 'true' || (this.activeHls && this.activeHls.media === videoEl)) return;
                 if (!videoEl.error) return;
                 const isCurrent = this.isCurrentPlayback(videoEl, item?.Id, src);
                 if (isCurrent) this.retryWithAltMode(index, item);
@@ -327,13 +334,15 @@
                 if (playPromise !== undefined) {
                     playPromise.then(() => {
                         if (!this.isCurrentPlayback(v, videoId, requestedSrc, playAttempt)) return;
-                        this.app.state.isPlaying = true;
+                        if (typeof this.app.setPlayState === 'function') this.app.setPlayState(true);
+                        else this.app.state.isPlaying = true;
                         if (btn) btn.classList.remove('paused');
                     }).catch(error => {
                         if (error?.name === 'AbortError' || !this.isCurrentPlayback(v, videoId, requestedSrc, playAttempt)) return;
                         console.warn('Playback error:', error);
                         if (error?.name !== 'NotAllowedError') return;
-                        this.app.state.isPlaying = false;
+                        if (typeof this.app.setPlayState === 'function') this.app.setPlayState(false);
+                        else this.app.state.isPlaying = false;
                         this.app.toggleLoading(false);
                         if (btn) btn.classList.add('paused');
 
@@ -452,18 +461,21 @@
 
             if (v.paused) {
                 const playPromise = v.play();
-                this.app.state.isPlaying = true;
+                if (typeof this.app.setPlayState === 'function') this.app.setPlayState(true);
+                else this.app.state.isPlaying = true;
                 if (btn) btn.classList.remove('paused');
                 if (playPromise !== undefined) {
                     playPromise.catch(error => {
                         console.warn('Playback resume error:', error);
-                        this.app.state.isPlaying = false;
+                        if (typeof this.app.setPlayState === 'function') this.app.setPlayState(false);
+                        else this.app.state.isPlaying = false;
                         if (btn) btn.classList.add('paused');
                     });
                 }
             } else {
                 v.pause();
-                this.app.state.isPlaying = false;
+                if (typeof this.app.setPlayState === 'function') this.app.setPlayState(false);
+                else this.app.state.isPlaying = false;
                 if (btn) btn.classList.add('paused');
             }
         }
@@ -474,11 +486,16 @@
                 this._waitingTimer = setTimeout(() => this.app.toggleLoading(true), 300);
             };
 
+            videoEl.onplay = () => {
+                if (typeof this.app.setPlayState === 'function') this.app.setPlayState(true);
+            };
+
             // Seamless cross-fade when first frame renders
             videoEl.onplaying = () => {
                 clearTimeout(this._waitingTimer);
                 this.app.toggleLoading(false);
                 videoEl.style.opacity = '1';
+                if (typeof this.app.setPlayState === 'function') this.app.setPlayState(true);
                 this.reportPlayback('playing', videoEl);
             };
 
@@ -496,6 +513,7 @@
 
             videoEl.ontimeupdate = () => {
                 if (!videoEl.duration) return;
+                if (this.app?.state?.isDragging) return;
                 const nowMs = Date.now();
                 if (nowMs - (this._lastDomUpdate || 0) >= 250) {
                     this._lastDomUpdate = nowMs;
@@ -505,7 +523,10 @@
                 this.reportPlayback('progress', videoEl);
             };
 
-            videoEl.onpause = () => this.reportPlayback('progress', videoEl);
+            videoEl.onpause = () => {
+                if (typeof this.app.setPlayState === 'function') this.app.setPlayState(false);
+                this.reportPlayback('progress', videoEl);
+            };
 
             videoEl.onended = () => {
                 this.reportPlayback('stopped', videoEl);
@@ -515,6 +536,9 @@
             videoEl.onerror = () => {
                 if (videoEl.dataset.hlsFatalHandled === 'true') {
                     delete videoEl.dataset.hlsFatalHandled;
+                    return;
+                }
+                if (videoEl.dataset.hlsLoading === 'true' || (this.activeHls && this.activeHls.media === videoEl)) {
                     return;
                 }
                 if (!videoEl.error) return;
@@ -573,7 +597,7 @@
                 IsPaused: videoEl.paused,
                 IsMuted: videoEl.muted,
                 VolumeLevel: Math.floor((videoEl.volume || 1) * 100),
-                PlaySessionId: this.app.state.playSessionId || ('ex_' + Date.now().toString(16))
+                PlaySessionId: videoEl.dataset.playSessionId || this.app.state.playSessionId || ('ex_' + Date.now().toString(16))
             };
 
             const endpoint = eventName === 'Stopped' ? '/emby/Sessions/Playing/Stopped' : '/emby/Sessions/Playing/Progress';

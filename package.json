@@ -1,6 +1,6 @@
 {
   "name": "embyx",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Emby 短视频播放器",
   "main": "index.js",
   "scripts": {
