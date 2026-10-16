@@ -10,8 +10,11 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });
 
-// 核心：必须有 fetch 处理器才能触发安卓 Chrome 的安装横幅
 self.addEventListener('fetch', (event) => {
-    // 默认直接透传，不做离线缓存以节省空间和避免版本更新延迟
-    event.respondWith(fetch(event.request));
+    // 默认直接透传，网络异常或被客户端拦截时优雅兜底，避免控制台未捕获 rejection
+    event.respondWith(
+        fetch(event.request).catch(() => {
+            return new Response('', { status: 408, statusText: 'Request Timeout' });
+        })
+    );
 });

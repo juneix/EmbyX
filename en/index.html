@@ -32,7 +32,11 @@
     <script src="https://cdn.jsdelivr.net/npm/mpegts.js@1.8.0/dist/mpegts.min.js"
         onerror="this.onerror=null;var s=document.createElement('script');s.src='lib/mpegts.min.js';document.head.appendChild(s)"></script>
     <script src="js/common.js"></script>
-    <script src="js/nav.js"></script>
+    <script src="js/input.js"></script>
+    <script src="js/auth.js"></script>
+    <script src="js/drama.js"></script>
+    <script src="js/grid.js"></script>
+    <script src="js/media-info.js"></script>
     <script src="js/player.js"></script>
     <script src="js/stage.js"></script>
     <script data-cfasync="false">
@@ -261,9 +265,17 @@
             class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
             <div
                 class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm max-h-[80vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
-                <h3 class="text-white text-lg font-bold mb-4 text-center">
-                    Media Info
-                </h3>
+                <div class="relative flex items-center justify-center mb-4 min-h-[32px]">
+                    <button id="mediaInfoPrevVerBtn" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-all hidden absolute left-0" title="Previous Version">
+                        <i data-lucide="chevron-left" class="w-6 h-6"></i>
+                    </button>
+                    <h3 id="mediaInfoTitle" class="text-white text-lg font-bold text-center">
+                        Media Info
+                    </h3>
+                    <button id="mediaInfoNextVerBtn" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-all hidden absolute right-0" title="Next Version">
+                        <i data-lucide="chevron-right" class="w-6 h-6"></i>
+                    </button>
+                </div>
                 <div id="mediaInfoContent" class="text-sm text-gray-300">
                     <div class="flex justify-center py-4"><i data-lucide="loader-2"
                             class="w-6 h-6 animate-spin text-gray-500"></i></div>
@@ -715,7 +727,12 @@
 
 
                 this.dom = {}; // DOM 元素缓存
-                this.nav = new SpatialNavigator({ app: this });
+                this.auth = new AuthManager(this);
+                this.drama = new ShortDramaManager(this);
+                this.grid = new GridViewManager(this);
+                this.mediaInfo = new MediaInfoModal(this);
+                this.input = new InputManager({ app: this });
+                this.nav = this.input; // Compatibility alias
                 this.player = new VideoPlayer({
                     app: this,
                     onEnded: () => {
@@ -794,6 +811,13 @@
 
                 this.state.isAutoplay = this.config.autoplay !== false;
 
+                // Set initial view to grid lobby in short drama mode
+                if (this.config.shortDrama) {
+                    this.state.viewMode = 'grid';
+                    const appEl = document.getElementById('app');
+                    if (appEl) appEl.classList.add('grid-active');
+                }
+
                 // 根据持久化状态Sync UI 图标
                 if (this.dom.muteBtn) {
                     const iconName = this.state.isMuted ? 'volume-x' : 'volume-2';
@@ -804,9 +828,12 @@
                     this.dom.scaleBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
                 }
 
-                // 初始化视图模式按钮图标（默认竖版，显示gallery-vertical）
+                // 初始化视图模式按钮图标
                 const viewBtn = this.dom.viewModeBtn;
-                viewBtn.innerHTML = `<i data-lucide="gallery-vertical" class="stroke-current w-5 h-5"></i>`;
+                if (viewBtn) {
+                    const iconName = this.state.viewMode === 'stream' ? 'gallery-vertical' : 'layout-grid';
+                    viewBtn.innerHTML = `<i data-lucide="${iconName}" class="stroke-current w-5 h-5"></i>`;
+                }
 
                 // 初始化播放模式按钮图标
                 const playBtn = this.dom.playModeBtn;
@@ -872,314 +899,12 @@
                 this.dom.rightToolbar = document.querySelector('.right-toolbar');
             }
 
-            // ═══ 配置与认证 ═══
-            loadConfig() {
-                this.config.server = localStorage.getItem('emby_server') || '';
-                this.config.user = localStorage.getItem('emby_user') || '';
-                this.config.token = localStorage.getItem('emby_token') || '';
-                this.config.userId = localStorage.getItem('emby_uid') || '';
-                this.config.playQuality = localStorage.getItem('emby_play_quality') || 'direct';
-                this.config.useStatic = (this.config.playQuality === 'direct');
-                this.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
-                this.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
-                this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
-                this.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
-
-                // 生成或读取设备唯一 ID，解决多设备识别冲突问题
-                if (!localStorage.getItem('emby_device_id')) {
-                    const randomId = Math.random().toString(36).slice(2, 10);
-                    localStorage.setItem('emby_device_id', `EmbyX-${randomId}`);
-                }
-                this.config.deviceId = localStorage.getItem('emby_device_id');
-
-                // 读取高频交互状态
-                const savedScale = localStorage.getItem('emby_is_scale_fill');
-                if (savedScale !== null) this.state.isScaleFill = savedScale === 'true';
-
-                const savedMute = localStorage.getItem('emby_is_muted');
-                if (savedMute !== null) this.state.isMuted = savedMute === 'true';
-
-                const savedPlayMode = localStorage.getItem('emby_play_mode');
-                if (savedPlayMode !== null) this.state.playMode = savedPlayMode;
-                if (this.config.shortDrama) this.state.playMode = 'sequence';
-
-                const savedLibId = localStorage.getItem('emby_lib_id');
-                const savedLibType = localStorage.getItem('emby_lib_type');
-                if (savedLibId) {
-                    this.state.currentLibraryId = savedLibId;
-                    this.state.currentLibraryType = savedLibType || 'library';
-                } else {
-                    this.state.currentLibraryId = 'favorites';
-                    this.state.currentLibraryType = 'favorites';
-                }
-
-                // 填充 UI
-                if (this.dom.configServer) this.dom.configServer.value = this.config.server;
-                if (this.dom.configUser) this.dom.configUser.value = this.config.user;
-                if (this.dom.configPwd && this.config.token) {
-                    // 显示与实际Password位数一致的掩码（Password长度存入 localStorage，不存Password本身）
-                    const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    this.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
-                }
-                if (this.dom.configPlayQuality) this.dom.configPlayQuality.value = this.config.playQuality;
-                if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
-                if (this.dom.configShortDrama) this.dom.configShortDrama.checked = this.config.shortDrama;
-                if (this.dom.configDeleteMode) this.dom.configDeleteMode.checked = this.config.deleteMode;
-
-                // 基于配置SyncUI
-                this.dom.deleteBtn.style.display = this.config.deleteMode ? 'flex' : 'none';
-                if (this.dom.playModeBtn) {
-                    this.dom.playModeBtn.innerHTML = `<i data-lucide="${this.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                    lucide.createIcons();
-                }
-
-                // Jellyfin 初始化挂载
-                if (EmbyXCommon.getServerType() === 'jellyfin') {
-                    enableJellyfinFetchProxy();
-                }
-            }
-
-            // ═══ 飞牛网关 OAuth 认证 ═══
-            initFnosOAuth() {
-                // 1. 检查 URL 中是否直接携带 OAuth code（重定向场景）
-                const urlParams = new URLSearchParams(window.location.search);
-                const code = urlParams.get('code');
-                if (code) {
-                    window.history.replaceState({}, document.title, window.location.pathname);
-                    this.handleFnosOAuthCode(code);
-                    return;
-                }
-
-                // 2. 注册 postMessage 与 storage 双重监听（弹窗回调场景）
-                window.addEventListener('message', (e) => {
-                    if (e.data && e.data.type === 'FNOS_OAUTH_CODE' && e.data.code) {
-                        this.handleFnosOAuthCode(e.data.code);
-                    }
-                });
-                window.addEventListener('storage', (e) => {
-                    if (e.key === 'fnos_oauth_code' && e.newValue) {
-                        try {
-                            const parsed = JSON.parse(e.newValue);
-                            if (parsed && parsed.code) {
-                                localStorage.removeItem('fnos_oauth_code');
-                                this.handleFnosOAuthCode(parsed.code);
-                            }
-                        } catch (err) {}
-                    }
-                });
-
-                // 3. 探测网关环境
-                this.detectFnosGateway();
-            }
-
-            async detectFnosGateway() {
-                try {
-                    // 若当前已登录且已连接飞牛影视，保持Profile极简清爽，隐藏网关授权入口
-                    if (this.config.token && this.config.fnOS) return;
-
-                    const base = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
-                    const res = await fetch(base + 'api/fnos/oauth-config');
-                    if (!res.ok) return;
-                    const config = await res.json();
-                    if (!config.is_gateway || !config.oauth_url) return;
-
-                    this._fnosOAuthUrl = config.oauth_url;
-                    const box = document.getElementById('fnosOAuthBox');
-                    const titleEl = document.getElementById('fnosOAuthTitle');
-                    if (box) {
-                        if (titleEl && config.server_name) {
-                            titleEl.textContent = `fnOS Video detected: ${config.server_name}`;
-                        }
-                        box.classList.remove('hidden');
-                        if (window.lucide) lucide.createIcons({ root: box });
-                    }
-                } catch (e) {
-                    // 非飞牛网关环境，静默Ignore
-                }
-            }
-
-            openFnosOAuth(oauthUrl) {
-                const width = 520;
-                const height = 650;
-                const left = Math.max(0, (window.screen.width - width) / 2);
-                const top = Math.max(0, (window.screen.height - height) / 2);
-                return window.open(
-                    oauthUrl,
-                    'fnos_oauth',
-                    `width=${width},height=${height},top=${top},left=${left},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
-                );
-            }
-
-            async handleFnosOAuthCode(code) {
-                if (!code || this._oauthExchanging) return;
-                this._oauthExchanging = true;
-                this.toggleLoading(true);
-                this.showToast('Completing fnOS Video authentication...');
-
-                try {
-                    const base = window.location.pathname.endsWith('/') ? window.location.pathname : window.location.pathname + '/';
-                    const res = await fetch(base + 'api/fnos/oauth-exchange', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ code })
-                    });
-                    if (!res.ok) throw new Error(`换票请求失败: ${res.status}`);
-                    const data = await res.json();
-                    if (!data.AccessToken) throw new Error('未能获取有效 AccessToken');
-
-                    // 确定飞牛同源代理服务根地址
-                    const cleanPath = window.location.pathname.replace(/\/+$/, '');
-                    const serverUrl = window.location.origin + cleanPath;
-                    const userId = (data.SessionInfo && data.SessionInfo.UserId) || (data.User && data.User.Id) || '1';
-                    const userName = (data.User && data.User.Name) || 'fnos_user';
-
-                    localStorage.setItem('emby_server', serverUrl);
-                    localStorage.setItem('emby_user', userName);
-                    localStorage.setItem('emby_token', data.AccessToken);
-                    localStorage.setItem('emby_uid', userId);
-                    localStorage.setItem('emby_fnOS', 'true');
-                    localStorage.setItem('emby_static', 'true');
-                    localStorage.setItem('emby_pwd_len', '0');
-
-                    localStorage.removeItem('emby_views_cache');
-                    localStorage.removeItem('emby_favorites');
-                    localStorage.removeItem('emby_lib_id');
-                    localStorage.removeItem('emby_lib_type');
-
-                    this.showToast('✅ fnOS Video authorized successfully, loading...', 2000);
-                    setTimeout(() => location.reload(), 800);
-                } catch (e) {
-                    console.error('OAuth exchange error:', e);
-                    this.showToast(`❌ fnOS authorization failed: ${e.message || '未知错误'}`);
-                    this.toggleLoading(false);
-                } finally {
-                    this._oauthExchanging = false;
-                }
-            }
-
-            async detectFnOS(server) {
-                return EmbyXCommon.detectFnOS(server);
-            }
-
-            async saveConfig() {
-                let server = this.dom.configServer.value.trim().replace(/\/$/, "");
-                const user = this.dom.configUser.value.trim();
-                const pwd = this.dom.configPwd.value.trim();
-
-                const playQuality = this.dom.configPlayQuality ? this.dom.configPlayQuality.value : 'direct';
-                const isStatic = playQuality === 'direct';
-                const autoplay = this.dom.configAutoplay.checked;
-                const shortDrama = this.dom.configShortDrama.checked;
-                const deleteMode = this.dom.configDeleteMode.checked;
-
-                if (!server || !user) return this.showToast('Please fill in all fields');
-
-                this.toggleLoading(true);
-
-                // 自动补全协议头和端口
-                const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
-                server = normalizedServer;
-
-                try {
-                    // 如果是用旧 token 更新设置，跳过登录（仅当输入为掩码且旧Password长度大于0）
-                    const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
-                    if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
-                        // 服务器未变，fnOS 状态沿用内存值，无需重新发探测请求
-                        const fnOS = this.config.fnOS;
-                        localStorage.setItem('emby_play_quality', playQuality);
-                        localStorage.setItem('emby_static', isStatic);
-                        localStorage.setItem('emby_autoplay', autoplay);
-                        localStorage.setItem('emby_shortdrama', shortDrama);
-                        localStorage.setItem('emby_delete_mode', deleteMode);
-                        if (fnOS) localStorage.setItem('emby_fnOS', 'true');
-                        else localStorage.removeItem('emby_fnOS');
-
-                        // 清理数据缓存，保留核心设置并重新加载
-                        localStorage.removeItem('emby_views_cache');
-                        localStorage.removeItem('emby_favorites');
-                        location.reload();
-                        return;
-                    }
-
-                    const auth = await EmbyXCommon.authenticate({
-                        server,
-                        user,
-                        pwd,
-                        deviceName: this.config.deviceName,
-                        deviceId: this.config.deviceId,
-                        appVersion: this.config.appVersion,
-                        isAutoFilled
-                    });
-
-                    const { data, userId, fnOS, finalServer } = auth;
-                    server = finalServer;
-
-                    // 登录成功后的处理
-                    localStorage.setItem('emby_server', server);
-                    localStorage.setItem('emby_user', user);
-                    localStorage.setItem('emby_token', data.AccessToken);
-                    localStorage.setItem('emby_uid', userId);
-                    localStorage.setItem('emby_play_quality', playQuality);
-                    localStorage.setItem('emby_static', isStatic);
-                    localStorage.setItem('emby_autoplay', autoplay);
-                    localStorage.setItem('emby_shortdrama', shortDrama);
-                    localStorage.setItem('emby_delete_mode', deleteMode);
-                    if (fnOS) localStorage.setItem('emby_fnOS', 'true');
-                    else localStorage.removeItem('emby_fnOS');
-
-                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
-
-                    // 将Password位数存入 localStorage，不存Password本身，空Password记为 0
-                    const pwdLen2 = pwd.length;
-                    localStorage.setItem('emby_pwd_len', pwdLen2);
-                    this.dom.configPwd.value = '*'.repeat(pwdLen2);
-                    this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
-                    if (this.dom.playModeBtn) {
-                        this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                        lucide.createIcons();
-                    }
-
-                    // 清理数据缓存，保留核心设置并重新加载
-                    localStorage.removeItem('emby_views_cache');
-                    localStorage.removeItem('emby_favorites');
-                    localStorage.removeItem('emby_lib_id');
-                    localStorage.removeItem('emby_lib_type');
-                    location.reload();
-                } catch (e) {
-                    console.error('saveConfig error:', e);
-                    // 分辨常见错误类型并规范 Toast 空格
-                    const status = e?.status;
-                    if (status === 401 || status === 'NO_TOKEN') {
-                        this.showToast('❌ Auth failed: Invalid Username or Password');
-                    } else if (status === 404) {
-                        this.showToast('❌ Connection Failed: Check port');
-                    } else if (status) {
-                        this.showToast('❌ Connection Failed ' + status + '，请检查 Emby 日志');
-                    } else {
-                        const msg = e?.message || '';
-                        const isHttps = location.protocol === 'https:';
-                        const targetHttp = server.startsWith('http:');
-                        if (isHttps && targetHttp) {
-                            // HTTPS 页面请求 HTTP Emby 会被浏览器拦截（Mixed Content）
-                            this.showToast('❌ Blocked: Mixed Content (HTTPS -> HTTP)');
-                        } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
-                            this.showToast('❌ Cannot connect to server');
-                        } else {
-                            this.showToast('❌ Connection Failed: ' + (msg || '未知错误'));
-                        }
-                    }
-                } finally {
-                    this.toggleLoading(false);
-                }
-            }
-
-            resetConfig() {
-                if (confirm('Are you sure you want to reset all settings?')) {
-                    localStorage.clear();
-                    location.reload();
-                }
-            }
+            // ═══ Configuration & Authentication (Delegated to AuthManager) ═══
+            loadConfig() { this.auth.loadConfig(); }
+            initFnosOAuth() { this.auth.initFnosOAuth(); }
+            openFnosOAuth(url) { return this.auth.openFnosOAuth(url); }
+            saveConfig() { return this.auth.saveConfig(); }
+            resetConfig() { this.auth.resetConfig(); }
 
             // ═══ 数据管理 ═══
 
@@ -1256,41 +981,63 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber`;
-
-                    if (searchTerm) {
-                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
-                    } else if (this.state.currentTag) {
-                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
-                    } else if (this.state.currentPerson) {
-                        url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
-                    } else if (ids) {
-                        url += `&Ids=${ids}`;
-                    } else if (isRandom) {
-                        // 换一批模式：服务端随机取 99 个（适用于所有模式）
-                        url += `&SortBy=Random`;
-                        if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
-                        if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
-                    } else if (libraryId === 'favorites') {
-                        url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
-                    } else if (libraryId) {
-                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&${sortStr}&ParentId=${libraryId}`;
+                    let url;
+                    const isFolderView = this.drama && this.drama.isFolderModeActive();
+                    if (isFolderView) {
+                        if (this.state.viewMode !== 'grid') {
+                            this.state.viewMode = 'grid';
+                            if (this.dom.viewModeBtn) {
+                                this.dom.viewModeBtn.innerHTML = '<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>';
+                                if (window.lucide) lucide.createIcons();
+                            }
+                            const app = document.getElementById('app');
+                            if (app) {
+                                app.classList.remove('interface-hidden');
+                                app.classList.add('grid-active');
+                            }
+                            if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
+                        }
+                        url = this.drama.getFetchUrl(this.config, libraryId, fetchStartIndex, PAGE_SIZE);
                     } else {
-                        const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&${sortStr}`;
-                    }
+                        url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber`;
 
+                        if (searchTerm) {
+                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
+                        } else if (this.state.currentTag) {
+                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
+                        } else if (this.state.currentPerson) {
+                            url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
+                        } else if (ids) {
+                            url += `&Ids=${ids}`;
+                        } else if (isRandom) {
+                            url += `&SortBy=Random`;
+                            if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
+                            if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
+                        } else if (libraryId === 'favorites') {
+                            url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
+                        } else if (libraryId) {
+                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&${sortStr}&ParentId=${libraryId}`;
+                        } else {
+                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&${sortStr}`;
+                        }
+                    }
                     const res = await fetch(url, {
                         headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) {
-                        throw new Error(`服务器错误: ${res.status}`);
+                        throw new Error(`Server error: ${res.status}`);
                     }
                     let data = await res.json();
-                    const items = data.Items || [];
+                    let items = data.Items || [];
+                    // Strictly filter photo items (photos are handled exclusively by pic.html)
+                    items = items.filter(item => item && item.Type !== 'Photo' && item.MediaType !== 'Photo' && item.Type !== 'PhotoAlbum');
+                    if (isFolderView) {
+                        items = this.drama.processFetchedItems(items);
+                    }
 
                     if (isAppend) {
                         if (items.length > 0) {
@@ -1375,366 +1122,10 @@
                 this.updateUI();
             }
 
+            // ═══ Grid View (Delegated to GridViewManager) ═══
             renderGridView() {
-                this.dom.slides = null;
-                const container = this.dom.videoContainer;
-                document.documentElement.scrollTop = 0;
-                container.style.transition = 'none';
-                void container.offsetHeight;
-                container.style.transform = 'none';
-
-                let bgLayer = container.querySelector('.bg-poster-layer');
-                let safeHeader = document.getElementById('gridSafeHeader');
-                let searchBar = document.getElementById('gridSearchBar');
-                let scrollArea = document.getElementById('gridScrollArea');
-
-                if (!safeHeader || !searchBar || !scrollArea) {
-                    container.innerHTML = '';
-                    container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
-
-                    bgLayer = document.createElement('div');
-                    bgLayer.className = 'bg-poster-layer absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
-                    container.appendChild(bgLayer);
-
-                    safeHeader = document.createElement('div');
-                    safeHeader.id = 'gridSafeHeader';
-                    container.appendChild(safeHeader);
-
-                    searchBar = document.createElement('div');
-                    searchBar.id = 'gridSearchBar';
-                    container.appendChild(searchBar);
-
-                    scrollArea = document.createElement('div');
-                    scrollArea.id = 'gridScrollArea';
-                    scrollArea.className = 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative w-full overscroll-contain';
-                    scrollArea.style.WebkitOverflowScrolling = 'touch';
-                    container.appendChild(scrollArea);
-
-                    let isDown = false, startY, scrollTop;
-                    scrollArea.addEventListener('mousedown', (e) => {
-                        isDown = true;
-                        scrollArea.style.cursor = 'grabbing';
-                        startY = e.pageY - scrollArea.offsetTop;
-                        scrollTop = scrollArea.scrollTop;
-                    });
-                    scrollArea.addEventListener('mouseleave', () => { isDown = false; scrollArea.style.cursor = ''; });
-                    scrollArea.addEventListener('mouseup', () => { isDown = false; scrollArea.style.cursor = ''; });
-                    scrollArea.addEventListener('mousemove', (e) => {
-                        if (!isDown) return;
-                        e.preventDefault();
-                        const y = e.pageY - scrollArea.offsetTop;
-                        const walk = (y - startY) * 2;
-                        scrollArea.scrollTop = scrollTop - walk;
-                    });
-                }
-
-                // 背景海报模糊层更新
-                const currentVideo = this.state.videos[this.state.currentIndex];
-                const bgPosterStr = currentVideo ? this.getImageSrc(currentVideo) : this.getImageSrc(null);
-                if (bgPosterStr) {
-                    bgLayer.style.backgroundImage = `url('${bgPosterStr}')`;
-                }
-
-                let libraryName = 'All Videos';
-                if (this.state.searchTerm) {
-                    libraryName = `Search：${this.state.searchTerm}`;
-                } else if (this.state.isFilteredByTag && this.state.currentTag) {
-                    libraryName = `标签：${this.state.currentTag}`;
-                } else if (this.state.currentPerson) {
-                    libraryName = `演员：${this.state.currentPerson}`;
-                } else if (this.state.currentLibraryId === 'favorites') {
-                    libraryName = 'Favorites';
-                } else if (this.state.currentLibraryId) {
-                    const libIdStr = String(this.state.currentLibraryId);
-                    const cachedViewsStr = localStorage.getItem('emby_views_cache');
-                    if (cachedViewsStr) {
-                        try {
-                            const cached = JSON.parse(cachedViewsStr);
-                            let found = null;
-                            if (cached.views && cached.views.Items) {
-                                found = cached.views.Items.find(i => String(i.Id) === libIdStr);
-                            }
-                            if (!found && cached.playlists && cached.playlists.Items) {
-                                found = cached.playlists.Items.find(i => String(i.Id) === libIdStr);
-                            }
-                            if (found) libraryName = found.Name;
-                        } catch (e) { }
-                    }
-                }
-
-                const PAGE_SIZE = 150;
-                let totalCount = 0;
-                if (this.state.searchTerm) {
-                    totalCount = typeof this.state.searchTotalCount === 'number' ? this.state.searchTotalCount : (this.state.totalCount || this.state.videos.length);
-                } else if (this.state.currentPerson || this.state.isFilteredByTag) {
-                    totalCount = typeof this.state.personTotalCount === 'number' ? this.state.personTotalCount : this.state.personVideos.length;
-                } else {
-                    totalCount = this.state.totalCount || this.state.videos.length;
-                }
-                const startIndex = this.state.startIndex || 0;
-                const currentPage = Math.floor(startIndex / PAGE_SIZE) + 1;
-                const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
-                const countStr = totalCount > 999 ? '999+' : String(totalCount);
-
-                safeHeader.className = 'w-full flex items-center gap-2 bg-black/50 backdrop-blur-sm border-b border-gray-800/50 px-3 pb-3';
-                safeHeader.style.paddingTop = 'max(8px, env(safe-area-inset-top, 8px))';
-
-                const isSearchActive = !!this.state.searchTerm;
-                safeHeader.innerHTML = `
-                    <span class="text-sm font-bold text-gray-200 truncate max-w-[40%]">${libraryName}</span>
-                    <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
-                        ${countStr}
-                        <span class="w-1.5"></span>
-                        <button id="gridShuffleBtn" title="Shuffle Videos" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20">
-                            <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
-                        </button>
-                    </span>
-                    <span class="flex-1"></span>
-                    <button id="gridFolderSearchBtn" title="Search"
-                        class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-gray-400 hover:text-white'}">
-                        <i data-lucide="folder-search" class="w-4 h-4"></i>
-                    </button>
-                    <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
-                    <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
-                    <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
-                `;
-
-                searchBar.className = `w-full bg-black/50 border-b border-gray-800/50 px-3 py-2 ${this.state.searchTerm ? '' : 'hidden'}`;
-                if (!searchBar.innerHTML) {
-                    searchBar.innerHTML = `
-                        <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                            <i data-lucide="search" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
-                            <input id="gridSearchInput" type="search"
-                                   value="${this.state.searchTerm}"
-                                   placeholder="Search title, actor, overview..."
-                                   class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500 min-w-0">
-                        </div>
-                    `;
-                }
-
-                const shuffleBtn = document.getElementById('gridShuffleBtn');
-                if (shuffleBtn) {
-                    const curLibId = this.state.currentLibraryId;
-                    const libArg = (!curLibId || curLibId === 'favorites' || this.state.currentPerson || this.state.searchTerm) ? null : curLibId;
-                    shuffleBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        this.state.startIndex = 0;
-                        this.fetchVideos(libArg, null, false, true);
-                    };
-                }
-
-                const curLibId = this.state.currentLibraryId;
-                const libArg = (curLibId === 'favorites' || this.state.currentPerson || this.state.searchTerm) ? null : curLibId;
-
-                const prevBtn = document.getElementById('gridPrevBtn');
-                if (prevBtn && currentPage > 1) {
-                    prevBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        this.state.startIndex = Math.max(0, startIndex - PAGE_SIZE);
-                        this.fetchVideos(libArg, null, true, false, false, this.state.searchTerm);
-                    };
-                }
-                const nextBtn = document.getElementById('gridNextBtn');
-                if (nextBtn && currentPage < totalPages) {
-                    nextBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        this.state.startIndex = startIndex + PAGE_SIZE;
-                        this.fetchVideos(libArg, null, true, false, false, this.state.searchTerm);
-                    };
-                }
-
-                // 清空并重新构建滚动列表内容
-                scrollArea.innerHTML = '';
-                const gridWrapper = document.createElement('div');
-                gridWrapper.className = 'grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-1 content-start w-full relative z-10 px-1 pt-2';
-                scrollArea.appendChild(gridWrapper);
-
-                const listToRender = (this.state.currentPerson || this.state.isFilteredByTag) ? this.state.personVideos : this.state.videos;
-                listToRender.forEach((video, index) => {
-                    const el = document.createElement('div');
-                    const isActive = !this.state.currentPerson && (index === this.state.currentIndex);
-                    el.setAttribute('tabindex', '0');
-                    el.setAttribute('data-index', index);
-                    el.className = `focusable-item aspect-[3/4] relative cursor-pointer overflow-hidden rounded-sm active:scale-95 transition-transform ${isActive ? 'border-2 border-primary box-border' : 'bg-gray-800'}`;
-                    el.onclick = () => {
-                        if (this.state.currentPerson) {
-                            this.state.videos = [...this.state.personVideos];
-                            this.state.isFilteredByPerson = true;
-                        }
-                        this.state.currentIndex = index;
-                        this.toggleViewMode();
-                    };
-
-                    const img = document.createElement('img');
-                    img.crossOrigin = 'anonymous';
-                    img.referrerPolicy = 'no-referrer';
-                    img.src = this.getImageSrc(video);
-                    img.className = 'w-full h-full object-cover';
-                    img.loading = 'lazy';
-                    img.onerror = () => {
-                        img.onerror = null;
-                        img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1" height="1"%3E%3Crect width="1" height="1" fill="%23333"%2F%3E%3C%2Fsvg%3E';
-                    };
-                    el.appendChild(img);
-
-                    const isShortDrama = this.config.shortDrama;
-                    const pad = n => String(n).padStart(2, '0');
-                    const hasSeason = video.ParentIndexNumber != null;
-                    const hasEp = video.IndexNumber != null;
-                    const epLabel = isShortDrama
-                        ? ((hasSeason ? `S${pad(video.ParentIndexNumber)}` : '') +
-                           (hasEp ? `E${pad(video.IndexNumber)}` : '') ||
-                           (video.Name || '').slice(0, 8))
-                        : null;
-
-                    const isSeasonOpener = isShortDrama && video.IndexNumber === 1;
-
-                    if (isSeasonOpener && video.SeriesName) {
-                        // 右上角绿色书签图标 (顶部对齐 top-0，离右侧 right-2，填色 fill)
-                        const bookmark = document.createElement('div');
-                        bookmark.className = 'absolute top-0 right-2 z-20 text-primary';
-                        bookmark.innerHTML = `
-                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linejoin="round" class="drop-shadow-md">
-                                <path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>
-                            </svg>
-                        `;
-                        el.appendChild(bookmark);
-
-                        const topLayer = document.createElement('div');
-                        // 顶部遮罩渐变带微调: pt-6 (控制剧名距离顶部距离), pb-8 (控制渐变带高度)
-                        topLayer.className = 'absolute top-0 left-0 right-0 z-10 bg-gradient-to-b from-black/80 to-transparent px-1 pt-6 pb-8 flex justify-center';
-                        
-                        const title = document.createElement('div');
-                        // 剧名字号字形微调: text-[20px] (调大2倍), line-clamp-2 (最多折两行)
-                        title.className = 'text-white text-[20px] font-bold text-center leading-tight line-clamp-2 drop-shadow-md';
-                        title.textContent = video.SeriesName;
-                        topLayer.appendChild(title);
-                        el.appendChild(topLayer);
-                    }
-
-                    if (isShortDrama && epLabel) {
-                        const bottomLayer = document.createElement('div');
-                        // 底部渐变层间距微调: px-2 (左右内边距), pb-1.5 (底部与文字间距), pt-5 (渐变高度)
-                        bottomLayer.className = 'absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/80 to-transparent px-2 pt-5 pb-1.5 flex items-end justify-between';
-
-                        const epDiv = document.createElement('div');
-                        // 字号微调: text-[10px] (稍微调大)
-                        epDiv.className = 'text-white/90 text-[10px] font-mono leading-none drop-shadow';
-                        epDiv.textContent = epLabel;
-                        bottomLayer.appendChild(epDiv);
-
-                        if (video.RunTimeTicks) {
-                            const duration = Math.floor(video.RunTimeTicks / 10000000);
-                            const mins = Math.floor(duration / 60);
-                            const secs = duration % 60;
-                            const timeDiv = document.createElement('div');
-                            // 字号微调: text-[11px]
-                            timeDiv.className = 'text-white/70 text-[11px] font-mono leading-none drop-shadow';
-                            timeDiv.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-                            bottomLayer.appendChild(timeDiv);
-                        }
-
-                        el.appendChild(bottomLayer);
-                    } else if (video.RunTimeTicks) {
-                        const duration = Math.floor(video.RunTimeTicks / 10000000);
-                        const mins = Math.floor(duration / 60);
-                        const secs = duration % 60;
-                        const timeBadge = document.createElement('div');
-                        timeBadge.className = 'absolute bottom-1 right-1 bg-black/70 text-white text-[10px] px-1 py-0.5 rounded';
-                        timeBadge.textContent = `${mins}:${secs.toString().padStart(2, '0')}`;
-                        el.appendChild(timeBadge);
-                    }
-
-                    gridWrapper.appendChild(el);
-                });
-
-                const eggFooter = document.createElement('div');
-                eggFooter.className = 'col-span-full pt-8 pb-24 px-4 text-center text-gray-600 text-[11px] leading-relaxed select-none';
-                eggFooter.innerHTML = '<span class="opacity-40">——</span>';
-                gridWrapper.appendChild(eggFooter);
-
-                if (this.state._hitokotoCache) {
-                    const data = this.state._hitokotoCache;
-                    const source = [data.from_who, data.from].filter(Boolean).join(' · ');
-                    eggFooter.innerHTML = `
-                        <p class="text-gray-300">“${data.hitokoto || ''}”</p>
-                        ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
-                    `;
-                } else {
-                    fetch('https://v1.hitokoto.cn/?encode=json&charset=utf-8')
-                        .then(r => r.json())
-                        .then(data => {
-                            this.state._hitokotoCache = data;
-                            const text = data.hitokoto || '';
-                            const source = [data.from_who, data.from].filter(Boolean).join(' · ');
-                            eggFooter.innerHTML = `
-                                <p class="text-gray-300">“${text}”</p>
-                                ${source ? `<p class="mt-1 text-gray-500 italic">- ${source} -</p>` : ''}
-                            `;
-                        })
-                        .catch(() => {
-                            eggFooter.innerHTML = '';
-                        });
-                }
-
-                this.updateUI();
-
-                requestAnimationFrame(() => {
-                    const activeEl = gridWrapper.children[this.state.currentIndex];
-                    if (activeEl && scrollArea) {
-                        const elTop = activeEl.offsetTop;
-                        const elHeight = activeEl.offsetHeight;
-                        const areaHeight = scrollArea.clientHeight;
-                        scrollArea.scrollTop = elTop - (areaHeight / 2) + (elHeight / 2);
-                    }
-                });
-
-                const fsBtn = document.getElementById('gridFolderSearchBtn');
-                if (fsBtn) {
-                    fsBtn.onclick = (e) => {
-                        e.stopPropagation();
-                        if (this.state.searchTerm) {
-                            this.searchVideos('');
-                        } else {
-                            const bar = document.getElementById('gridSearchBar');
-                            if (bar) {
-                                bar.classList.toggle('hidden');
-                                if (!bar.classList.contains('hidden')) {
-                                    document.getElementById('gridSearchInput')?.focus();
-                                }
-                            }
-                        }
-                    };
-                }
-
-                const searchInput = document.getElementById('gridSearchInput');
-                if (searchInput && !searchInput.dataset.bound) {
-                    searchInput.dataset.bound = 'true';
-                    let isComposing = false;
-                    let debounce = null;
-
-                    searchInput.addEventListener('compositionstart', () => {
-                        isComposing = true;
-                    });
-                    searchInput.addEventListener('compositionend', (e) => {
-                        isComposing = false;
-                        const val = e.target.value.trim();
-                        this.searchVideos(val);
-                    });
-                    searchInput.addEventListener('input', (e) => {
-                        if (isComposing) return;
-                        clearTimeout(debounce);
-                        const val = e.target.value.trim();
-                        debounce = setTimeout(() => this.searchVideos(val), 500);
-                    });
-                    searchInput.addEventListener('keydown', (e) => {
-                        if (e.key === 'Escape') this.searchVideos('');
-                    });
-                }
-
-                lucide.createIcons();
+                this.grid.render();
             }
-
             // ═══ 缓冲与播放控制 ═══
             renderBuffer() {
                 if (this.state.viewMode !== 'stream' || !this.dom.slides) return;
@@ -1742,33 +1133,60 @@
                 this.updateUI();
             }
 
-            loadVideo(index) {
+            async loadVideo(index) {
                 if (this.state.viewMode !== 'stream') return;
 
-                this.state.playSessionId = 'ex_' + Date.now().toString(16); // 每次加载新视频生成唯一会话 ID
-                this.renderBuffer(); // 确保 DOM 就位
+                if (this.state.playSessionId) {
+                    this.player?.terminateActiveEncoding(this.state.playSessionId);
+                }
+                this.state.playSessionId = 'ex_' + Date.now().toString(16);
 
-                const videoData = this.state.videos[this.state.currentIndex];
+                let videoData = this.state.videos[this.state.currentIndex];
+                if (!videoData) return;
+
+                // Resolve folder to real video in short drama stream mode
+                if ((videoData.IsFolder || videoData.Type === 'Folder') && this.drama) {
+                    const resolved = await this.drama.resolveFolderVideo(videoData);
+                    if (resolved) {
+                        this.state.videos[this.state.currentIndex] = resolved;
+                        videoData = resolved;
+                    } else {
+                        // Skip unresolvable multi-video folders in waterfall stream
+                        if (index < this.state.videos.length - 1) {
+                            this.switchSlide(this.state.currentIndex + 1, 'up');
+                        }
+                        return;
+                    }
+                }
+
+                this.renderBuffer();
+
                 const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
                 const videoEl = document.getElementById(`video-p${slideIdx}`);
 
                 if (!videoEl || !videoData) return;
 
-                // Short Drama Mode：记录当前本地播放进度标识
-                if (this.config.shortDrama && this.state.currentLibraryId) {
-                    const now = new Date().toISOString();
-                    localStorage.setItem(`emby_last_id_${this.state.currentLibraryId}`, videoData.Id);
+                // Short Drama Mode: record per-drama progress and local library progress
+                if (this.config.shortDrama) {
+                    if (this.drama) {
+                        const dramaId = this.drama.activePlayingFolderId || this.drama.currentFolderId || videoData.SeriesId;
+                        if (dramaId) {
+                            this.drama.saveDramaProgress(dramaId, videoData.Id, videoData.IndexNumber || (index + 1));
+                        }
+                    }
+                    if (this.state.currentLibraryId) {
+                        const now = new Date().toISOString();
+                        localStorage.setItem(`emby_last_id_${this.state.currentLibraryId}`, videoData.Id);
 
-                    // 非首次加载时Sync上报，防止启动污染时间戳
-                    if (!this._isFirstLoad) {
-                        localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
-                        // 1秒延迟防抖，避开高频滑动并发写冲突
-                        clearTimeout(this._syncTimer);
-                        this._syncTimer = setTimeout(() => {
-                            this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
-                        }, 1000);
-                    } else {
-                        this._isFirstLoad = false;
+                        if (!this._isFirstLoad) {
+                            localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
+                            clearTimeout(this._syncTimer);
+                            this._syncTimer = setTimeout(() => {
+                                this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
+                            }, 1000);
+                        } else {
+                            this._isFirstLoad = false;
+                        }
                     }
                 }
 
@@ -2018,7 +1436,7 @@
                     this.state.isFilteredByPerson = false;
                     this.state.currentLibraryId = 'favorites';
                     this.state.currentLibraryType = 'favorites';
-                    localStorage.setItem('emby_lib_id', 'favorites');
+                    localStorage.setItem('emby_lib_id', 'favorites'); if (this.drama) this.drama.reset();
                     localStorage.setItem('emby_lib_type', 'favorites');
                     this.state.currentTab = 'home';
                     this.updateTabHighlight();
@@ -2051,10 +1469,23 @@
                             this.state.isFilteredByPerson = false;
                             this.state.currentLibraryId = pl.Id;
                             this.state.currentLibraryType = 'playlist';
-                            localStorage.setItem('emby_lib_id', pl.Id);
+                            localStorage.setItem('emby_lib_id', pl.Id); if (this.drama) this.drama.reset();
                             localStorage.setItem('emby_lib_type', 'playlist');
                             this.state.currentTab = 'home';
                             this.updateTabHighlight();
+                            if (this.config.shortDrama) {
+                                this.state.viewMode = 'grid';
+                                if (this.dom.viewModeBtn) {
+                                    this.dom.viewModeBtn.innerHTML = '<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>';
+                                    if (window.lucide) lucide.createIcons();
+                                }
+                                const app = document.getElementById('app');
+                                if (app) {
+                                    app.classList.remove('interface-hidden');
+                                    app.classList.add('grid-active');
+                                }
+                                if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
+                            }
                             this.state.startIndex = 0;
                             this.fetchVideos(pl.Id);
                             this.toggleModal('libraryModal', false);
@@ -2090,10 +1521,23 @@
                             this.state.isFilteredByPerson = false;
                             this.state.currentLibraryId = lib.Id;
                             this.state.currentLibraryType = 'library';
-                            localStorage.setItem('emby_lib_id', lib.Id);
+                            localStorage.setItem('emby_lib_id', lib.Id); if (this.drama) this.drama.reset();
                             localStorage.setItem('emby_lib_type', 'library');
                             this.state.currentTab = 'home';
                             this.updateTabHighlight();
+                            if (this.config.shortDrama) {
+                                this.state.viewMode = 'grid';
+                                if (this.dom.viewModeBtn) {
+                                    this.dom.viewModeBtn.innerHTML = '<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>';
+                                    if (window.lucide) lucide.createIcons();
+                                }
+                                const app = document.getElementById('app');
+                                if (app) {
+                                    app.classList.remove('interface-hidden');
+                                    app.classList.add('grid-active');
+                                }
+                                if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
+                            }
                             this.state.startIndex = 0;
                             this.fetchVideos(lib.Id);
                             this.toggleModal('libraryModal', false);
@@ -2183,31 +1627,12 @@
                 }
             }
 
-            async searchVideos(term) {
-                if (!this.state.searchTerm && term) {
-                    this.state.preSearchState = {
-                        videos: [...this.state.videos],
-                        currentIndex: this.state.currentIndex,
-                        totalCount: this.state.totalCount,
-                        startIndex: this.state.startIndex || 0,
-                    };
-                }
-                this.state.searchTerm = term;
-                if (!term) {
-                    this.restorePreSearch();
-                    return;
-                }
-                this.state.startIndex = 0;
-                await this.fetchVideos(null, null, false, false, false, term);
+            searchVideos(term) {
+                return this.grid.searchVideos(term);
             }
 
             restorePreSearch() {
-                if (this.state.preSearchState) {
-                    Object.assign(this.state, this.state.preSearchState);
-                    this.state.preSearchState = null;
-                }
-                this.state.searchTerm = '';
-                this.renderGridView();
+                return this.grid.restorePreSearch();
             }
 
             async showAddToPlaylist() {
@@ -2415,47 +1840,9 @@
                 }
             }
 
-            async filterByTag(tagName) {
-                if (!tagName) return;
-                this.toggleLoading(true);
-                try {
-                    const { server, token, userId } = this.config;
-                    const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                    const url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=150&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber&Tags=${encodeURIComponent(tagName)}&${sortStr}`;
-                    const res = await fetch(url, {
-                        headers: this.getAuthHeaders(token)
-                    });
-                    if (res.ok) {
-                        const data = await res.json();
-                        this.state.personVideos = data.Items || [];
-                        this.state.personTotalCount = data.TotalRecordCount || this.state.personVideos.length;
-                        this.state.currentTag = tagName;
-                        this.state.isFilteredByTag = true;
-                        this.state.currentPerson = null;
-                        this.state.viewMode = 'grid';
-
-                        const vBtn = this.dom.viewModeBtn;
-                        if (vBtn) {
-                            vBtn.innerHTML = `<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>`;
-                            lucide.createIcons();
-                        }
-
-                        const app = document.getElementById('app');
-                        if (app) {
-                            app.classList.remove('interface-hidden');
-                            app.classList.add('grid-active');
-                        }
-                        this.dom.videoContainer.style.touchAction = 'auto';
-                        this.renderGridView();
-                    }
-                } catch (e) {
-                    this.showToast('Failed to filter tag');
-                } finally {
-                    this.toggleLoading(false);
-                }
+            filterByTag(tagName) {
+                return this.grid.filterByTag(tagName);
             }
-
-            // --- UI 更新与交互 ---
 
             getMetaHeightLimitElement() {
                 const personBtn = document.getElementById('personBtn');
@@ -2695,10 +2082,17 @@
             }
 
 
-            // 删除旧的 _buildShuffledQueue，nextVideo 恢复纯顺序逻辑
-            nextVideo() {
+            // Sequential nextVideo with cross-drama infinite relay
+            async nextVideo() {
                 const nextIndex = this.state.currentIndex + 1;
                 if (nextIndex >= this.state.videos.length) {
+                    if (this.drama && this.drama.isDramaMode()) {
+                        const relayed = await this.drama.loadNextSiblingRelay();
+                        if (relayed && nextIndex < this.state.videos.length) {
+                            this.switchSlide(nextIndex, 'up');
+                            return;
+                        }
+                    }
                     this.showToast('You reached the last video');
                     return;
                 }
@@ -2743,6 +2137,14 @@
                 lucide.createIcons();
 
                 if (this.state.viewMode === 'grid') {
+                    // In short drama mode at root, if videos holds episode list, restore root series cards
+                    if (this.drama && this.drama.isDramaMode() && this.drama.folderStack.length === 0 && this.drama.rootSiblings.length > 0) {
+                        if (this.state.videos.length > 0 && this.state.videos[0].Type === 'Episode') {
+                            this.state.videos = [...this.drama.rootSiblings];
+                            this.state.totalCount = this.drama.rootSiblings.length;
+                        }
+                    }
+
                     // 无限流切格子的神之一手：重算页码对齐
                     const PAGE_SIZE = 150;
                     if (this.state.videos.length > PAGE_SIZE) {
@@ -2766,6 +2168,16 @@
                     const app = document.getElementById('app');
                     if (app) app.classList.remove('grid-active');
                     this.dom.videoContainer.style.touchAction = 'pan-y';
+
+                    // In short drama mode, if at root and switching to stream on container card, auto-enter
+                    if (this.drama && this.drama.isDramaMode() && this.state.videos.length > 0) {
+                        const curItem = this.state.videos[this.state.currentIndex];
+                        if (curItem && (curItem.IsFolder || curItem.Type === 'Folder' || curItem.Type === 'Series' || curItem.Type === 'Season')) {
+                            this.drama.enterItem(curItem);
+                            return;
+                        }
+                    }
+
                     this.renderSlides();
                     this.loadVideo(this.state.currentIndex);
                     this.playVideo(this.state.currentIndex);
@@ -2804,119 +2216,10 @@
             }
 
 
-            // ═══ Media Info ═══
-
-            async showMediaInfo() {
-                const item = this.state.videos[this.state.currentIndex];
-                if (!item) return;
-
-                this.dom.mediaInfoModal.classList.remove('hidden');
-                // 打开详情面板也是交互，且属于遮罩状态，需Reset/停止计时
-                this.showInterfaceTemp();
-                this.dom.mediaInfoContent.innerHTML = `<div class="flex justify-center py-4"><i data-lucide="loader-2" class="w-6 h-6 animate-spin text-gray-500"></i></div>`;
-                lucide.createIcons();
-
-                try {
-                    const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
-                        headers: this.getAuthHeaders(this.config.token)
-                    });
-                    if (!res.ok) throw new Error('API Error');
-                    const data = await res.json();
-
-                    if (data && data.MediaSources && data.MediaSources.length > 0) {
-                        const src = data.MediaSources[0];
-                        const c = src.Container || '未知';
-                        const vStream = src.MediaStreams?.find(s => s.Type === 'Video');
-                        const w = vStream?.Width || '?';
-                        const h = vStream?.Height || '?';
-                        const fps = vStream?.AverageFrameRate ? Math.round(parseFloat(vStream.AverageFrameRate)) : '?';
-                        const vCodec = vStream?.Codec || '未知';
-                        const aCodec = src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '未知';
-                        const bitrate = src.Bitrate ? (src.Bitrate / 1000000).toFixed(2) + ' Mbps' : '未知';
-                        const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
-                        let transcodeState = 'Direct Play';
-                        if (this.state.playbackMethod === 'Failed') {
-                            transcodeState = 'Playback Failed';
-                        } else if (this.state.playbackMethod === 'DirectPlay') {
-                            transcodeState = this.state.isStrmSource ? 'Direct Play (STRM)' : 'Direct Play';
-                        } else if (this.state.playbackMethod === 'DirectStream') {
-                            const audioCodec = (src.MediaStreams?.find(s => s.Type === 'Audio')?.Codec || '').toLowerCase();
-                            const isAudioNative = ['aac', 'mp3', 'ac3', 'eac3', 'aac_latm'].includes(audioCodec);
-                            if (isAudioNative) {
-                                transcodeState = 'Direct Stream';
-                            } else {
-                                const audioLabel = { 'dts': 'DTS', 'truehd': 'TrueHD', 'opus': 'Opus', 'flac': 'FLAC', 'vorbis': 'Vorbis' }[audioCodec] || audioCodec.toUpperCase();
-                                transcodeState = `Direct Stream (${audioLabel}→AAC)`;
-                            }
-                        } else if (this.state.playbackMethod === 'Transcode' || this.state.playbackMethod === 'TranscodeStream') {
-                            const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                            const videoEl = document.getElementById(`video-p${slideIdx}`);
-                            const realW = videoEl?.videoWidth || 0;
-                            const realH = videoEl?.videoHeight || 0;
-                            let resTag = '';
-                            if (realW && realH) {
-                                const shortEdge = Math.min(realW, realH);
-                                const longEdge = Math.max(realW, realH);
-                                if (shortEdge >= 2000 || longEdge >= 3500) resTag = '4K';
-                                else if (shortEdge >= 950 || longEdge >= 1700) resTag = '1080P';
-                                else if (shortEdge >= 650 || longEdge >= 1150) resTag = '720P';
-                                else if (shortEdge >= 400 || longEdge >= 700) resTag = '480P';
-                                else resTag = `${shortEdge}P`;
-                            }
-
-                            const q = this.config.playQuality;
-                            if (q === '1080p') {
-                                transcodeState = `Transcoding (${resTag || '1080P'} / H.264)`;
-                            } else if (q === '720p') {
-                                transcodeState = `Transcoding (${resTag || '720P'} / H.264)`;
-                            } else if (q === 'auto') {
-                                transcodeState = resTag ? `Transcoding (Auto ${resTag} / H.264)` : 'Transcoding (Auto / H.264)';
-                            } else {
-                                transcodeState = resTag ? `Transcoding (${resTag} / H.264)` : 'Transcoding (H.264)';
-                            }
-                        } else {
-                            transcodeState = this.config.useStatic ? 'Direct Play' : 'Transcoding';
-                        }
-
-                        // 布局说明：py-2 控制行高（间距），items-center 确保文字垂直居中
-                        this.dom.mediaInfoContent.innerHTML = `
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                                <span class="text-gray-500 text-right">Resolution</span>
-                                <span class="col-span-2 text-gray-200 font-mono">${w}x${h}@${fps}</span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                                <span class="text-gray-500 text-right">Container</span>
-                                <span class="col-span-2 text-gray-200">${c.toUpperCase()}</span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                                <span class="text-gray-500 text-right">Video Codec</span>
-                                <span class="col-span-2 text-gray-200 font-mono">${vCodec.toUpperCase()}</span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                                <span class="text-gray-500 text-right">Audio Codec</span>
-                                <span class="col-span-2 text-gray-200 font-mono">${aCodec.toUpperCase()}</span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                                <span class="text-gray-500 text-right">Total Bitrate</span>
-                                <span class="col-span-2 text-gray-200 font-mono">${bitrate}</span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                                <span class="text-gray-500 text-right">File Size</span>
-                                <span class="col-span-2 text-gray-200 font-mono">${fileSizeStr}</span>
-                            </div>
-                            <div class="grid grid-cols-3 gap-2 py-2 items-center">
-                                <span class="text-gray-500 text-right">Playback Method</span>
-                                <span class="col-span-2 text-gray-200">${transcodeState}</span>
-                            </div>
-                        `;
-                    } else {
-                        this.dom.mediaInfoContent.innerHTML = `<div class="text-center text-red-400 py-4">Failed to get media info</div>`;
-                    }
-                } catch (e) {
-                    this.dom.mediaInfoContent.innerHTML = `<div class="text-center text-red-400 py-4">Failed to get data</div>`;
-                }
+            // ═══ Media Info (Delegated to MediaInfoModal) ═══
+            showMediaInfo() {
+                return this.mediaInfo.show();
             }
-
             // --- 事件绑定 ---
             bindEvents() {
                 this.dom.clickToPlayOverlay.onclick = () => {
@@ -3239,292 +2542,34 @@
                 // 键盘与遥控器适配
                 this.bindKeyboard();
 
-                // 网页卸载时上报 Stopped，清除 Session 残留
-                window.addEventListener('pagehide', () => {
+                // 网页卸载时上报 Stopped，清除 Session 残留并终止后台转码
+                const handleUnload = () => {
                     const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
                     const curV = document.getElementById(`video-p${slideIdx}`);
-                    if (curV && this.config.server && this.config.token) {
-                        this.reportPlayback('stopped', curV, true);
+                    if (this.config.server && this.config.token) {
+                        if (curV) this.reportPlayback('stopped', curV, true);
+                        this.player?.terminateActiveEncoding(this.state.playSessionId, true);
                     }
-                });
+                };
+                window.addEventListener('pagehide', handleUnload);
+                window.addEventListener('beforeunload', handleUnload);
             }
 
-            // ═══ 输入处理（键盘/手势）═══
-
+            // ═══ Input Handling (Delegated to InputManager) ═══
             bindKeyboard() {
-                let okClickCount = 0;
-                let okClickTimer = null;
-                let uClickCount = 0;
-                let uClickTimer = null;
-
-                document.addEventListener('keydown', (e) => {
-                    const profileActive = document.getElementById('profilePage').classList.contains('active');
-                    const libraryActive = !document.getElementById('libraryModal').classList.contains('hidden');
-                    const playlistActive = !document.getElementById('addToPlaylistModal').classList.contains('hidden');
-
-                    // 如果正在输入（且不是在处理遥控器方向键时），不触发全局快捷键
-                    // 但我们要允许在输入框内通过上下键跳转焦点
-                    const isInput = ['input', 'textarea', 'select'].includes(document.activeElement.tagName.toLowerCase());
-
-                    const key = e.key;
-                    const keyCode = e.keyCode;
-                    const lowKey = key.toLowerCase(); // 提前声明，全局可用
-
-                    // ESC: Close任何打开的弹窗
-                    if (key === 'Escape') {
-                        const modals = ['addToPlaylistModal', 'libraryModal', 'mediaInfoModal', 'deleteConfirmModal', 'syncConfirmModal'];
-                        for (const id of modals) {
-                            const el = document.getElementById(id);
-                            if (el && !el.classList.contains('hidden')) {
-                                this.toggleModal(id, false);
-                                return;
-                            }
-                        }
-                        if (profileActive) {
-                            this.toggleModal('profilePage', false);
-                            return;
-                        }
-                    }
-
-                    // --- Profile / 弹窗 / 网格列表内的空间导航 (Remote Control / Keyboard Focus) ---
-                    if (profileActive || libraryActive || playlistActive || document.getElementById('app').classList.contains('grid-active')) {
-                        const isGrid = document.getElementById('app').classList.contains('grid-active') && !profileActive && !libraryActive;
-                        const container = profileActive ? document.getElementById('profilePage') :
-                            libraryActive ? document.getElementById('libraryModal') :
-                                playlistActive ? document.getElementById('addToPlaylistModal') :
-                                    document.getElementById('videoContainer');
-
-                        const consumed = this.nav.handleKey(e, {
-                            isInput,
-                            isGrid,
-                            currentGridIndex: this.state.currentIndex,
-                            isSpatial: libraryActive,
-                            container
-                        });
-                        if (consumed) return;
-                    }
-
-                    if (isInput) return;
-
-                    // 1. 上下方向键 / WS：切换视频 (Keyboard & Remote)
-                    if (key === 'ArrowUp' || lowKey === 'w' || keyCode === 38) {
-                        e.preventDefault();
-                        this.prevVideo();
-                    } else if (key === 'ArrowDown' || lowKey === 's' || keyCode === 40) {
-                        e.preventDefault();
-                        this.nextVideo();
-                    }
-                    // 2. 左右方向键 / AD：快进快退 15 秒 (Keyboard & Remote)
-                    else if (key === 'ArrowLeft' || lowKey === 'a' || keyCode === 37) {
-                        e.preventDefault();
-                        const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                        const v = document.getElementById(`video-p${slideIdx}`);
-                        if (v) v.currentTime = Math.max(0, v.currentTime - 15);
-                        this.showInterfaceTemp();
-                    } else if (key === 'ArrowRight' || lowKey === 'd' || keyCode === 39) {
-                        e.preventDefault();
-                        const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                        const v = document.getElementById(`video-p${slideIdx}`);
-                        if (v && v.duration) v.currentTime = Math.min(v.duration, v.currentTime + 15);
-                        this.showInterfaceTemp();
-                    }
-                    // 3. 确认逻辑：空格键 (Keyboard) & OK键 (Remote)
-                    else if (key === ' ' || key === 'Enter' || keyCode === 13) {
-                        e.preventDefault();
-                        if (key === ' ') {
-                            // 键盘空格：暂停/播放
-                            this.togglePlay();
-                        } else {
-                            // 遥控器 OK 键: 单击暂停/播放，双击收藏
-                            okClickCount++;
-                            if (okClickCount === 1) {
-                                okClickTimer = setTimeout(() => {
-                                    this.togglePlay();
-                                    okClickCount = 0;
-                                }, 300);
-                            } else if (okClickCount === 2) {
-                                clearTimeout(okClickTimer);
-                                okClickCount = 0;
-                                // 在屏幕中心弹出收藏动画与逻辑
-                                this.handleDoubleTap(window.innerWidth / 2, window.innerHeight / 2);
-                            }
-                        }
-                    }
-                    // 4. 菜单键/缩放键 (j / Menu)
-                    else if (key.toLowerCase() === 'j' || keyCode === 18 || keyCode === 93 || keyCode === 118) {
-                        if (key.toLowerCase() === 'j' || [18, 93, 118].includes(keyCode)) {
-                            e.preventDefault();
-                            this.toggleScaleMode();
-                            this.showInterfaceTemp();
-                        }
-                    }
-                    // 5. 新增快捷键适配 (R, E, F, G, V, I, U, M)
-                    else {
-                        // 屏蔽 Cmd+R/Ctrl+R/Alt+R 刷新热键，防止被误判为切换播放模式
-                        if (lowKey === 'r' && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                            this.dom.playModeBtn.click(); // 触发视觉反馈
-                        } else if (lowKey === 'f') {
-                            this.dom.fullscreenBtn.click();
-                        } else if (lowKey === 'e') {
-                            this.dom.viewModeBtn.click(); // 触发视觉反馈
-                        } else if (lowKey === 'g') {
-                            const modal = document.getElementById('libraryModal');
-                            if (modal && !modal.classList.contains('hidden')) {
-                                this.toggleModal('libraryModal', false);
-                            } else {
-                                this.showLibraries();
-                                this.dom.libraryBtn.classList.remove('nav-clicked');
-                                void this.dom.libraryBtn.offsetWidth;
-                                this.dom.libraryBtn.classList.add('nav-clicked');
-                                setTimeout(() => this.dom.libraryBtn.classList.remove('nav-clicked'), 1000);
-                            }
-                        } else if (lowKey === 'i') {
-                            const modal = document.getElementById('profilePage');
-                            if (modal && modal.classList.contains('active')) {
-                                this.toggleModal('profilePage', false);
-                            } else {
-                                this.toggleModal('profilePage', true);
-                                this.dom.myBtn.classList.remove('nav-clicked');
-                                void this.dom.myBtn.offsetWidth;
-                                this.dom.myBtn.classList.add('nav-clicked');
-                                setTimeout(() => this.dom.myBtn.classList.remove('nav-clicked'), 1000);
-                            }
-                        } else if (lowKey === 'v') {
-                            // 格子视图模式下屏蔽Media Info快捷键
-                            const isGridActive = document.getElementById('app').classList.contains('grid-active');
-                            if (!isGridActive) {
-                                if (!this.dom.mediaInfoModal.classList.contains('hidden')) {
-                                    this.toggleModal('mediaInfoModal', false);
-                                } else {
-                                    this.showMediaInfo();
-                                }
-                            }
-                        } else if (lowKey === 'm') {
-                            this.dom.muteBtn.click();
-                        } else if (lowKey === 'u') {
-                            // 立即展示中心爱心特效
-                            const heart = document.createElement('div');
-                            heart.className = 'heart-anim absolute pointer-events-none z-50';
-                            heart.style.cssText = `left:calc(50% - 32px);top:calc(50% - 32px);--rot:${Math.floor(Math.random() * 40) - 20}deg`;
-                            heart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="drop-shadow-xl"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
-                            document.getElementById('app').appendChild(heart);
-                            heart.addEventListener('animationend', () => heart.remove());
-
-                            const id = String(this.state.videos[this.state.currentIndex]?.Id);
-                            if (!this.state.favorites.has(id)) {
-                                this.toggleFavorite();
-                                const favBtn = document.getElementById('favoriteBtn');
-                                if (favBtn) {
-                                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="text-secondary fill-secondary w-6 h-6 drop-shadow-md"></i></div>`;
-                                    lucide.createIcons({ root: favBtn });
-                                }
-                            }
-                            this.showInterfaceTemp();
-                        } else if (lowKey === 'y' ) {
-                            // Y: toggle person filter - enter if person, exit if already filtering
-                            if (this.state.isFilteredByPerson) {
-                                this.toggleViewMode();
-                            } else {
-                                const btn = document.getElementById('personBtn');
-                                if (btn && btn.dataset.personName) btn.click();
-                            }
-                        } else if (lowKey === 'h') {
-                            const playlistModal = document.getElementById('addToPlaylistModal');
-                            if (playlistModal && !playlistModal.classList.contains('hidden')) {
-                                this.toggleModal('addToPlaylistModal', false);
-                            } else {
-                                this.showAddToPlaylist();
-                                this.showInterfaceTemp();
-                            }
-                        }
-                    }
-                });
+                this.input.bindKeyboard();
             }
 
             bindGestures(container) {
-                if (this.stage) this.stage.bindGestures(container);
+                this.input.bindGestures(container);
             }
 
-
-
-            async handleDoubleTapSkip(direction, x, y) {
-                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                const v = document.getElementById(`video-p${slideIdx}`);
-                if (!v || !v.duration) return;
-
-                const isRewind = direction === 'rewind';
-                if (isRewind) {
-                    v.currentTime = Math.max(0, v.currentTime - 15);
-                } else {
-                    v.currentTime = Math.min(v.duration, v.currentTime + 15);
-                }
-                this.showInterfaceTemp();
-
-                const bubble = document.createElement('div');
-                bubble.innerHTML = `
-                    <div class="flex flex-col items-center justify-center bg-black/40 backdrop-blur-md text-white rounded-full w-[80px] h-[80px] shadow-2xl space-y-1">
-                        <div class="flex items-center justify-center">
-                            ${isRewind ? '<i data-lucide="chevrons-left" class="w-6 h-6"></i>' : '<i data-lucide="chevrons-right" class="w-6 h-6"></i>'}
-                        </div>
-                        <span class="text-xs font-bold leading-none">15s</span>
-                    </div>
-                `;
-                bubble.className = 'absolute pointer-events-none z-50 transform pointer-events-none transition-all duration-300 ease-out flex items-center justify-center';
-                bubble.style.top = `${Math.max(80, Math.min(y - 40, window.innerHeight - 80))}px`;
-                if (isRewind) bubble.style.left = '20px';
-                else bubble.style.right = '20px';
-                bubble.style.opacity = '0';
-                bubble.style.transform = `scale(0.8) ${isRewind ? 'translateX(-20px)' : 'translateX(20px)'}`;
-
-                document.getElementById('app').appendChild(bubble);
-                lucide.createIcons({ root: bubble });
-
-                requestAnimationFrame(() => {
-                    bubble.style.transform = 'scale(1) translateX(0)';
-                    bubble.style.opacity = '1';
-                    setTimeout(() => {
-                        bubble.style.transform = `scale(0.8) ${isRewind ? 'translateX(-20px)' : 'translateX(20px)'}`;
-                        bubble.style.opacity = '0';
-                        setTimeout(() => bubble.remove(), 300);
-                    }, 400);
-                });
+            handleDoubleTap(x, y) {
+                return this.input.handleDoubleTap(x, y);
             }
 
-            // 新增: 双击点赞动画与收藏逻辑
-            async handleDoubleTap(x, y) {
-                // 1. 点赞动画 DOM 生成 (纯 SVG + 高性能 GPU 动画)
-                const heart = document.createElement('div');
-                heart.className = 'heart-anim absolute pointer-events-none z-50';
-                heart.style.cssText = `left:${x - 32}px;top:${y - 32}px;--rot:${Math.floor(Math.random() * 40) - 20}deg`;
-                heart.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="#ef4444" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="drop-shadow-xl"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>';
-                document.getElementById('app').appendChild(heart);
-                heart.addEventListener('animationend', () => heart.remove());
-
-                // 2. 自动标记收藏（如未收藏则添加）
-                const currentVideo = this.state.videos[this.state.currentIndex];
-                if (currentVideo && !currentVideo.UserData?.IsFavorite) {
-                    try {
-                        const { server, token, userId } = this.config;
-                        const res = await fetch(`${server}/emby/Users/${userId}/FavoriteItems/${currentVideo.Id}?api_key=${token}`, {
-                            method: 'POST',
-                            headers: this.getAuthHeaders(token)
-                        });
-                        if (res.ok) {
-                            if (!currentVideo.UserData) currentVideo.UserData = {};
-                            currentVideo.UserData.IsFavorite = true;
-                            // Sync到本地 Set
-                            this.state.favorites.add(String(currentVideo.Id));
-
-                            // 高亮右侧收藏图标
-                            const favBtn = document.getElementById('favoriteBtn');
-                            if (favBtn) {
-                                favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="text-secondary fill-secondary w-6 h-6 drop-shadow-md"></i></div>`;
-                                lucide.createIcons({ root: favBtn });
-                            }
-                            this.showToast('❤️ Favorited');
-                        }
-                    } catch (e) { console.error('Double tap favorite failed:', e); }
-                }
+            handleDoubleTapSkip(direction, x, y) {
+                return this.input.handleDoubleTapSkip(direction, x, y);
             }
 
             // --- 通用辅助 ---

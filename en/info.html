@@ -483,7 +483,7 @@
                     check: async () => 'MediaSource' in window ? 'full' : 'none'
                 },
                 {
-                    name: "H.264 (AVC) Decoder",
+                    name: "H264 (AVC) Decoder",
                     desc: "Most widely compatible video format",
                     check: async () => await getCodecStatus('video/mp4; codecs="avc1.42E01E"')
                 },

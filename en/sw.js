@@ -10,8 +10,11 @@ self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });
 
-// Fetch handler required to trigger Android Chrome install banner
 self.addEventListener('fetch', (event) => {
-    // Pass-through: no offline cache to save space and avoid stale content
-    event.respondWith(fetch(event.request));
+    // Pass-through: handle network errors gracefully to prevent uncaught promise rejection
+    event.respondWith(
+        fetch(event.request).catch(() => {
+            return new Response('', { status: 408, statusText: 'Request Timeout' });
+        })
+    );
 });

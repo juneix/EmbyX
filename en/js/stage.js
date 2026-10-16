@@ -85,7 +85,17 @@
 
                 const slideIdx = (videoIdx % 3 + 3) % 3;
                 const slideEl = this.slides[slideIdx];
-                const videoData = this.app.state.videos[videoIdx];
+                let videoData = this.app.state.videos[videoIdx];
+                if ((videoData.IsFolder || videoData.Type === 'Folder') && this.app.drama) {
+                    if (videoData._resolvedVideo) {
+                        videoData = videoData._resolvedVideo;
+                        this.app.state.videos[videoIdx] = videoData;
+                    } else if (offset !== 0) {
+                        this.app.drama.resolveFolderVideo(videoData).then(real => {
+                            if (real) this.app.state.videos[videoIdx] = real;
+                        });
+                    }
+                }
 
                 slideEl.style.transform = `translateY(${videoIdx * 100}%)`;
                 slideEl.style.display = 'block';
@@ -137,7 +147,7 @@
                             videoEl.removeAttribute('src');
                             videoEl.load();
                         }
-                    } else {
+                    } else if (!videoData.IsFolder && videoData.Type !== 'Folder') {
                         const preloadSrc = this.app.player.getVideoSrc(videoData.Id, videoData, false);
                         this.app.player.setVideoSource(videoEl, preloadSrc, videoIdx, videoData, {
                             preloadOnly: offset !== 0
@@ -205,8 +215,8 @@
                 this.container.style.transform = `translateY(-${newIndex * 100}%)`;
             }
 
-            requestAnimationFrame(() => {
-                this.app.loadVideo(newIndex);
+            requestAnimationFrame(async () => {
+                await this.app.loadVideo(newIndex);
                 this.app.player.playVideo(newIndex);
             });
         }

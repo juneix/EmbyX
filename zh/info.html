@@ -528,7 +528,7 @@
                     check: async () => 'MediaSource' in window ? 'full' : 'none'
                 },
                 {
-                    name: "H.264 (AVC) 解码",
+                    name: "H264 (AVC) 解码",
                     desc: "最通用视频格式",
                     check: async () => await getCodecStatus('video/mp4; codecs="avc1.42E01E"')
                 },
