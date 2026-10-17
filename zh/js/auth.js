@@ -29,6 +29,7 @@
             app.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
             app.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
             app.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
+            app.config.serverId = localStorage.getItem('emby_server_id') || '';
 
             // 生成或读取设备唯一 ID
             if (!localStorage.getItem('emby_device_id')) {
@@ -80,6 +81,11 @@
             // Jellyfin 初始化挂载
             if (window.EmbyXCommon && EmbyXCommon.getServerType() === 'jellyfin' && window.enableJellyfinFetchProxy) {
                 enableJellyfinFetchProxy();
+            }
+
+            // 同步配置
+            if (window.DonateManager && typeof window.DonateManager.syncFromServer === 'function') {
+                window.DonateManager.syncFromServer();
             }
         }
 
@@ -256,6 +262,11 @@
                 const { data, userId, fnOS, finalServer } = auth;
                 server = finalServer;
 
+                const serverId = data.ServerId || (data.User && data.User.ServerId) || (data.SessionInfo && data.SessionInfo.ServerId) || '';
+                if (serverId) {
+                    localStorage.setItem('emby_server_id', serverId);
+                }
+
                 localStorage.setItem('emby_server', server);
                 localStorage.setItem('emby_user', user);
                 localStorage.setItem('emby_token', data.AccessToken);
@@ -268,7 +279,7 @@
                 if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                 else localStorage.removeItem('emby_fnOS');
 
-                app.config = { ...app.config, server, user, token: data.AccessToken, userId, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
+                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
 
                 const pwdLen2 = pwd.length;
                 localStorage.setItem('emby_pwd_len', pwdLen2);
@@ -310,8 +321,20 @@
             }
         }
 
-        resetConfig() {
+        async resetConfig() {
             if (confirm('确定要重置所有配置吗？')) {
+                try {
+                    if (window.DonateManager) {
+                        if (typeof window.DonateManager.saveToServerPrefs === 'function') {
+                            await window.DonateManager.saveToServerPrefs(false);
+                        }
+                        if (typeof window.DonateManager._clearAllEggProofs === 'function') {
+                            window.DonateManager._clearAllEggProofs();
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Reset server prefs failed (silent):', e);
+                }
                 localStorage.clear();
                 location.reload();
             }

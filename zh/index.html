@@ -34,6 +34,8 @@
     <script src="js/grid.js"></script>
     <script src="js/media-info.js"></script>
     <script src="js/player.js"></script>
+    <script src="js/donate.js"></script>
+    <script src="js/cast.js"></script>
     <script src="js/stage.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
@@ -94,6 +96,7 @@
             .interface-hidden .right-toolbar,
             .interface-hidden #bottomScrim,
             .interface-hidden #fullscreenBtn,
+            .interface-hidden #castBtn,
             .interface-hidden #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
@@ -110,6 +113,7 @@
             .grid-active .bottom-info,
             .grid-active .right-toolbar,
             .grid-active #fullscreenBtn,
+            .grid-active #castBtn,
             .grid-active #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
@@ -202,6 +206,34 @@
         <div id="videoContainer" class="relative w-full h-full">
         </div>
 
+        <!-- 投屏弥散高斯模糊展台 -->
+        <div id="castScreenOverlay"
+            class="absolute inset-0 z-20 bg-transparent hidden select-none pointer-events-auto">
+            <!-- 上方设备信息区（位于 50% 锚点上方） -->
+            <div class="absolute left-1/2 -translate-x-1/2 bottom-[calc(50%+4rem)] flex flex-col items-center w-full px-6">
+                <div class="flex items-center space-x-2 text-primary mb-3">
+                    <i data-lucide="tv" class="w-5 h-5 animate-pulse"></i>
+                    <span class="text-xs font-semibold tracking-wider uppercase text-primary/90">正在投屏中</span>
+                </div>
+                <h2 id="castScreenDeviceName" class="text-2xl font-bold text-white mb-4 text-center truncate max-w-[90%] drop-shadow-md">
+                    设备名
+                </h2>
+                <div class="flex items-center space-x-3">
+                    <button id="switchCastDeviceBtn"
+                        class="px-6 py-2 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-sm text-gray-200 backdrop-blur-xl transition-all flex items-center space-x-2">
+                        <i data-lucide="cast" class="w-4 h-4"></i>
+                        <span>换设备</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 垂直 50% 绝对居中锚点播放/暂停控制 -->
+            <div id="castPlayPauseBtn"
+                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
+                <i id="castPlayPauseIcon" data-lucide="pause" class="stroke-white w-7 h-7"></i>
+            </div>
+        </div>
+
         <div id="clickToPlayOverlay"
             class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer"
             style="display:none;">
@@ -259,14 +291,91 @@
             </div>
         </div>
 
+        <!-- 右上角投屏按钮（全屏按钮左侧，统一磨砂风格） -->
+        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-[4.5rem] z-30 transition-opacity duration-300"
+            id="castBtn">
+            <div
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="投屏">
+                <i data-lucide="cast" class="stroke-white w-5 h-5 drop-shadow-md"></i>
+            </div>
+        </div>
+
         <!-- 右上角全屏按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
-                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="全屏">
                 <i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
+
+        <!-- 投屏设备选择卡片（EmbyX 统一规范底部悬浮卡片） -->
+        <div id="castModal"
+            class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 hidden backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
+            <div id="castModalCard"
+                class="bg-black/60 border border-gray-700/50 shadow-2xl backdrop-blur-md rounded-2xl p-4 w-[92%] max-w-sm mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col transform transition-all duration-200 ease-out translate-y-4 opacity-0">
+                
+                <!-- 顶部极简应用头部 -->
+                <div class="flex items-center space-x-2.5 mb-3 pb-3 border-b border-gray-700/50 flex-shrink-0">
+                    <img src="icon.png" alt="EmbyX" class="w-7 h-7 rounded-lg shadow-sm flex-shrink-0">
+                    <h3 class="text-white text-base font-bold flex-1 truncate">请选择播放设备</h3>
+                    <button id="castModalEasterEggBtn" onclick="window.app?.castManager ? window.app.castManager.handleEasterEggClick() : window.DonateManager?.showDonateModal()"
+                        class="px-3.5 py-1.5 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-xs text-primary backdrop-blur-xl transition-all flex items-center space-x-1.5 flex-shrink-0 focusable-item">
+                        <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i>
+                        <span>彩蛋空间</span>
+                    </button>
+                </div>
+
+                <!-- 胶囊设备列表（根据 6 条目高度数学模型取整，无截断） -->
+                <div id="castDeviceList" class="space-y-2 overflow-y-auto pr-0.5" style="overscroll-behavior: contain;">
+                </div>
+            </div>
+        </div>
+
+        <!-- 头号玩家说明与兑换一体化弹窗 -->
+        <div id="donateModal"
+            class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 hidden backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
+            <div class="bg-black/75 border border-gray-700/60 shadow-2xl backdrop-blur-md rounded-2xl p-6 w-[90%] max-w-sm flex flex-col text-center">
+                <div class="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-3 border border-amber-500/20">
+                    <i data-lucide="flask-conical" class="stroke-amber-400 w-6 h-6"></i>
+                </div>
+                <h3 id="donateModalTitle" class="text-lg font-bold text-white mb-1">EmbyX Lab</h3>
+                <p id="donateModalDesc" class="text-xs text-gray-400 mb-4 leading-relaxed">
+                    头号玩家预览体验：短剧模式、投屏、转码等探索性功能<br>
+                    <span class="text-amber-300 font-medium">🧋 赞助一杯奶茶 (¥9.9)，成为头号玩家！</span>
+                </p>
+                
+                <div class="flex justify-center gap-4 mb-4">
+                    <div class="flex flex-col items-center gap-1.5 flex-1">
+                        <img src="wechat.webp" alt="微信" class="w-full aspect-square rounded-xl object-cover border border-white/10">
+                        <span class="text-[10px] text-gray-400">微信</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-1.5 flex-1">
+                        <img src="alipay.webp" alt="支付宝" class="w-full aspect-square rounded-xl object-cover border border-white/10">
+                        <span class="text-[10px] text-gray-400">支付宝</span>
+                    </div>
+                </div>
+
+                <!-- 激活码输入区域 -->
+                <div class="mb-3">
+                    <div class="relative flex items-center">
+                        <input type="text" id="donateCodeInput" placeholder="请输入 8 位激活码"
+                               class="w-full h-10 bg-gray-900/90 text-white font-mono text-sm tracking-wider rounded-lg pl-3 pr-20 outline-none border border-gray-700 focus:border-amber-400 transition-colors uppercase">
+                        <button id="submitDonateCodeBtn" onclick="window.DonateManager?.verifySecretCode(document.getElementById('donateCodeInput').value)"
+                                class="absolute right-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-md text-xs font-bold active:scale-95 transition-all shadow">
+                            确认
+                        </button>
+                    </div>
+                    <p id="donateCodeError" class="text-[11px] text-red-400 mt-1.5 hidden text-left px-1"></p>
+                </div>
+
+                <p class="text-[11px] text-gray-400 mb-4">感谢每一位支持独立研发和开源探索的头号玩家🩷</p>
+
+                <button onclick="window.DonateManager?.hideDonateModal()"
+                    class="w-full bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded-lg text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">关闭</button>
+            </div>
+        </div>
+
 
         <div id="mediaInfoModal"
             class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
@@ -285,10 +394,10 @@
                 </div>
                 <div id="mediaInfoContent" class="text-sm text-gray-300">
                     <div class="flex justify-center py-4"><i data-lucide="loader-2"
-                            class="w-6 h-6 animate-spin text-gray-500"></i></div>
+                             class="w-6 h-6 animate-spin text-gray-500"></i></div>
                 </div>
                 <button id="closeMediaInfoBtn"
-                    class="w-full mt-6 bg-gray-800/80 border border-gray-700/50 text-gray-200 py-2.5 rounded-lg font-medium hover:bg-gray-700 active:scale-95 transition-all">关闭</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">关闭</button>
             </div>
         </div>
 
@@ -441,9 +550,12 @@
                                 </div>
                             </div>
                             <div id="rowPlayQuality"
-                                class="flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all">
+                                class="relative flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all">
                                 <label for="configPlayQuality"
-                                    class="text-gray-300 text-sm cursor-pointer flex-1">播放质量</label>
+                                    class="text-gray-300 text-sm cursor-pointer flex-1 flex items-center">
+                                    <span>播放质量</span>
+                                    <i id="playQualityLockIcon" data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary ml-1.5 hidden"></i>
+                                </label>
                                 <select id="configPlayQuality"
                                     class="focusable-item bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 outline-none border border-gray-700 focus:border-primary transition-colors cursor-pointer">
                                     <option value="direct">直接播放</option>
@@ -451,6 +563,7 @@
                                     <option value="1080p">1080P - 8Mbps</option>
                                     <option value="720p">720P - 4Mbps</option>
                                 </select>
+                                <div id="playQualityLockMask" class="absolute inset-0 z-10 cursor-pointer hidden"></div>
                             </div>
                             <div id="rowAutoplay" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
@@ -462,12 +575,15 @@
                                     checked>
                             </div>
                             <div id="rowShortDrama" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="relative focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configShortDrama').click();">
-                                <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1">短剧模式
+                                <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1 flex items-center">
+                                    <span>短剧模式</span>
+                                    <i id="shortDramaLockIcon" data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary ml-1.5 hidden"></i>
                                 </label>
                                 <input type="checkbox" id="configShortDrama"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
+                                <div id="shortDramaLockMask" class="absolute inset-0 z-10 cursor-pointer hidden"></div>
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
@@ -498,7 +614,8 @@
                         <div
                             class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
+                                <div id="profileAppIconBox"
+                                     style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
                                     <img src="icon.png" style="height: 80%; width: 80%; object-fit: cover;">
                                 </div>
                                 <div>
@@ -506,6 +623,10 @@
                                         <h3 class="text-white font-bold text-2xl tracking-tight">EmbyX</h3>
                                         <span id="appVersionBadge"
                                             class="px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v2.0</span>
+                                        <span id="playerOneBadge" onclick="window.DonateManager?.showDonateModal()" title="点击查看头号玩家通行证"
+                                            class="hidden px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded-full border border-amber-500/40 items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-transform">
+                                            <i data-lucide="gem" class="w-3.5 h-3.5"></i>头号玩家
+                                        </span>
                                     </div>
                                     <p style="margin: 4px 0 0 0; font-size: 0.75rem; color: #9ca3af; opacity: 0.6; line-height: 1.625;">藏尽世间美，光影皆留情。</p>
                                 </div>
@@ -703,15 +824,6 @@
 
     <script>
         // ═══════════════════════════════════════
-        // § 0. 工具函数
-        // ═══════════════════════════════════════
-
-        // Jellyfin 与鉴权工具函数（委托至 common.js）
-        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
-        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
-        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
-
-        // ═══════════════════════════════════════
         // § 1. EmbyApp 类 — 构造与基础方法
         // ═══════════════════════════════════════
 
@@ -813,7 +925,7 @@
 
             // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
             getActiveModalId() {
-                const modals = ['syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
+                const modals = ['donateModal', 'syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'castModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
                 return modals.find(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
@@ -837,6 +949,7 @@
                     onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
                     onDoubleTapSkip: (dir, x, y) => this.handleDoubleTapSkip(dir, x, y)
                 });
+                this.castManager = new CastManager(this);
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
@@ -928,7 +1041,7 @@
                     'metaInfoContainer', 'videoTitle', 'videoDescriptionArea', 'videoDescriptionScroll', 'videoDescription', 'progressBarContainer', 'progressLine', 'progressThumb', 'currentTime', 'totalTime',
                     'progressOSD', 'osdCurrentTime', 'osdTotalTime',
                     'playModeBtn', 'viewModeBtn', 'libraryBtn', 'myBtn',
-                    'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
+                    'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'castBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
                     'syncConfirmModal', 'confirmSyncBtn', 'cancelSyncBtn', 'syncFileName',
@@ -1200,7 +1313,14 @@
                     }
                 }
 
+                // 无论是否处于投屏状态，必须优先触发 renderBuffer 确保 3 槽虚拟舞台空间坐标与海报图正确就位
                 this.renderBuffer();
+
+                // 投屏状态下阻断本地音视频拉流与播放解码，保持高斯模糊展台
+                if (this.castManager && this.castManager.isCasting) {
+                    this.updateUI();
+                    return;
+                }
 
                 const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
                 const videoEl = document.getElementById(`video-p${slideIdx}`);
@@ -1323,6 +1443,11 @@
             }
 
             switchSlide(newIndex, direction) {
+                if (this.castManager && this.castManager.isCasting) {
+                    this.stage.switchSlide(newIndex, direction);
+                    this.castManager.handleSlideChange();
+                    return;
+                }
                 this.stage.switchSlide(newIndex, direction);
             }
 
@@ -2179,6 +2304,10 @@
                 if (isStream && (this.state.isFilteredByPerson || this.state.isFilteredByTag)) {
                     this.resetFilters();
                     return;
+                }
+
+                if (isStream && this.castManager && this.castManager.isCasting) {
+                    this.castManager.disconnect(true);
                 }
 
                 if (isStream && this.input && this.input.hasHistoryLayer('stream') && !this.input._isHandlingPop) {

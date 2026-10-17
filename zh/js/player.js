@@ -49,7 +49,8 @@
 
         _buildHlsSrc(id, mediaItem, forceReencode = false, quality = null) {
             const { server, token, playQuality } = this.app.config;
-            const currentQuality = quality || playQuality || 'auto';
+            const isPro = window.DonateManager ? window.DonateManager.hasEggAccess() : false;
+            const currentQuality = isPro ? (quality || playQuality || 'auto') : 'direct';
             const msIdx = mediaItem?._selectedMediaSourceIndex || 0;
             const mediaSource = mediaItem?.MediaSources?.[msIdx] || mediaItem?.MediaSources?.[0];
             if (mediaItem && mediaSource?.Id) {
@@ -120,7 +121,8 @@
         getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
             if (isPrimaryPlayback) this.app.state.isStrmSource = false;
             const { server, token } = this.app.config;
-            const quality = this.app.config.playQuality || (this.app.config.useStatic ? 'direct' : 'auto');
+            const isPro = window.DonateManager ? window.DonateManager.hasEggAccess() : false;
+            const quality = isPro ? (this.app.config.playQuality || (this.app.config.useStatic ? 'direct' : 'auto')) : 'direct';
 
             const msIdx = mediaItem?._selectedMediaSourceIndex || 0;
             const mediaSource = mediaItem?.MediaSources?.[msIdx] || mediaItem?.MediaSources?.[0];
@@ -204,6 +206,7 @@
 
         setVideoSource(videoEl, src, index, item, options = {}) {
             if (!videoEl || !src) return;
+            if (this.app.castManager && this.app.castManager.isCasting) return;
             const sidMatch = /[?&]PlaySessionId=([^&]+)/i.exec(src);
             if (sidMatch) {
                 videoEl.dataset.playSessionId = decodeURIComponent(sidMatch[1]);
@@ -304,6 +307,7 @@
 
         playVideo(index) {
             if (this.app.state.viewMode !== 'stream') return;
+            if (this.app.castManager && this.app.castManager.isCasting) return;
             const slideIdx = (this.app.state.currentIndex % 3 + 3) % 3;
 
             // Stop non-current videos
@@ -454,6 +458,10 @@
         }
 
         togglePlay() {
+            if (this.app.castManager && this.app.castManager.isCasting) {
+                this.app.castManager.toggleRemotePlayPause();
+                return;
+            }
             const slideIdx = (this.app.state.currentIndex % 3 + 3) % 3;
             const v = document.getElementById(`video-p${slideIdx}`);
             const btn = document.getElementById(`playBtn-${slideIdx}`);

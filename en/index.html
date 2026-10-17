@@ -1,6 +1,6 @@
 <!--
-  EmbyX - TikTok-style Emby Player
-  © 2026 Juneix (https://github.com/juneix)
+  EmbyX - 短视频风格 Emby 播放器
+  © 2026 Juneix (https://juneix.github.io)
   All Rights Reserved
 -->
 <!DOCTYPE html>
@@ -22,7 +22,7 @@
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX</title>
-    <!-- Core third-party libraries (Self-contained local loading) -->
+    <!-- 核心第三方依赖库（全本地化同源加载） -->
     <script src="lib/tailwind.min.js" data-cfasync="false"></script>
     <script src="lib/lucide.min.js"></script>
     <script src="lib/hls.min.js" data-cfasync="false"></script>
@@ -34,6 +34,8 @@
     <script src="js/grid.js"></script>
     <script src="js/media-info.js"></script>
     <script src="js/player.js"></script>
+    <script src="js/donate.js"></script>
+    <script src="js/cast.js"></script>
     <script src="js/stage.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
@@ -52,7 +54,7 @@
     </script>
     <style type="text/tailwindcss">
         @layer utilities {
-            /* 视频全屏样式 - 移除硬编码的 object-cover 给 JS 控制 */
+            /* 视频Fullscreen样式 - 移除硬编码的 object-cover 给 JS 控制 */
             .video-fullscreen {
                 @apply w-full h-full absolute inset-0 z-10;
             }
@@ -94,11 +96,12 @@
             .interface-hidden .right-toolbar,
             .interface-hidden #bottomScrim,
             .interface-hidden #fullscreenBtn,
+            .interface-hidden #castBtn,
             .interface-hidden #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
 
-            /* 全屏清屏下调整进度：临时浮现进度条与时间，隐藏标题与简介 */
+            /* Fullscreen清屏下调整进度：临时浮现进度条与时间，隐藏标题与简介 */
             .interface-hidden .bottom-info.show-progress {
                 @apply opacity-100 transition-opacity duration-300;
             }
@@ -110,6 +113,7 @@
             .grid-active .bottom-info,
             .grid-active .right-toolbar,
             .grid-active #fullscreenBtn,
+            .grid-active #castBtn,
             .grid-active #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
@@ -202,6 +206,34 @@
         <div id="videoContainer" class="relative w-full h-full">
         </div>
 
+        <!-- Cast弥散高斯模糊展台 -->
+        <div id="castScreenOverlay"
+            class="absolute inset-0 z-20 bg-transparent hidden select-none pointer-events-auto">
+            <!-- 上方设备信息区（位于 50% 锚点上方） -->
+            <div class="absolute left-1/2 -translate-x-1/2 bottom-[calc(50%+4rem)] flex flex-col items-center w-full px-6">
+                <div class="flex items-center space-x-2 text-primary mb-3">
+                    <i data-lucide="tv" class="w-5 h-5 animate-pulse"></i>
+                    <span class="text-xs font-semibold tracking-wider uppercase text-primary/90">Casting</span>
+                </div>
+                <h2 id="castScreenDeviceName" class="text-2xl font-bold text-white mb-4 text-center truncate max-w-[90%] drop-shadow-md">
+                    Device Name
+                </h2>
+                <div class="flex items-center space-x-3">
+                    <button id="switchCastDeviceBtn"
+                        class="px-6 py-2 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-sm text-gray-200 backdrop-blur-xl transition-all flex items-center space-x-2">
+                        <i data-lucide="cast" class="w-4 h-4"></i>
+                        <span>Switch Device</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- 垂直 50% 绝对居中锚点播放/暂停控制 -->
+            <div id="castPlayPauseBtn"
+                class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-16 rounded-full flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
+                <i id="castPlayPauseIcon" data-lucide="pause" class="stroke-white w-7 h-7"></i>
+            </div>
+        </div>
+
         <div id="clickToPlayOverlay"
             class="absolute inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer"
             style="display:none;">
@@ -259,14 +291,91 @@
             </div>
         </div>
 
-        <!-- 右上角全屏按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
+        <!-- 右上角Cast按钮（Fullscreen按钮左侧，统一磨砂风格） -->
+        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-[4.5rem] z-30 transition-opacity duration-300"
+            id="castBtn">
+            <div
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="Cast">
+                <i data-lucide="cast" class="stroke-white w-5 h-5 drop-shadow-md"></i>
+            </div>
+        </div>
+
+        <!-- 右上角Fullscreen按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
         <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
-                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
+                class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="Fullscreen">
                 <i data-lucide="maximize" class="stroke-white w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
+
+        <!-- Cast设备选择卡片（EmbyX 统一规范底部悬浮卡片） -->
+        <div id="castModal"
+            class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 hidden backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
+            <div id="castModalCard"
+                class="bg-black/60 border border-gray-700/50 shadow-2xl backdrop-blur-md rounded-2xl p-4 w-[92%] max-w-sm mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col transform transition-all duration-200 ease-out translate-y-4 opacity-0">
+                
+                <!-- 顶部极简应用头部 -->
+                <div class="flex items-center space-x-2.5 mb-3 pb-3 border-b border-gray-700/50 flex-shrink-0">
+                    <img src="icon.png" alt="EmbyX" class="w-7 h-7 rounded-lg shadow-sm flex-shrink-0">
+                    <h3 class="text-white text-base font-bold flex-1 truncate">Select Playback Device</h3>
+                    <button id="castModalEasterEggBtn" onclick="window.app?.castManager ? window.app.castManager.handleEasterEggClick() : window.DonateManager?.showDonateModal()"
+                        class="px-3.5 py-1.5 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-xs text-primary backdrop-blur-xl transition-all flex items-center space-x-1.5 flex-shrink-0 focusable-item">
+                        <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i>
+                        <span>Bonus Space</span>
+                    </button>
+                </div>
+
+                <!-- 胶囊设备列表（根据 6 条目高度数学模型取整，无截断） -->
+                <div id="castDeviceList" class="space-y-2 overflow-y-auto pr-0.5" style="overscroll-behavior: contain;">
+                </div>
+            </div>
+        </div>
+
+        <!-- Player One说明与兑换一体化弹窗 -->
+        <div id="donateModal"
+            class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 hidden backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
+            <div class="bg-black/75 border border-gray-700/60 shadow-2xl backdrop-blur-md rounded-2xl p-6 w-[90%] max-w-sm flex flex-col text-center">
+                <div class="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-3 border border-amber-500/20">
+                    <i data-lucide="flask-conical" class="stroke-amber-400 w-6 h-6"></i>
+                </div>
+                <h3 id="donateModalTitle" class="text-lg font-bold text-white mb-1">EmbyX Lab</h3>
+                <p id="donateModalDesc" class="text-xs text-gray-400 mb-4 leading-relaxed">
+                    Player One Preview: Short drama mode, casting, transcoding & experimental features<br>
+                    <span class="text-amber-300 font-medium">🧋 Buy me a milk tea (¥9.9) & become Player One!</span>
+                </p>
+                
+                <div class="flex justify-center gap-4 mb-4">
+                    <div class="flex flex-col items-center gap-1.5 flex-1">
+                        <img src="wechat.webp" alt="WeChat Pay" class="w-full aspect-square rounded-xl object-cover border border-white/10">
+                        <span class="text-[10px] text-gray-400">WeChat Pay</span>
+                    </div>
+                    <div class="flex flex-col items-center gap-1.5 flex-1">
+                        <img src="alipay.webp" alt="Alipay" class="w-full aspect-square rounded-xl object-cover border border-white/10">
+                        <span class="text-[10px] text-gray-400">Alipay</span>
+                    </div>
+                </div>
+
+                <!-- 激活码输入区域 -->
+                <div class="mb-3">
+                    <div class="relative flex items-center">
+                        <input type="text" id="donateCodeInput" placeholder="Enter 8-digit activation code"
+                               class="w-full h-10 bg-gray-900/90 text-white font-mono text-sm tracking-wider rounded-lg pl-3 pr-20 outline-none border border-gray-700 focus:border-amber-400 transition-colors uppercase">
+                        <button id="submitDonateCodeBtn" onclick="window.DonateManager?.verifySecretCode(document.getElementById('donateCodeInput').value)"
+                                class="absolute right-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-md text-xs font-bold active:scale-95 transition-all shadow">
+                            Confirm
+                        </button>
+                    </div>
+                    <p id="donateCodeError" class="text-[11px] text-red-400 mt-1.5 hidden text-left px-1"></p>
+                </div>
+
+                <p class="text-[11px] text-gray-400 mb-4">Thanks to every Player One supporting indie dev & open source 🩷</p>
+
+                <button onclick="window.DonateManager?.hideDonateModal()"
+                    class="w-full bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded-lg text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+            </div>
+        </div>
+
 
         <div id="mediaInfoModal"
             class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
@@ -285,10 +394,10 @@
                 </div>
                 <div id="mediaInfoContent" class="text-sm text-gray-300">
                     <div class="flex justify-center py-4"><i data-lucide="loader-2"
-                            class="w-6 h-6 animate-spin text-gray-500"></i></div>
+                             class="w-6 h-6 animate-spin text-gray-500"></i></div>
                 </div>
                 <button id="closeMediaInfoBtn"
-                    class="w-full mt-6 bg-gray-800/80 border border-gray-700/50 text-gray-200 py-2.5 rounded-lg font-medium hover:bg-gray-700 active:scale-95 transition-all">Close</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
@@ -441,9 +550,12 @@
                                 </div>
                             </div>
                             <div id="rowPlayQuality"
-                                class="flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all">
+                                class="relative flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all">
                                 <label for="configPlayQuality"
-                                    class="text-gray-300 text-sm cursor-pointer flex-1">Playback Quality</label>
+                                    class="text-gray-300 text-sm cursor-pointer flex-1 flex items-center">
+                                    <span>Playback Quality</span>
+                                    <i id="playQualityLockIcon" data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary ml-1.5 hidden"></i>
+                                </label>
                                 <select id="configPlayQuality"
                                     class="focusable-item bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 outline-none border border-gray-700 focus:border-primary transition-colors cursor-pointer">
                                     <option value="direct">Direct Play</option>
@@ -451,6 +563,7 @@
                                     <option value="1080p">1080P - 8Mbps</option>
                                     <option value="720p">720P - 4Mbps</option>
                                 </select>
+                                <div id="playQualityLockMask" class="absolute inset-0 z-10 cursor-pointer hidden"></div>
                             </div>
                             <div id="rowAutoplay" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
@@ -462,12 +575,15 @@
                                     checked>
                             </div>
                             <div id="rowShortDrama" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="relative focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configShortDrama').click();">
-                                <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1">Short Drama Mode
+                                <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1 flex items-center">
+                                    <span>Short Drama Mode</span>
+                                    <i id="shortDramaLockIcon" data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary ml-1.5 hidden"></i>
                                 </label>
                                 <input type="checkbox" id="configShortDrama"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
+                                <div id="shortDramaLockMask" class="absolute inset-0 z-10 cursor-pointer hidden"></div>
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
                                 class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
@@ -498,7 +614,8 @@
                         <div
                             class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
+                                <div id="profileAppIconBox"
+                                     style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
                                     <img src="icon.png" style="height: 80%; width: 80%; object-fit: cover;">
                                 </div>
                                 <div>
@@ -506,16 +623,19 @@
                                         <h3 class="text-white font-bold text-2xl tracking-tight">EmbyX</h3>
                                         <span id="appVersionBadge"
                                             class="px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v2.0</span>
+                                        <span id="playerOneBadge" onclick="window.DonateManager?.showDonateModal()" title="Click to view Player One Pass"
+                                            class="hidden px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded-full border border-amber-500/40 items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-transform">
+                                            <i data-lucide="gem" class="w-3.5 h-3.5"></i>Player One
+                                        </span>
                                     </div>
                                     <p style="margin: 4px 0 0 0; font-size: 0.75rem; color: #9ca3af; opacity: 0.6; line-height: 1.625;">Collect the World, Love the Beauty.</p>
                                 </div>
                             </div>
 
                             <div>
-                                <p class="text-gray-300">👋 Hi, I am <a href="https://github.com/juneix" target="_blank"
-                                        class="text-primary hover:underline">@Juneix</a>. EmbyX is a TikTok-style web
-                                    player for Emby / Jellyfin. Experience your private media library in a whole new,
-                                    immersive way. 🎉</p>
+                                <p class="text-gray-300">👋 Hi~ I'm<a href="https://juneix.github.io" target="_blank"
+                                        class="text-primary hover:underline">@Juneix</a>，<b>EmbyX</b> 是一款专为 Emby / Jellyfin（兼容飞牛影视🔥）打造的
+                                    Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人Libraries焕发全新的刷片体验。🎉</p>
                             </div>
 
                             <div
@@ -529,7 +649,7 @@
                                 <ul class="space-y-2 text-gray-400 text-xs mt-2 mb-3">
                                     <li class="flex items-center">
                                         <span class="text-primary mr-1.5">📚</span>
-                                        Full Tutorial:<a href="https://github.com/juneix/EmbyX/wiki" target="_blank" class="text-primary hover:underline">Juneix Vault</a>
+                                        Full Tutorial:<a href="https://5nav.eu.org" target="_blank" class="text-primary hover:underline">Juneix Vault</a>
                                     </li>
                                     <li class="flex items-center">
                                         <span class="text-primary mr-1.5">🎬</span>
@@ -689,15 +809,6 @@
 
     <script>
         // ═══════════════════════════════════════
-        // § 0. 工具函数
-        // ═══════════════════════════════════════
-
-        // Jellyfin 与鉴权工具函数（委托至 common.js）
-        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
-        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
-        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
-
-        // ═══════════════════════════════════════
         // § 1. EmbyApp 类 — 构造与基础方法
         // ═══════════════════════════════════════
 
@@ -751,7 +862,7 @@
                 this.grid = new GridViewManager(this);
                 this.mediaInfo = new MediaInfoModal(this);
                 this.input = new InputManager({ app: this });
-                this.nav = this.input; // Compatibility alias
+                this.nav = this.input; // 兼容原有调用
                 this.player = new VideoPlayer({
                     app: this,
                     onEnded: () => {
@@ -797,9 +908,9 @@
                 return "Web Browser";
             }
 
-            // Check if any modal/panel is open and return topmost modal ID
+            // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
             getActiveModalId() {
-                const modals = ['syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
+                const modals = ['donateModal', 'syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'castModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
                 return modals.find(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
@@ -808,7 +919,8 @@
                 }) || null;
             }
 
-            // Check if any modal is open
+            // 检查当前是否有任何弹窗/面板处于打开状态
+            // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
                 return !!this.getActiveModalId();
             }
@@ -822,6 +934,7 @@
                     onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
                     onDoubleTapSkip: (dir, x, y) => this.handleDoubleTapSkip(dir, x, y)
                 });
+                this.castManager = new CastManager(this);
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
@@ -834,7 +947,7 @@
 
                 this.state.isAutoplay = this.config.autoplay !== false;
 
-                // Set initial view to grid lobby in short drama mode
+                // Short Drama Mode初始视图设为宫格选剧大厅
                 if (this.config.shortDrama) {
                     this.state.viewMode = 'grid';
                     const appEl = document.getElementById('app');
@@ -913,7 +1026,7 @@
                     'metaInfoContainer', 'videoTitle', 'videoDescriptionArea', 'videoDescriptionScroll', 'videoDescription', 'progressBarContainer', 'progressLine', 'progressThumb', 'currentTime', 'totalTime',
                     'progressOSD', 'osdCurrentTime', 'osdTotalTime',
                     'playModeBtn', 'viewModeBtn', 'libraryBtn', 'myBtn',
-                    'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'fullscreenBtn', 'deleteBtn',
+                    'favoriteBtn', 'addToPlaylistBtn', 'scaleBtn', 'muteBtn', 'castBtn', 'fullscreenBtn', 'deleteBtn',
                     'mediaInfoModal', 'mediaInfoContent', 'closeMediaInfoBtn',
                     'deleteConfirmModal', 'confirmDeleteBtn', 'cancelDeleteBtn', 'deleteFileName',
                     'syncConfirmModal', 'confirmSyncBtn', 'cancelSyncBtn', 'syncFileName',
@@ -923,7 +1036,7 @@
                 this.dom.rightToolbar = document.querySelector('.right-toolbar');
             }
 
-            // ═══ Configuration & Authentication (Delegated to AuthManager) ═══
+            // ═══ 配置与认证（委托至 AuthManager） ═══
             loadConfig() { this.auth.loadConfig(); }
             initFnosOAuth() { this.auth.initFnosOAuth(); }
             openFnosOAuth(url) { return this.auth.openFnosOAuth(url); }
@@ -982,7 +1095,7 @@
 
             // ═══ 核心播放逻辑 ═══
             async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false, searchTerm = '') {
-                this.toggleLoading(!isAppend); // 追加时不显示全屏 loading
+                this.toggleLoading(!isAppend); // 追加时不显示Fullscreen loading
                 try {
                     const { server, token, userId } = this.config;
                     if (!server || !token) {
@@ -1036,6 +1149,7 @@
                         } else if (ids) {
                             url += `&Ids=${ids}`;
                         } else if (isRandom) {
+                            // 换一批模式：服务端随机取 99 个（适用于所有模式）
                             url += `&SortBy=Random`;
                             if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
                             if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
@@ -1049,15 +1163,16 @@
                             url += `&${sortStr}`;
                         }
                     }
+
                     const res = await fetch(url, {
                         headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) {
-                        throw new Error(`Server error: ${res.status}`);
+                        throw new Error(`服务器错误: ${res.status}`);
                     }
                     let data = await res.json();
                     let items = data.Items || [];
-                    // Strictly filter photo items (photos are handled exclusively by pic.html)
+                    // 严格过滤图片文件（图片由专门的 pic.html 负责展示，主视频页绝不混入图片）
                     items = items.filter(item => item && item.Type !== 'Photo' && item.MediaType !== 'Photo' && item.Type !== 'PhotoAlbum');
                     if (isFolderView) {
                         items = this.drama.processFetchedItems(items);
@@ -1121,7 +1236,7 @@
                                 setTimeout(() => this.checkCloudSync(), 1500);
                             }
                         } else {
-                            this.renderGridView(); // 瀑布流播放模式下无Search结果时，退回网格视图展示 0 统计
+                            this.renderGridView(); // 瀑布流播放模式下无搜索结果时，退回网格视图展示 0 统计
                         }
                     }
                 } catch (e) {
@@ -1146,11 +1261,11 @@
                 this.updateUI();
             }
 
-            // ═══ Grid View (Delegated to GridViewManager) ═══
+            // ═══ 宫格视图（委托至 GridViewManager） ═══
             renderGridView() {
                 this.grid.render();
             }
-            // ═══ 缓冲与播放控制 ═══
+            // ═══ 缓冲与播放控制（委托至 Player & Stage 引擎） ═══
             renderBuffer() {
                 if (this.state.viewMode !== 'stream' || !this.dom.slides) return;
                 this.stage.renderBuffer();
@@ -1168,14 +1283,14 @@
                 let videoData = this.state.videos[this.state.currentIndex];
                 if (!videoData) return;
 
-                // Resolve folder to real video in short drama stream mode
+                // 若遇到文件夹（如单片电影或包含双版本文件的文件夹），穿透解析为真实视频
                 if ((videoData.IsFolder || videoData.Type === 'Folder') && this.drama) {
                     const resolved = await this.drama.resolveFolderVideo(videoData);
                     if (resolved) {
                         this.state.videos[this.state.currentIndex] = resolved;
                         videoData = resolved;
                     } else {
-                        // Skip unresolvable multi-video folders in waterfall stream
+                        // 无法穿透的非单片多项文件夹，瀑布流中自动跳至下一项
                         if (index < this.state.videos.length - 1) {
                             this.switchSlide(this.state.currentIndex + 1, 'up');
                         }
@@ -1183,14 +1298,21 @@
                     }
                 }
 
+                // 无论是否处于Cast状态，必须优先触发 renderBuffer 确保 3 槽虚拟舞台空间坐标与海报图正确就位
                 this.renderBuffer();
+
+                // Cast状态下阻断本地音视频拉流与播放解码，保持高斯模糊展台
+                if (this.castManager && this.castManager.isCasting) {
+                    this.updateUI();
+                    return;
+                }
 
                 const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
                 const videoEl = document.getElementById(`video-p${slideIdx}`);
 
                 if (!videoEl || !videoData) return;
 
-                // Short Drama Mode: record per-drama progress and local library progress
+                // Short Drama Mode：记录单剧观看进度与当前本地播放进度标识
                 if (this.config.shortDrama) {
                     if (this.drama) {
                         const dramaId = this.drama.activePlayingFolderId || this.drama.currentFolderId || videoData.SeriesId;
@@ -1202,6 +1324,7 @@
                         const now = new Date().toISOString();
                         localStorage.setItem(`emby_last_id_${this.state.currentLibraryId}`, videoData.Id);
 
+                        // 非首次加载时Sync上报，防止启动污染时间戳
                         if (!this._isFirstLoad) {
                             localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
                             clearTimeout(this._syncTimer);
@@ -1214,7 +1337,6 @@
                     }
                 }
 
-                // renderBuffer 已预载相邻项；当前项在这里按浏览器能力选择原生播放或 Hls.js
                 const src = this.getVideoSrc(videoData.Id, videoData, true);
                 this.setVideoSource(videoEl, src, index, videoData, { autoplay: true });
 
@@ -1276,6 +1398,10 @@
                 }
             }
 
+            isCurrentPlayback(videoEl, videoId, requestedSrc, playAttempt = null) {
+                return this.player.isCurrentPlayback(videoEl, videoId, requestedSrc, playAttempt);
+            }
+
             setVideoSource(videoEl, src, index, item, options = {}) {
                 return this.player.setVideoSource(videoEl, src, index, item, options);
             }
@@ -1302,6 +1428,11 @@
             }
 
             switchSlide(newIndex, direction) {
+                if (this.castManager && this.castManager.isCasting) {
+                    this.stage.switchSlide(newIndex, direction);
+                    this.castManager.handleSlideChange();
+                    return;
+                }
                 this.stage.switchSlide(newIndex, direction);
             }
 
@@ -1358,7 +1489,7 @@
 
                     // 只有云端进度更新，且 ID 不同时才提示
                     if (cloudDate > localDate && cloud.lastId !== localId) {
-                        // 获取设备名称与视频名称
+                        // 获取Device Name称与视频名称
                         let deviceDisplay = cloud.deviceName || "其他设备";
                         let displayName = "Updated Show";
                         
@@ -1416,19 +1547,7 @@
             }
 
             reportCapabilities() {
-                if (this.state._capabilitiesReported) return;
-                const { server, token } = this.config;
-                if (!server || !token) return;
-                this.state._capabilitiesReported = true;
-                fetch(`${server}/emby/Sessions/Capabilities/Full?api_key=${token}`, {
-                    method: 'POST',
-                    headers: this.getAuthHeaders(token, { 'Content-Type': 'application/json' }),
-                    body: JSON.stringify({
-                        PlayableMediaTypes: ["Video"],
-                        SupportsMediaControl: true,
-                        SupportsPersistentConnections: false
-                    })
-                }).catch(() => { });
+                return this.player.reportCapabilities();
             }
 
             // --- 辅助Action ---
@@ -1591,7 +1710,7 @@
                     } catch (e) {}
                 }
 
-                // 如果没有缓存，则显示全屏转圈
+                // 如果没有缓存，则显示Fullscreen转圈
                 if (!hasCache) {
                     this.toggleLoading(true);
                     list.innerHTML = '';
@@ -2036,7 +2155,7 @@
                 const app = document.getElementById('app');
                 if (this.csTimer) clearTimeout(this.csTimer);
 
-                // 只有在流模式且处于全屏状态，且界面当前处于显示状态，
+                // 只有在流模式且处于Fullscreen状态，且界面当前处于显示状态，
                 // 且当前没有任何弹窗遮罩时，才开启自动隐藏计时。
                 if (this.state.viewMode === 'grid') return;
                 if (this.isAnyModalOpen()) return;
@@ -2121,7 +2240,7 @@
             }
 
 
-            // Sequential nextVideo with cross-drama infinite relay
+            // nextVideo 恢复纯顺序逻辑，支持短剧跨剧自动接力连播
             async nextVideo() {
                 const nextIndex = this.state.currentIndex + 1;
                 if (nextIndex >= this.state.videos.length) {
@@ -2172,6 +2291,10 @@
                     return;
                 }
 
+                if (isStream && this.castManager && this.castManager.isCasting) {
+                    this.castManager.disconnect(true);
+                }
+
                 if (isStream && this.input && this.input.hasHistoryLayer('stream') && !this.input._isHandlingPop) {
                     window.history.back();
                     return;
@@ -2185,7 +2308,7 @@
                 lucide.createIcons();
 
                 if (this.state.viewMode === 'grid') {
-                    // In short drama mode at root, if videos holds episode list, restore root series cards
+                    // 如果在Short Drama Mode且在根目录，但当前 videos 是分集列表，恢复大厅根级剧目
                     if (this.drama && this.drama.isDramaMode() && this.drama.folderStack.length === 0 && this.drama.rootSiblings.length > 0) {
                         if (this.state.videos.length > 0 && this.state.videos[0].Type === 'Episode') {
                             this.state.videos = [...this.drama.rootSiblings];
@@ -2218,7 +2341,7 @@
                     if (app) app.classList.remove('grid-active');
                     this.dom.videoContainer.style.touchAction = 'pan-y';
 
-                    // In short drama mode, if at root and switching to stream on container card, auto-enter
+                    // Short Drama Mode：若在根目录切流模式且当前是剧集/文件夹卡片，自动进入起播
                     if (this.drama && this.drama.isDramaMode() && this.state.videos.length > 0) {
                         const curItem = this.state.videos[this.state.currentIndex];
                         if (curItem && (curItem.IsFolder || curItem.Type === 'Folder' || curItem.Type === 'Series' || curItem.Type === 'Season')) {
@@ -2265,7 +2388,7 @@
             }
 
 
-            // ═══ Media Info (Delegated to MediaInfoModal) ═══
+            // ═══ Media Info（委托至 MediaInfoModal） ═══
             showMediaInfo() {
                 return this.mediaInfo.show();
             }
@@ -2418,8 +2541,8 @@
                     // 检测是否被嵌入在 iframe 中
                     const isEmbedded = window.self !== window.top;
 
-                    // 方案一：向 iOS 妥协，采用“沉浸式融合”伪全屏
-                    // 只要在 iOS PWA 状态，或者【处于嵌入状态时】，一律强制走“沉浸式伪全屏”分支
+                    // 方案一：向 iOS 妥协，采用“沉浸式融合”伪Fullscreen
+                    // 只要在 iOS PWA 状态，或者【处于嵌入状态时】，一律强制走“沉浸式伪Fullscreen”分支
                     if ((isIOS && isStandalone) || isEmbedded) {
                         if (!app.classList.contains('ios-pwa-fullscreen')) {
                             app.classList.add('ios-pwa-fullscreen');
@@ -2443,7 +2566,7 @@
                         return;
                     }
 
-                    // 正常的 安卓/PC 系统调用原生全屏
+                    // 正常的 安卓/PC 系统调用原生Fullscreen
                     if (!document.fullscreenElement) {
                         app.classList.add('interface-hidden');
                         document.documentElement.requestFullscreen().catch(() => {
@@ -2584,7 +2707,7 @@
                 // 键盘与遥控器适配
                 this.bindKeyboard();
 
-                // History state machine & back gesture handling
+                // 全平台移动端/浏览器返回手势与历史状态机
                 this.input.bindHistory();
 
                 // 网页卸载时上报 Stopped，清除 Session 残留并终止后台转码
@@ -2600,7 +2723,7 @@
                 window.addEventListener('beforeunload', handleUnload);
             }
 
-            // ═══ Input Handling (Delegated to InputManager) ═══
+            // ═══ 输入处理（委托至 InputManager） ═══
             bindKeyboard() {
                 this.input.bindKeyboard();
             }
@@ -2617,7 +2740,7 @@
                 return this.input.handleDoubleTapSkip(direction, x, y);
             }
 
-            // --- General Helpers ---
+            // --- 通用辅助 ---
             toggleModal(id, show) {
                 if (!show && this.input && this.input.hasHistoryLayer('modal', id) && !this.input._isHandlingPop) {
                     window.history.back();
@@ -2699,6 +2822,6 @@
 </html>
 <!--
   End of EmbyX.
-  探索更多：Juneix Vault (https://github.com/juneix/EmbyX/wiki)
+  探索更多：Juneix Vault (https://5nav.eu.org)
   Keep Coding, Keep Fun.
 -->

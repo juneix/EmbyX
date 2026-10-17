@@ -5,7 +5,7 @@ self.addEventListener('install', (event) => {
     self.skipWaiting();
 });
 
-// 激活阶段：清理旧缓存
+// activate 阶段：清理旧缓存
 self.addEventListener('activate', (event) => {
     event.waitUntil(clients.claim());
 });

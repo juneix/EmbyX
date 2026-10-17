@@ -28,7 +28,8 @@
          * Check if short drama mode is enabled
          */
         isDramaMode() {
-            return !!(this.app?.config?.shortDrama);
+            const hasAccess = window.DonateManager ? window.DonateManager.hasEggAccess() : false;
+            return !!(this.app?.config?.shortDrama && hasAccess);
         }
 
         /**

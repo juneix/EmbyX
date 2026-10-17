@@ -2,7 +2,7 @@
   "_meta": {
     "source": "zh/pic.html",
     "target": "en/pic.html",
-    "updated": "2026-10-01"
+    "updated": "2026-10-17"
   },
   "strings": {
     "请填写完整信息": "Please fill in all fields",
@@ -33,7 +33,7 @@
     "✅ 已添加到「${playlistName}」": "✅ Added to 「${playlistName}」",
     "筛选标签失败": "Failed to filter tag",
     "❌ 权限不足，请使用管理员账号": "❌ No permission. Use an admin account",
-    "❌ 删除失败 (${res.status})": "❌ Delete failed (${res.status})",
+    "❌ 删除失败 (${status})": "❌ Delete failed (${status})",
     "✅ 已删除": "✅ Deleted",
     "❌ 删除失败：网络错误": "❌ Delete failed: network error",
     "🔀 随机浏览（下一张）": "🔀 Shuffle photos",
@@ -80,7 +80,7 @@
     "🧩 使用技巧": "🧩 Usage Tips",
     "完整使用教程：": "Full Tutorial:",
     "谢週五の藏经阁": "Juneix Vault",
-    "pic 画廊只读取普通图片，动态照片等非图片项目会被自动屏蔽。": "The gallery displays still images only. Other media types are excluded.",
+    "画廊只扫描图片，自动屏蔽视频文件。": "The gallery scans photos only and excludes video files.",
     "⌨️ 快捷键指南": "⌨️ Keyboard Shortcuts",
     "按键": "Key",
     "功能": "Action",
@@ -123,30 +123,6 @@
     "加载人物元数据失败:": "Failed to load person metadata:",
     "获取媒体库失败:": "Failed to fetch libraries:",
     "收藏同步失败:": "Favorite sync failed:",
-    "获取人物作品失败:": "Failed to fetch person works:",
-    "❌ 删除失败 (${status})": "❌ Delete failed (${status})",
-    "画廊只扫描图片，自动屏蔽视频文件。": "The gallery scans photos only and excludes video files.",
-    "EmbyX - 图片画廊": "EmbyX - Photo Gallery",
-    "https://5nav.eu.org": "https://github.com/juneix/EmbyX/wiki",
-    "<p class=\"text-gray-300\">👋 Hi～我叫<a href=\"https://juneix.github.io\" target=\"_blank\"\n                                        class=\"text-primary hover:underline\">@谢週五</a>，<b>EmbyX</b> 是一款专为 Emby / Jellyfin（兼容飞牛影视🔥）打造的\n                                    Web 原生应用，画廊模式专注照片浏览，让你的私人图片库拥有沉浸式翻阅体验。🎉</p>": "<p class=\"text-gray-300\">👋 Hi, I am <a href=\"https://juneix.github.io\" target=\"_blank\"\n                                        class=\"text-primary hover:underline\">@Juneix</a>. <b>EmbyX</b> is a web app for Emby / Jellyfin, with fnOS Video support.\n                                    Gallery mode brings immersive browsing to your private photo library. 🎉</p>",
-    "单击 OK": "Press OK",
-    "双击": "Double-tap",
-    "，请检查 Emby 日志": ". Check the server logs",
-    "未知错误": "Unknown error",
-    "服务器错误:": "Server error:",
-    "搜索：": "Search: ",
-    "标签：": "Tag: ",
-    "演员：": "Person: ",
-    "相机：": "Camera: ",
-    "镜头：": "Lens: ",
-    "参数：": "Settings: ",
-    "时间：": "Date: ",
-    "描述：": "Description: ",
-    "关键词：": "Keywords: ",
-    "添加失败": "Failed to add",
-    "此照片": "this photo",
-    " 吗？": "?",
-    "未知": "Unknown",
-    "探索更多：谢週五の藏经阁 (https://5nav.eu.org)": "Made with ❤️ by Juneix (https://github.com/juneix)"
+    "获取人物作品失败:": "Failed to fetch person works:"
   }
 }

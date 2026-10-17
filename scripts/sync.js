@@ -156,9 +156,9 @@ function cmdExtract() {
       console.log('   ✅ 无变化');
     }
 
-    const updatedStrings = { ...existingStrings };
-    for (const { str } of newStrings) {
-      updatedStrings[str] = '';
+    const updatedStrings = {};
+    for (const [str] of validStrings) {
+      updatedStrings[str] = existingStrings[str] !== undefined ? existingStrings[str] : '';
     }
 
     const output = {

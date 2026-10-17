@@ -628,11 +628,6 @@
     </div>
 
     <script>
-        // Jellyfin 与鉴权工具函数（委托至 common.js）
-        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
-        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
-        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
-
         class EmbyApp {
             getAuthHeaders(token = '', extra = {}) {
                 return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);

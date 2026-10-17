@@ -1,7 +1,7 @@
 <!--
-  EmbyX - Photo Gallery for Emby
-  Juneix (https://github.com/juneix)
-  © 2026 All Rights Reserved
+  EmbyX - 图片画廊
+  © 2026 Juneix (https://juneix.github.io)
+  All Rights Reserved
 -->
 <!DOCTYPE html>
 <html lang="en">
@@ -22,7 +22,7 @@
     <link rel="apple-touch-icon" href="icon.png">
 
     <title>EmbyX - Gallery Mode</title>
-    <!-- Core third-party libraries (Self-contained local loading) -->
+    <!-- 核心第三方依赖库（全本地化同源加载） -->
     <script src="lib/tailwind.min.js" data-cfasync="false"></script>
     <script src="lib/lucide.min.js"></script>
     <script src="js/common.js"></script>
@@ -440,9 +440,9 @@
                             </div>
 
                             <div>
-                                <p class="text-gray-300">👋 Hi, I am <a href="https://juneix.github.io" target="_blank"
-                                        class="text-primary hover:underline">@Juneix</a>. <b>EmbyX</b> is a web app for Emby / Jellyfin, with fnOS Video support.
-                                    Gallery mode brings immersive browsing to your private photo library. 🎉</p>
+                                <p class="text-gray-300">👋 Hi~ I'm<a href="https://juneix.github.io" target="_blank"
+                                        class="text-primary hover:underline">@Juneix</a>，<b>EmbyX</b> 是一款专为 Emby / Jellyfin（兼容飞牛影视🔥）打造的
+                                    Web 原生应用，画廊模式专注照片浏览，让你的私人图片库拥有沉浸式翻阅体验。🎉</p>
                             </div>
 
                             <div
@@ -456,7 +456,7 @@
                                 <ul class="space-y-2 text-gray-400 text-xs mt-2 mb-3">
                                     <li class="flex items-center">
                                         <span class="text-primary mr-1.5">📚</span>
-                                        Full Tutorial:<a href="https://github.com/juneix/EmbyX/wiki" target="_blank" class="text-primary hover:underline">Juneix Vault</a>
+                                        Full Tutorial:<a href="https://5nav.eu.org" target="_blank" class="text-primary hover:underline">Juneix Vault</a>
                                     </li>
                                     <li class="flex items-center">
                                         <span class="text-primary mr-1.5">🖼️</span>
@@ -488,11 +488,11 @@
                                             </tr>
                                             <tr>
                                                 <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">Space /
-                                                    Press OK</td>
+                                                    单击 OK</td>
                                                 <td class="px-3 py-1.5">Show / Hide Controls</td>
                                             </tr>
                                             <tr>
-                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">U / Double-tap
+                                                <td class="px-3 py-1.5 text-primary border-r border-gray-700/50">U / 双击
                                                     OK</td>
                                                 <td class="px-3 py-1.5">Favorite Photo</td>
                                             </tr>
@@ -628,11 +628,6 @@
     </div>
 
     <script>
-        // Jellyfin 与鉴权工具函数（委托至 common.js）
-        const enableJellyfinFetchProxy = EmbyXCommon.enableJellyfinFetchProxy;
-        const fixUrlForJellyfin = EmbyXCommon.fixUrlForJellyfin;
-        const getAuthHeaders = EmbyXCommon.getAuthHeaders;
-
         class EmbyApp {
             getAuthHeaders(token = '', extra = {}) {
                 return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);
@@ -705,7 +700,7 @@
                 return "Web Browser";
             }
 
-            // Check if any modal/panel is open and return topmost modal ID
+            // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
             getActiveModalId() {
                 const modals = ['deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
                 return modals.find(id => {
@@ -716,12 +711,13 @@
                 }) || null;
             }
 
-            // Check if any modal is open
+            // 检查当前是否有任何弹窗/面板处于打开状态
+            // 这种状态下不应触发自动清屏
             isAnyModalOpen() {
                 return !!this.getActiveModalId();
             }
 
-            // --- Initialization ---
+            // --- 初始化 ---
             init() {
                 this.cacheDOM();
                 if (this.gallery) {
@@ -729,7 +725,7 @@
                 }
                 this.loadConfig();
 
-                // Dynamically read version
+                // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
                 const vEl = document.querySelector('.bg-primary\\/20.text-xs');
                 this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
 
@@ -988,7 +984,7 @@
                     } else if (status === 404) {
                         this.showToast('❌ Connection Failed: Check port');
                     } else if (status) {
-                        this.showToast('❌ Connection Failed ' + status + '. Check the server logs');
+                        this.showToast('❌ Connection Failed ' + status + '，请检查 Emby 日志');
                     } else {
                         const msg = e?.message || '';
                         const isHttps = location.protocol === 'https:';
@@ -999,7 +995,7 @@
                         } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
                             this.showToast('❌ Cannot connect to server');
                         } else {
-                            this.showToast('❌ Connection Failed: ' + (msg || 'Unknown error'));
+                            this.showToast('❌ Connection Failed: ' + (msg || '未知错误'));
                         }
                     }
                 } finally {
@@ -1118,7 +1114,7 @@
                         headers: this.getAuthHeaders(this.config.token)
                     });
                     if (!res.ok) {
-                        throw new Error(`Server error: ${res.status}`);
+                        throw new Error(`服务器错误: ${res.status}`);
                     }
                     let data = await res.json();
                     const items = this.filterDisplayPhotos(data.Items || []);
@@ -1172,7 +1168,7 @@
                     }
                 } catch (e) {
                     console.error('Failed to fetch photos:', e);
-                    this.showToast('Cannot connect to server: ' + (e.message || 'Unknown error'));
+                    this.showToast('Cannot connect to server: ' + (e.message || '未知错误'));
                 } finally {
                     this.toggleLoading(false);
                 }
@@ -1286,11 +1282,11 @@
 
                 let libraryName = 'All Photos';
                 if (this.state.searchTerm) {
-                    libraryName = `Search: ${this.state.searchTerm}`;
+                    libraryName = `Search：${this.state.searchTerm}`;
                 } else if (this.state.isFilteredByTag && this.state.currentTag) {
-                    libraryName = `Tag: ${this.state.currentTag}`;
+                    libraryName = `标签：${this.state.currentTag}`;
                 } else if (this.state.currentPerson) {
-                    libraryName = `Person: ${this.state.currentPerson}`;
+                    libraryName = `演员：${this.state.currentPerson}`;
                 } else if (this.state.currentLibraryId === 'favorites') {
                     libraryName = 'Favorites';
                 } else if (this.state.currentLibraryId) {
@@ -1638,8 +1634,6 @@
             parseEmbeddedImageMetadata(buffer) { return this.gallery.parseEmbeddedImageMetadata(buffer); }
             formatPhotoMetadata(meta) { return this.gallery.formatPhotoMetadata(meta); }
             formatExposure(value) { return this.gallery.formatExposure(value); }
-
-
 
             loadPhoto(index) {
                 if (this.state.viewMode !== 'stream') return;
@@ -2182,7 +2176,7 @@
                             this.showAddToPlaylist(); // 重新洗牌渲染弹窗列表状态
                         }
                     } else {
-                        this.showToast(isRemove ? 'Failed to remove' : 'Failed to add');
+                        this.showToast(isRemove ? 'Failed to remove' : '添加失败');
                     }
                 } catch (e) {
                     this.showToast('Network error');
@@ -2331,7 +2325,7 @@
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
-                this.dom.deleteFileName.textContent = 'Confirm Delete ' + (item.Name || 'this photo') + '?';
+                this.dom.deleteFileName.textContent = 'Confirm Delete ' + (item.Name || '此照片') + ' 吗？';
                 this.toggleModal('deleteConfirmModal', true);
                 lucide.createIcons();
             }
@@ -2585,8 +2579,8 @@
                     const imageStream = src.MediaStreams?.find(s => s.Type === 'Image') || {};
                     const w = imageStream.Width || data.Width || item.Width || '?';
                     const h = imageStream.Height || data.Height || item.Height || '?';
-                    const format = (src.Container || item.Container || item.Path?.split('.').pop() || 'Unknown').toUpperCase();
-                    const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : 'Unknown';
+                    const format = (src.Container || item.Container || item.Path?.split('.').pop() || '未知').toUpperCase();
+                    const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
                     const metaText = this.getPhotoMetadataText(item);
 
                     this.dom.mediaInfoContent.innerHTML = `
@@ -2964,7 +2958,7 @@
                             // 键盘空格：暂停/播放
                             this.togglePlay();
                         } else {
-                            // 遥控器 OK 键: 单击暂停/播放，Double-tap收藏
+                            // 遥控器 OK 键: 单击暂停/播放，双击收藏
                             okClickCount++;
                             if (okClickCount === 1) {
                                 okClickTimer = setTimeout(() => {
@@ -3071,7 +3065,7 @@
                 if (this.gallery) return this.gallery.handleDoubleTap(x, y);
             }
 
-            // --- General Helpers ---
+            // --- 通用辅助 ---
             toggleModal(id, show) {
                 if (!show && this.input && this.input.hasHistoryLayer('modal', id) && !this.input._isHandlingPop) {
                     window.history.back();
@@ -3149,6 +3143,6 @@
 </html>
 <!--
   End of EmbyX.
-  Made with ❤️ by Juneix (https://github.com/juneix)
+  探索更多：Juneix Vault (https://5nav.eu.org)
   Keep Coding, Keep Fun.
 -->

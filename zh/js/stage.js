@@ -105,19 +105,20 @@
                     const posterSrc = this.app.getImageSrc(videoData);
 
                     // 封面平滑更新：预载完成后再赋值，根据填充模式控制可见度
+                    const isBlurredBg = (this.app.castManager && this.app.castManager.isCasting) || !this.app.state.isScaleFill;
                     const thumbEl = document.getElementById(`thumb-${slideIdx}`);
                     if (thumbEl) {
                         const tempImg = new Image();
                         tempImg.onload = () => {
                             if (slideEl.dataset.id === videoData.Id) {
                                 thumbEl.src = posterSrc;
-                                thumbEl.style.opacity = this.app.state.isScaleFill ? '1' : '0';
+                                thumbEl.style.opacity = isBlurredBg ? '0' : '1';
                             }
                         };
                         tempImg.onerror = () => {
                             if (slideEl.dataset.id === videoData.Id) {
                                 thumbEl.src = this.app.getImageSrc(null);
-                                thumbEl.style.opacity = this.app.state.isScaleFill ? '1' : '0';
+                                thumbEl.style.opacity = isBlurredBg ? '0' : '1';
                             }
                         };
                         tempImg.src = posterSrc;
@@ -127,11 +128,11 @@
                     const posterEl = document.getElementById(`poster-${slideIdx}`);
                     if (posterEl) {
                         posterEl.style.backgroundImage = `url('${posterSrc}')`;
-                        posterEl.style.opacity = this.app.state.isScaleFill ? '0' : '0.7';
+                        posterEl.style.opacity = isBlurredBg ? '0.7' : '0';
                     }
                     const overlayEl = document.getElementById(`overlay-${slideIdx}`);
                     if (overlayEl) {
-                        overlayEl.style.opacity = this.app.state.isScaleFill ? '0' : '1';
+                        overlayEl.style.opacity = isBlurredBg ? '1' : '0';
                     }
 
                     // 视频重置透明度，等待流加载完成平滑接管
@@ -272,6 +273,7 @@
                     '#scaleBtn',
                     '#muteBtn',
                     '#personBtn',
+                    '#castBtn',
                     '#fullscreenBtn',
                     '#deleteBtn',
                     'header',
@@ -279,6 +281,9 @@
                     '#libraryModal',
                     '#addToPlaylistModal',
                     '#mediaInfoModal',
+                    '#castModal',
+                    '#switchCastDeviceBtn',
+                    '#castPlayPauseBtn',
                     '#deleteConfirmModal',
                     '.profile-layer'
                 ];

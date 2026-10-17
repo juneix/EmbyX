@@ -188,7 +188,7 @@
 
                 // ESC: 关闭任何打开的弹窗
                 if (key === 'Escape') {
-                    const modals = ['addToPlaylistModal', 'libraryModal', 'mediaInfoModal', 'deleteConfirmModal', 'syncConfirmModal'];
+                    const modals = ['addToPlaylistModal', 'libraryModal', 'mediaInfoModal', 'castModal', 'deleteConfirmModal', 'syncConfirmModal'];
                     for (const id of modals) {
                         const el = document.getElementById(id);
                         if (el && !el.classList.contains('hidden')) {
@@ -316,6 +316,10 @@
                         }
                     } else if (lowKey === 'm') {
                         app.dom.muteBtn?.click();
+                    } else if (lowKey === 'c') {
+                        if (!isGridActive) {
+                            app.castManager?.showPicker();
+                        }
                     } else if (lowKey === 'u') {
                         this.showCenterHeartAnimation();
                         const id = String(app.state.videos[app.state.currentIndex]?.Id);
@@ -375,13 +379,20 @@
                 if (!app) return;
                 const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
                 const v = document.getElementById(`video-p${slideIdx}`);
-                if (!v || !v.duration) return;
+                const current = app.state.videos ? app.state.videos[app.state.currentIndex] : null;
+
+                const isCasting = !!(app.castManager && app.castManager.isCasting);
+                const duration = (isCasting && current?.RunTimeTicks)
+                    ? (current.RunTimeTicks / 10000000)
+                    : (v && v.duration ? v.duration : (current?.RunTimeTicks ? current.RunTimeTicks / 10000000 : 0));
+
+                if (!duration || duration <= 0) return;
 
                 const rect = bar.getBoundingClientRect();
                 const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                targetTime = ratio * v.duration;
+                targetTime = ratio * duration;
 
-                this.showProgressOSD(targetTime, v.duration, false);
+                this.showProgressOSD(targetTime, duration, false);
             };
 
             bar.addEventListener('pointerdown', (e) => {
@@ -414,13 +425,22 @@
 
                 const app = this.app;
                 if (app) {
-                    const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
-                    const v = document.getElementById(`video-p${slideIdx}`);
-                    if (v && targetTime !== undefined) {
-                        v.currentTime = targetTime;
-                    }
-                    if (typeof app.showInterfaceTemp === 'function') {
-                        app.showInterfaceTemp();
+                    if (app.castManager && app.castManager.isCasting) {
+                        if (targetTime !== undefined) {
+                            app.castManager.seekTo(targetTime);
+                        }
+                        if (typeof app.showInterfaceTemp === 'function') {
+                            app.showInterfaceTemp();
+                        }
+                    } else {
+                        const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
+                        const v = document.getElementById(`video-p${slideIdx}`);
+                        if (v && targetTime !== undefined) {
+                            v.currentTime = targetTime;
+                        }
+                        if (typeof app.showInterfaceTemp === 'function') {
+                            app.showInterfaceTemp();
+                        }
                     }
                 }
 
@@ -639,7 +659,7 @@
 
             this._isHandlingPop = true;
             try {
-                // 1. 优先关闭激活的模态弹窗 / 全屏抽屉 (profilePage, mediaInfoModal, libraryModal, etc.)
+                // 1. 优先关闭当前打开的模态弹窗 / 全屏抽屉 (profilePage, mediaInfoModal, libraryModal, etc.)
                 const openModalId = typeof app.getActiveModalId === 'function' ? app.getActiveModalId() : null;
                 if (openModalId) {
                     app.toggleModal(openModalId, false);

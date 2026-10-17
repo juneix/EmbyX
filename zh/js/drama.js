@@ -28,7 +28,8 @@
          * 是否处于短剧模式
          */
         isDramaMode() {
-            return !!(this.app?.config?.shortDrama);
+            const hasAccess = window.DonateManager ? window.DonateManager.hasEggAccess() : false;
+            return !!(this.app?.config?.shortDrama && hasAccess);
         }
 
         /**
