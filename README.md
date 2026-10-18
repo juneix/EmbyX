@@ -2,6 +2,8 @@
 
 🇨🇳 [中文说明](./README_zh.md)
 
+EmbyX is a TikTok-style web player for Emby / Jellyfin and FygoOS. Experience your private media library in a whole new, immersive way. 🎉
+
 [![GitHub Release](https://img.shields.io/github/v/release/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/stargazers)
 [![GitHub Forks](https://img.shields.io/github/forks/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/forks)
@@ -9,7 +11,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-gray?style=flat-square)](./LICENSE)
 [![Code Size](https://img.shields.io/github/languages/code-size/juneix/embyx?style=flat-square&color=gray)](https://github.com/juneix/embyx)
 
-A TikTok-style web player for Emby / Jellyfin. Experience your private media library in a whole new, immersive way. 🎉
+
 
 ![EmbyX-1](pic/poster1-en.webp)
 
@@ -17,6 +19,8 @@ A TikTok-style web player for Emby / Jellyfin. Experience your private media lib
 
 ## ✨ Features
 
+
+**💡 Core**
 - **Fluid Playback**: TikTok-style vertical scrolling for an **immersive** experience.
 - **Direct Play**: Up to **8K HEVC / AV1** on Android—no transcoding.
 - **Poster Wall**: Elegant album view with pagination and **shuffle**.
@@ -25,14 +29,22 @@ A TikTok-style web player for Emby / Jellyfin. Experience your private media lib
 - **PWA Ready**: Install as a **standalone** app on your home screen or desktop.
 - **Privacy First**: All data stays **on your device**, no cloud uploads.
 
+**💎 Bonus**
+- **Short Drama Mode**: swipe through short dramas in portrait, across TV Shows libraries and folder views
+- **Cast to TV**: AirPlay, Chromecast, and DLNA supported
+- **Auto-transcoding**: optimized for older devices or streaming on mobile data
 
-## 💡 Get Started
+
+## 🚀 Get Started
 
 Try EmbyX instantly via the official web app:
 - 🌐 **Main Site** - [embyx.5nav.eu.org](https://embyx.5nav.eu.org)
 - ⚡ **Mirror Site** - [embyx.5nav.pp.ua](https://embyx.5nav.pp.ua)
 
 Prefer full control? You can **self-host** EmbyX on your own server.
+
+> This repo is open source — fork it and hack on it freely. Core features stay free forever.
+> 💎 "Player One" early access: try experimental features like Short Drama Mode, Casting, and Transcoding.
 
 📚 Full Guide: [GitHub Wiki](https://github.com/juneix/EmbyX/wiki)
 
