@@ -43,7 +43,7 @@ Try EmbyX instantly via the official web app:
 
 Prefer full control? You can **self-host** EmbyX on your own server.
 
-> This repo is open source — fork it and hack on it freely. Core features stay free forever.
+> This repo is open source — fork it and hack on it freely. Core features stay free forever.  
 > 💎 "Player One" early access: try experimental features like Short Drama Mode, Casting, and Transcoding.
 
 📚 Full Guide: [GitHub Wiki](https://github.com/juneix/EmbyX/wiki)
@@ -66,15 +66,16 @@ If EmbyX makes your digital life easier, please `star it on GitHub ⭐️`, or s
 
 ## ⌨️ Shortcuts Guide
 
-| Key | Function |
+| Key | Action |
 |:---:|---|
 | `W / S / ↑ / ↓` | Prev / Next Video |
 | `A / D / ← / → / Double Click Side` | Rewind / Forward 15s |
 | `Space / Click OK` | Pause / Play |
+| `T` | Cast to TV |
 | `Y` | Actor Works |
 | `U / Double Click OK` | Favorite Video |
 | `H` | Add to Playlist |
-| `J / Menu Key` | Toggle Aspect Ratio |
+| `J` | Toggle Aspect Ratio |
 | `M` | Toggle Mute |
 | `E / Tab 1` | Toggle View |
 | `R / Tab 2` | Sequential / Random |
