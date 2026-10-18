@@ -4,12 +4,12 @@
 
 (function () {
     const _eggMemoryMap = new Map();
+    let _cloudChecking = false;
 
     class DonateManager {
         constructor() {
             this.API_VERIFY_URL = 'https://key.5nav.eu.org/api/verify';
             this.API_CHECK_URL = 'https://key.5nav.eu.org/api/check';
-            this._cloudChecking = false;
         }
 
         getCurrentTargetId() {
@@ -97,7 +97,7 @@
             } else {
                 input.value = '';
                 input.readOnly = false;
-                input.placeholder = 'Enter 8-digit activation code';
+                input.placeholder = 'activation code';
                 input.classList.add('border-gray-700', 'focus:border-amber-400');
                 input.classList.remove('border-amber-500/40', 'bg-amber-500/10', 'text-amber-300', 'font-bold', 'text-center');
                 btn.disabled = false;
@@ -109,6 +109,12 @@
         showDonateModal() {
             const modal = document.getElementById('donateModal');
             if (!modal) return;
+            const profilePage = document.getElementById('profilePage');
+            const isProfileActive = profilePage && profilePage.classList.contains('active');
+
+            if (window.app?.closeAllModals) {
+                window.app.closeAllModals(isProfileActive ? ['donateModal', 'profilePage'] : 'donateModal');
+            }
 
             this.renderDonateModalState();
 
@@ -118,15 +124,30 @@
                 window.lucide.createIcons({ root: modal });
             }
 
+            if (window.app?.input && typeof window.app.input.pushLayer === 'function') {
+                window.app.input.pushLayer('modal', { id: 'donateModal' });
+            }
+
             this.checkCloudEggStatus().then(() => this.renderDonateModalState());
         }
 
         hideDonateModal() {
+            if (window.app?.input && window.app.input.hasHistoryLayer('modal', 'donateModal') && !window.app.input._isHandlingPop) {
+                window.history.back();
+                return;
+            }
             const modal = document.getElementById('donateModal');
             if (!modal) return;
             modal.classList.add('opacity-0', 'pointer-events-none');
             modal.classList.remove('opacity-100');
             setTimeout(() => modal.classList.add('hidden'), 200);
+
+            const profilePage = document.getElementById('profilePage');
+            if (profilePage && profilePage.classList.contains('active')) {
+                if (window.app?.nav && typeof window.app.nav.focusModal === 'function') {
+                    window.app.nav.focusModal(profilePage);
+                }
+            }
         }
 
         async verifySecretCode(code) {
@@ -237,9 +258,9 @@
 
         async checkCloudEggStatus() {
             const targetId = this.getCurrentTargetId();
-            if (!targetId || this._cloudChecking) return this.hasEggAccess();
+            if (!targetId || _cloudChecking) return this.hasEggAccess();
 
-            this._cloudChecking = true;
+            _cloudChecking = true;
             try {
                 const checkUrl = `${this.API_CHECK_URL}?app=embyx&target_id=${encodeURIComponent(targetId)}&server_id=${encodeURIComponent(targetId)}`;
                 const res = await fetch(checkUrl, { cache: 'no-store' });
@@ -264,7 +285,7 @@
                 this.updateUI();
                 return false;
             } finally {
-                this._cloudChecking = false;
+                _cloudChecking = false;
             }
         }
 

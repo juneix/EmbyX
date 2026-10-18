@@ -320,19 +320,19 @@ function cmdApply() {
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
                                     <a href="https://x.com/juneix_tse" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/x/white" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/x.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="X" /> Twitter • Follow</a>
                                     <a href="https://t.me/juneix_en" target="_blank"
                                         class="flex items-center justify-center text-[#26A5E4] bg-[#26A5E4]/10 hover:bg-[#26A5E4]/20 px-3 h-11 rounded-full transition-colors border border-[#26A5E4]/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/telegram/26A5E4"
+                                        <img src="img/telegram.svg"
                                             class="w-3.5 h-3.5 mr-1.5" alt="Telegram" /> Telegram • Channel</a>
                                     <a href="https://ko-fi.com/juneixtse" target="_blank"
                                         class="flex items-center justify-center text-[#FF6433] bg-[#FF5E5B]/10 hover:bg-[#FF5E5B]/20 px-3 h-11 rounded-full transition-colors border border-[#FF5E5B]/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/kofi/FF6433" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/kofi.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="Ko-fi" /> Ko-fi • Support</a>
                                     <a href="https://github.com/juneix/embyx" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap active:scale-95">
-                                        <img src="https://cdn.simpleicons.org/github/white" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/github.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="GitHub" /> GitHub • Stars</a>
                                 </div>
                             </div>

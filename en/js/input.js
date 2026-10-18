@@ -316,9 +316,14 @@
                         }
                     } else if (lowKey === 'm') {
                         app.dom.muteBtn?.click();
-                    } else if (lowKey === 'c') {
+                    } else if (lowKey === 't' || lowKey === 'c') {
                         if (!isGridActive) {
-                            app.castManager?.showPicker();
+                            const castModal = document.getElementById('castModal');
+                            if (castModal && !castModal.classList.contains('hidden') && !castModal.classList.contains('opacity-0')) {
+                                app.castManager?.closeModal();
+                            } else {
+                                app.castManager?.showPicker();
+                            }
                         }
                     } else if (lowKey === 'u') {
                         this.showCenterHeartAnimation();
@@ -659,7 +664,7 @@
 
             this._isHandlingPop = true;
             try {
-                // 1. Close open modals / drawers first (profilePage, mediaInfoModal, libraryModal, etc.)
+                // 1. 优先关闭当前打开的模态弹窗 / 全屏抽屉 (profilePage, mediaInfoModal, libraryModal, etc.)
                 const openModalId = typeof app.getActiveModalId === 'function' ? app.getActiveModalId() : null;
                 if (openModalId) {
                     app.toggleModal(openModalId, false);

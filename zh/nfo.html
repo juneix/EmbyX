@@ -515,9 +515,9 @@ function renderPeopleList(people){
     el.innerHTML='';
     const grid=document.createElement('div');grid.className='person-grid';
     people.forEach((p,i)=>{
-        const imgUrl=p.Name?`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`:'avatar.webp';
+        const imgUrl=p.Name?`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`:'img/avatar.webp';
         const card=document.createElement('div');card.className='person-card';
-        card.innerHTML=`<div class="avatar-wrap"><img class="avatar uploadable" src="${imgUrl}" onerror="this.src='avatar.webp'" onclick="uploadPersonImage(${i})">
+        card.innerHTML=`<div class="avatar-wrap"><img class="avatar uploadable" src="${imgUrl}" onerror="this.src='img/avatar.webp'" onclick="uploadPersonImage(${i})">
             <div class="avatar-upload" onclick="uploadPersonImage(${i})"><i data-lucide="camera" style="width:16px;height:16px;color:#fff"></i></div></div>
             <div class="pname" title="${esc(p.Name)}">${esc(p.Name)}</div>
             <div class="ptype">${esc(cnType(p.Type))}</div>
@@ -550,8 +550,8 @@ async function searchPersons(term,dd){
         if(!items.length){dd.innerHTML='<div class="person-dd-hint">无匹配结果，回车添加</div>';dd.classList.add('show');return}
         items.forEach(p=>{
             const el=document.createElement('div');el.className='person-dd-item';
-            const imgUrl=p.Name?`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`:'avatar.webp';
-            el.innerHTML=`<img class="person-dd-avatar" src="${imgUrl}" onerror="this.src='avatar.webp'">
+            const imgUrl=p.Name?`${C.base}/Persons/${encodeURIComponent(p.Name)}/Images/Primary?api_key=${C.token}`:'img/avatar.webp';
+            el.innerHTML=`<img class="person-dd-avatar" src="${imgUrl}" onerror="this.src='img/avatar.webp'">
                 <span class="person-dd-name">${esc(p.Name)}</span>
                 <span class="person-dd-type">${esc(p.Type||'')}</span>`;
             el.onclick=()=>addPersonFromSearch(p);

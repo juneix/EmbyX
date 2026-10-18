@@ -104,9 +104,29 @@
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
             
-            /* 遥控器与键盘焦点高亮 */
+            /* 遥控器与键盘焦点高亮（tvOS 拟态发光，废除生硬黑缝） */
             .focusable-item:focus {
-                @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-black z-20;
+                @apply outline-none z-20;
+                box-shadow: 0 0 0 2px #52B54B, 0 0 12px rgba(82, 181, 75, 0.45);
+            }
+
+            /* 右侧工具栏无边框图标触控圆形反馈光斑 */
+            #favoriteBtn > div,
+            #addToPlaylistBtn > div,
+            #scaleBtn > div {
+                @apply w-12 h-12 rounded-full flex items-center justify-center transition-colors;
+            }
+            #favoriteBtn:active > div,
+            #addToPlaylistBtn:active > div,
+            #scaleBtn:active > div {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+            @media (hover: hover) {
+                #favoriteBtn:hover > div,
+                #addToPlaylistBtn:hover > div,
+                #scaleBtn:hover > div {
+                    background-color: rgba(255, 255, 255, 0.1);
+                }
             }
 
             /* “我的”页面层级过渡 */
@@ -215,26 +235,26 @@
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-all duration-300 hidden"
                 id="personBtn">
                 <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-white/80 bg-black/40 flex items-center justify-center">
-                    <img id="personAvatar" src="avatar.webp" class="w-full h-full object-cover" onerror="this.src='avatar.webp'"/>
+                    <img id="personAvatar" src="img/avatar.webp" class="w-full h-full object-cover" onerror="this.src='img/avatar.webp'"/>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
                 id="favoriteBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="heart" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
                 id="addToPlaylistBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="star" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="scaleBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="maximize-2" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
@@ -246,7 +266,7 @@
             id="deleteBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
-                <i data-lucide="trash-2" class="stroke-white w-5 h-5 drop-shadow-md"></i>
+                <i data-lucide="trash-2" class="stroke-red-400 text-red-400 w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
 
@@ -314,7 +334,7 @@
         </div>
 
         <div
-            class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/25 backdrop-blur-md border-t border-white/5 z-30 transition-opacity duration-300 pb-2 pt-1">
+            class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/25 backdrop-blur-xl border-t border-white/5 z-30 transition-opacity duration-300 pb-2 pt-1">
             <div class="flex justify-around items-center h-12">
                 <div id="viewModeBtn" class="nav-btn text-gray-400">
                     <i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>
@@ -427,7 +447,7 @@
                             class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
-                                    <img src="icon.png" style="height: 80%; width: 80%; object-fit: cover;">
+                                    <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover;">
                                 </div>
                                 <div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -546,19 +566,19 @@
                                 <div class="grid grid-cols-2 gap-2 mt-3">
                                     <a href="https://space.bilibili.com/765334" target="_blank"
                                         class="flex items-center justify-center text-[#FB7299] bg-[#FB7299]/10 hover:bg-[#FB7299]/20 px-3 h-11 rounded-full transition-colors border border-[#FB7299]/20 text-[10px] whitespace-nowrap active:scale-95">
-                                        <img src="https://cdn.simpleicons.org/bilibili/FB7299"
+                                        <img src="img/bilibili.svg"
                                             class="w-3.5 h-3.5 mr-1.5" alt="Bilibili" /> B 站 · 教程</a>
                                     <a href="https://xhslink.com/m/7JytoZm2Rpl" target="_blank"
                                         class="flex items-center justify-center text-[#FF2442] bg-[#FF2442]/10 hover:bg-[#FF2442]/20 px-3 h-11 rounded-full transition-colors border border-[#FF2442]/20 text-[10px] whitespace-nowrap active:scale-95">
-                                        <img src="https://cdn.simpleicons.org/xiaohongshu/FF2442"
+                                        <img src="img/xiaohongshu.svg"
                                             class="w-3.5 h-3.5 mr-1.5" alt="Xiaohongshu" /> 小红书 · 攻略</a>
                                     <a href="https://qm.qq.com/q/KhRMpYLnGi" target="_blank"
                                         class="flex items-center justify-center text-[#12B7F5] bg-[#12B7F5]/10 hover:bg-[#12B7F5]/20 px-3 h-11 rounded-full transition-colors border border-[#12B7F5]/20 text-[10px] whitespace-nowrap active:scale-95">
-                                        <img src="https://cdn.simpleicons.org/qq/12B7F5" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/qq.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="QQ" /> QQ 群 · 催更</a>
                                     <a href="https://github.com/juneix/EmbyX/blob/main/README_zh.md" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap active:scale-95">
-                                        <img src="https://cdn.simpleicons.org/github/white" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/github.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="GitHub" /> GitHub · 加星</a>
                                 </div>
                             </div>
@@ -568,11 +588,11 @@
                                 <p class="text-gray-400 text-xs font-medium mb-4">☕ 打赏鼓励，支持我开发更多有趣应用～</p>
                                 <div class="flex justify-center gap-6">
                                     <a href="weixin://profile/gh_86f7c0a73738" class="flex flex-col items-center gap-2 flex-1 min-w-0">
-                                        <img src="wechat.webp" alt="微信" class="w-full max-w-[160px] aspect-square rounded-xl object-cover border border-white/10">
+                                        <img src="img/wechat.webp" alt="微信" class="w-full max-w-[160px] aspect-square rounded-xl object-cover border border-white/10">
                                         <span class="text-[10px] text-gray-400/60">微信</span>
                                     </a>
                                     <a href="alipays://platformapi/startapp?saId=10000007&clientVersion=3.7.0.0718&qrcode=https%3A%2F%2Fqr.alipay.com%2Ffkx15248wilbz2ddz96og40" class="flex flex-col items-center gap-2 flex-1 min-w-0">
-                                        <img src="alipay.webp" alt="支付宝" class="w-full max-w-[160px] aspect-square rounded-xl object-cover border border-white/10">
+                                        <img src="img/alipay.webp" alt="支付宝" class="w-full max-w-[160px] aspect-square rounded-xl object-cover border border-white/10">
                                         <span class="text-[10px] text-gray-400/60">支付宝</span>
                                     </a>
                                 </div>
@@ -738,7 +758,7 @@
 
                 // 根据持久化状态同步 UI 图标
                 if (this.dom.scaleBtn) {
-                    this.dom.scaleBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
+                    this.dom.scaleBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
                 }
 
                 // 初始化视图模式按钮图标（默认竖版，显示gallery-vertical）
@@ -1763,7 +1783,7 @@
             // --- 辅助功能 ---
 
             getImageSrc(video) {
-                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, './poster.webp');
+                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'img/poster.webp');
             }
 
             renderLibraryItems(playlistsData, viewsDataRaw) {
@@ -2290,14 +2310,14 @@
 
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = item.UserData?.IsFavorite === true;
-                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    favBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons({ nameAttr: 'data-lucide', nodes: [favBtn] });
 
                     const starBtn = document.getElementById('addToPlaylistBtn');
                     if (starBtn) {
                         const set = this.state.itemPlaylistsMap[String(item.Id)];
                         const inPlaylist = set && set.size > 0;
-                        starBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="star" class="${inPlaylist ? 'text-yellow-400 fill-yellow-400' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                        starBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="star" class="${inPlaylist ? 'text-yellow-400 fill-yellow-400' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                         lucide.createIcons({ nameAttr: 'data-lucide', nodes: [starBtn] });
                     }
                 }
@@ -2551,7 +2571,7 @@
                 });
 
                 const scaleBtn = this.dom.scaleBtn;
-                scaleBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
+                scaleBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
                 lucide.createIcons();
                 if (this.dom.slides) this.renderBuffer();
             }
@@ -2626,7 +2646,7 @@
                     this.toggleFavorite();
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = this.state.favorites.has(String(this.state.videos[this.state.currentIndex]?.Id));
-                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    favBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons();
                     this.showInterfaceTemp();
                 };
@@ -3066,7 +3086,30 @@
             }
 
             // --- 通用辅助 ---
+            closeAllModals(exceptId = null) {
+                const modals = ['syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
+                modals.forEach(id => {
+                    if (id === exceptId) return;
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (id === 'profilePage') {
+                        if (el.classList.contains('active')) {
+                            el.classList.remove('active');
+                            if (this.nav) this.nav.blurModal(el);
+                        }
+                    } else {
+                        if (!el.classList.contains('hidden')) {
+                            el.classList.add('hidden');
+                            if (this.nav) this.nav.blurModal(el);
+                        }
+                    }
+                });
+            }
+
             toggleModal(id, show) {
+                if (show) {
+                    this.closeAllModals(id);
+                }
                 if (!show && this.input && this.input.hasHistoryLayer('modal', id) && !this.input._isHandlingPop) {
                     window.history.back();
                     return;

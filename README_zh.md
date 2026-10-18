@@ -1,6 +1,6 @@
 # 📱 EmbyX
 
-EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉
+EmbyX 是一款专为 Emby / Jellyfin （兼容飞牛影视🔥）打造的 Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉
 
 [![GitHub Release](https://img.shields.io/github/v/release/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/stargazers)
@@ -15,6 +15,7 @@ EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻�
 
 ## ✨ 功能特色
 
+**💡 核心功能**
 - **流式播放**：抖音操作习惯，沉浸式全屏体验
 - **直接播放**：安卓最高支持 8K AV1 不转码
 - **相册视图**：封面墙浏览，支持分页、换一批
@@ -23,14 +24,22 @@ EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻�
 - **PWA 支持**：添加到主屏幕 / 作为应用安装
 - **隐私第一**：数据本地存储，绝不上传云端
 
+**💎 头号玩家**
+- **短剧模式**：支持电视库、文件夹视图，竖屏刷剧
+- **电视投屏**：AirPlay、Chromecast、DLNA 投屏
+- **自动转码**：适配部分老旧设备或外出流量场景
 
-## 💡 快速开始
+
+## 🚀 快速开始
 
 推荐直接访问我的 EmbyX 官方网站，开箱即用：
 - 🌐 **主站点** - [dy.5nav.eu.org](https://dy.5nav.eu.org)
 - ⚡ **镜像站** - [dy.5nav.pp.ua](https://dy.5nav.pp.ua)
 
 喜欢完全控制？你也可以自托管 EmbyX 应用。
+
+> 本仓库开源，你可以自行 Fork 和修改代码，核心功能永久免费。  
+> 💎「头号玩家」可加入预览体验：`短剧模式`、`投屏`、`转码`等探索性功能。
 
 📚 完整使用教程: [谢週五の藏经阁](https://5nav.eu.org)
 
@@ -49,11 +58,11 @@ EmbyX 是一款专为 Emby / Jellyfin 打造的 Web 原生应用，完美复刻�
   <table>
     <tr>
       <td align="center">
-        <img src="./zh/wechat.webp" width="128" /><br/>
+        <img src="./zh/img/wechat.webp" width="128" /><br/>
         <sub>微信</sub>
       </td>
       <td align="center">
-        <img src="./zh/alipay.webp" width="128" /><br/>
+        <img src="./zh/img/alipay.webp" width="128" /><br/>
         <sub>支付宝</sub>
       </td>
     </tr>

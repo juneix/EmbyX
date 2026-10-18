@@ -206,18 +206,18 @@
 
             // 第一项：系统原生投屏（AirPlay / 浏览器原生 Cast）
             const systemItem = document.createElement('div');
-            systemItem.className = `flex items-center justify-between h-[58px] min-h-[58px] max-h-[58px] flex-shrink-0 px-3.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-[0.98] cursor-pointer transition-all border border-white/5 ${isLocked ? 'opacity-50' : ''}`;
+            systemItem.className = `flex items-center justify-between h-[58px] min-h-[58px] max-h-[58px] flex-shrink-0 px-3.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-[0.98] cursor-pointer transition-all border border-white/10 ${isLocked ? 'opacity-50' : ''}`;
             systemItem.innerHTML = `
                 <div class="flex items-center space-x-3 min-w-0">
                     <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white flex-shrink-0">
                         <i data-lucide="cast" class="w-4 h-4"></i>
                     </div>
                     <div class="min-w-0">
-                        <div class="text-white text-sm font-medium truncate">系统原生投屏</div>
-                        <div class="text-gray-400 text-xs truncate">AirPlay / 浏览器投屏</div>
+                        <div class="text-white text-sm font-medium truncate">System Cast</div>
+                        <div class="text-white/60 text-xs truncate">AirPlay / Chromecast</div>
                     </div>
                 </div>
-                <i data-lucide="chevron-right" class="w-4 h-4 ${isLocked ? 'text-gray-600' : 'text-gray-500'} flex-shrink-0"></i>
+                <i data-lucide="chevron-right" class="w-4 h-4 ${isLocked ? 'text-white/30' : 'text-white/40'} flex-shrink-0"></i>
             `;
             systemItem.onclick = () => {
                 this.closeModal();
@@ -237,10 +237,10 @@
                 const isActive = this.isCasting && this.activeSessionId === s.Id;
 
                 const devItem = document.createElement('div');
-                devItem.className = `flex items-center justify-between h-[58px] min-h-[58px] max-h-[58px] flex-shrink-0 px-3.5 rounded-xl ${isActive ? 'bg-primary/20 border-primary/40' : 'bg-white/10 hover:bg-white/15 border-white/5'} ${isLocked ? 'opacity-50' : ''} active:scale-[0.98] cursor-pointer transition-all border`;
+                devItem.className = `flex items-center justify-between h-[58px] min-h-[58px] max-h-[58px] flex-shrink-0 px-3.5 rounded-xl ${isActive ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'} ${isLocked ? 'opacity-50' : ''} active:scale-[0.98] cursor-pointer transition-all border`;
                 
                 const rightHtml = isLocked
-                    ? `<i data-lucide="chevron-right" class="w-4 h-4 text-gray-600 flex-shrink-0"></i>`
+                    ? `<i data-lucide="chevron-right" class="w-4 h-4 text-white/30 flex-shrink-0"></i>`
                     : (isActive ? `<i data-lucide="check" class="w-5 h-5 text-primary flex-shrink-0"></i>` : ``);
 
                 devItem.innerHTML = `
@@ -250,7 +250,7 @@
                         </div>
                         <div class="min-w-0">
                             <div class="text-white text-sm font-medium truncate">${name}</div>
-                            <div class="text-gray-400 text-xs truncate">${client}</div>
+                            <div class="text-white/60 text-xs truncate">${client}</div>
                         </div>
                     </div>
                     ${rightHtml}
@@ -615,6 +615,9 @@
         }
 
         openModal() {
+            if (this.app?.closeAllModals) {
+                this.app.closeAllModals('castModal');
+            }
             if (window.DonateManager) {
                 window.DonateManager.updateUI();
             }

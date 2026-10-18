@@ -335,7 +335,7 @@
     }
 
     // 9. Poster and avatar URL builder
-    function getItemImageUrl(server, item, token, fallback = 'poster.webp') {
+    function getItemImageUrl(server, item, token, fallback = 'img/poster.webp') {
         if (item && item.ImageTags && item.ImageTags.Primary) {
             return fixUrlForJellyfin(`${server}/emby/Items/${item.Id}/Images/Primary?api_key=${token}`);
         }
@@ -343,7 +343,7 @@
     }
 
     function getPersonImageUrl(server, personName) {
-        if (!server || !personName) return 'avatar.webp';
+        if (!server || !personName) return 'img/avatar.webp';
         return fixUrlForJellyfin(`${server}/emby/Persons/${encodeURIComponent(personName)}/Images/Primary`);
     }
 

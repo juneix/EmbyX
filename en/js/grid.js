@@ -34,11 +34,17 @@
 
             if (!safeHeader || !searchBar || !scrollArea) {
                 container.innerHTML = '';
-                container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden flex flex-col';
+                container.className = 'absolute inset-0 z-10 bg-black/40 overflow-hidden';
 
                 bgLayer = document.createElement('div');
                 bgLayer.className = 'bg-poster-layer absolute inset-0 bg-cover bg-center opacity-70 scale-[1.15] blur-xl z-[-1] pointer-events-none';
                 container.appendChild(bgLayer);
+
+                scrollArea = document.createElement('div');
+                scrollArea.id = 'gridScrollArea';
+                scrollArea.className = 'absolute inset-0 overflow-y-auto overflow-x-hidden w-full overscroll-contain z-0';
+                scrollArea.style.WebkitOverflowScrolling = 'touch';
+                container.appendChild(scrollArea);
 
                 safeHeader = document.createElement('div');
                 safeHeader.id = 'gridSafeHeader';
@@ -46,13 +52,7 @@
 
                 searchBar = document.createElement('div');
                 searchBar.id = 'gridSearchBar';
-                container.appendChild(searchBar);
-
-                scrollArea = document.createElement('div');
-                scrollArea.id = 'gridScrollArea';
-                scrollArea.className = 'flex-1 min-h-0 overflow-y-auto overflow-x-hidden relative w-full overscroll-contain';
-                scrollArea.style.WebkitOverflowScrolling = 'touch';
-                container.appendChild(scrollArea);
+                safeHeader.appendChild(searchBar);
 
                 let isDown = false, startY, scrollTop;
                 scrollArea.addEventListener('mousedown', (e) => {
@@ -122,24 +122,27 @@
             const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
             const countStr = totalCount > 999 ? '999+' : String(totalCount);
 
-            safeHeader.className = 'w-full flex items-center gap-2 bg-black/50 backdrop-blur-sm border-b border-gray-800/50 px-3 pb-3';
-            safeHeader.style.paddingTop = 'max(8px, env(safe-area-inset-top, 8px))';
+            safeHeader.className = 'absolute top-0 left-0 right-0 z-20 bg-black/25 backdrop-blur-xl border-b border-white/10 flex flex-col transition-all';
+            safeHeader.style.paddingTop = 'env(safe-area-inset-top, 0px)';
 
             const isSearchActive = !!app.state.searchTerm;
             const hasFolderBack = !!(app.drama && app.drama.folderStack.length > 0);
 
-            safeHeader.innerHTML = `
+            const headerNav = document.createElement('div');
+            headerNav.id = 'gridHeaderNav';
+            headerNav.className = 'flex items-center gap-2 px-3 h-[60px] w-full';
+            headerNav.innerHTML = `
                 ${hasFolderBack ? `
-                    <button id="gridFolderBackBtn" title="返回上一级" class="p-1 -ml-1 text-gray-300 hover:text-white active:scale-90 transition-transform">
+                    <button id="gridFolderBackBtn" title="返回上一级" class="p-1 -ml-1 text-gray-300 hover:text-white active:scale-90 transition-transform flex items-center justify-center">
                         <i data-lucide="chevron-left" class="w-5 h-5"></i>
                     </button>
                 ` : ''}
-                <span class="text-sm font-bold text-gray-200 truncate max-w-[40%]">${libraryName}</span>
+                <span class="text-sm font-bold text-gray-200 truncate max-w-[40%] flex items-center">${libraryName}</span>
                 <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                     ${countStr}
                     ${!app.config.shortDrama ? `
                     <span class="w-1.5"></span>
-                    <button id="gridShuffleBtn" title="Shuffle" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20">
+                    <button id="gridShuffleBtn" title="Shuffle" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20 flex items-center justify-center">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
                     </button>
                     ` : ''}
@@ -149,10 +152,14 @@
                     class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-gray-400 hover:text-white'}">
                     <i data-lucide="folder-search" class="w-4 h-4"></i>
                 </button>
-                <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
-                <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
-                <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
+                <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
+                <span class="text-xs font-bold text-white tabular-nums flex items-center">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
+                <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
             `;
+
+            safeHeader.innerHTML = '';
+            safeHeader.appendChild(headerNav);
+            safeHeader.appendChild(searchBar);
 
             if (hasFolderBack) {
                 const backBtn = document.getElementById('gridFolderBackBtn');
@@ -164,7 +171,7 @@
                 }
             }
 
-            searchBar.className = `w-full bg-black/50 border-b border-gray-800/50 px-3 py-2 ${app.state.searchTerm ? '' : 'hidden'}`;
+            searchBar.className = `w-full px-3 pb-2.5 pt-0.5 ${app.state.searchTerm ? '' : 'hidden'}`;
             if (!searchBar.innerHTML) {
                 searchBar.innerHTML = `
                     <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
@@ -176,6 +183,11 @@
                     </div>
                 `;
             }
+
+            scrollArea.style.paddingTop = isSearchActive ?
+                'calc(7.25rem + env(safe-area-inset-top, 0px))' :
+                'calc(3.75rem + env(safe-area-inset-top, 0px))';
+            scrollArea.style.paddingBottom = 'calc(4.5rem + env(safe-area-inset-bottom, 0px))';
 
             const shuffleBtn = document.getElementById('gridShuffleBtn');
             if (shuffleBtn) {
@@ -430,6 +442,11 @@
                         const bar = document.getElementById('gridSearchBar');
                         if (bar) {
                             bar.classList.toggle('hidden');
+                            if (scrollArea) {
+                                scrollArea.style.paddingTop = bar.classList.contains('hidden') ?
+                                    'calc(3.75rem + env(safe-area-inset-top, 0px))' :
+                                    'calc(7.25rem + env(safe-area-inset-top, 0px))';
+                            }
                             if (!bar.classList.contains('hidden')) {
                                 document.getElementById('gridSearchInput')?.focus();
                             }

@@ -118,9 +118,32 @@
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
             
-            /* 遥控器与键盘焦点高亮 */
+            /* 遥控器与键盘焦点高亮（tvOS 拟态发光，废除生硬黑缝） */
             .focusable-item:focus {
-                @apply outline-none ring-2 ring-primary ring-offset-2 ring-offset-black z-20;
+                @apply outline-none z-20;
+                box-shadow: 0 0 0 2px #52B54B, 0 0 12px rgba(82, 181, 75, 0.45);
+            }
+
+            /* 右侧工具栏无边框图标触控圆形反馈光斑 */
+            #favoriteBtn > div,
+            #addToPlaylistBtn > div,
+            #scaleBtn > div,
+            #muteBtn > div {
+                @apply w-12 h-12 rounded-full flex items-center justify-center transition-colors;
+            }
+            #favoriteBtn:active > div,
+            #addToPlaylistBtn:active > div,
+            #scaleBtn:active > div,
+            #muteBtn:active > div {
+                background-color: rgba(255, 255, 255, 0.2);
+            }
+            @media (hover: hover) {
+                #favoriteBtn:hover > div,
+                #addToPlaylistBtn:hover > div,
+                #scaleBtn:hover > div,
+                #muteBtn:hover > div {
+                    background-color: rgba(255, 255, 255, 0.1);
+                }
             }
 
             /* “我的”页面层级过渡 */
@@ -250,32 +273,32 @@
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-all duration-300 hidden"
                 id="personBtn">
                 <div class="w-12 h-12 rounded-full overflow-hidden border-2 border-white/80 bg-black/40 flex items-center justify-center">
-                    <img id="personAvatar" src="avatar.webp" class="w-full h-full object-cover" onerror="this.src='avatar.webp'"/>
+                    <img id="personAvatar" src="img/avatar.webp" class="w-full h-full object-cover" onerror="this.src='img/avatar.webp'"/>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
                 id="favoriteBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="heart" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform"
                 id="addToPlaylistBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="star" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="scaleBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="maximize-2" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
 
             <div class="flex flex-col items-center cursor-pointer active:scale-90 transition-transform" id="muteBtn">
-                <div class="w-12 h-12 flex items-center justify-center">
+                <div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors">
                     <i data-lucide="volume-2" class="stroke-white w-6 h-6 drop-shadow-md"></i>
                 </div>
             </div>
@@ -287,7 +310,7 @@
             id="deleteBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
-                <i data-lucide="trash-2" class="stroke-white w-5 h-5 drop-shadow-md"></i>
+                <i data-lucide="trash-2" class="stroke-red-400 text-red-400 w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
 
@@ -311,16 +334,19 @@
 
         <!-- Cast设备选择卡片（EmbyX 统一规范底部悬浮卡片） -->
         <div id="castModal"
-            class="fixed inset-0 z-50 flex items-end justify-center bg-black/40 hidden backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
+            class="fixed inset-0 z-50 flex items-end justify-center hidden transition-opacity duration-200 opacity-0 pointer-events-none">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
             <div id="castModalCard"
-                class="bg-black/60 border border-gray-700/50 shadow-2xl backdrop-blur-md rounded-2xl p-4 w-[92%] max-w-sm mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col transform transition-all duration-200 ease-out translate-y-4 opacity-0">
+                class="relative z-10 bg-black/25 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md rounded-2xl p-4 w-[92%] max-w-sm mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col transform transition-all duration-200 ease-out translate-y-4 opacity-0">
                 
                 <!-- 顶部极简应用头部 -->
-                <div class="flex items-center space-x-2.5 mb-3 pb-3 border-b border-gray-700/50 flex-shrink-0">
-                    <img src="icon.png" alt="EmbyX" class="w-7 h-7 rounded-lg shadow-sm flex-shrink-0">
+                <div class="flex items-center space-x-2.5 mb-3 pb-3 border-b border-white/10 flex-shrink-0">
+                    <img src="img/icon.png" alt="EmbyX" class="w-7 h-7 rounded-lg shadow-sm flex-shrink-0">
                     <h3 class="text-white text-base font-bold flex-1 truncate">Select Playback Device</h3>
                     <button id="castModalEasterEggBtn" onclick="window.app?.castManager ? window.app.castManager.handleEasterEggClick() : window.DonateManager?.showDonateModal()"
-                        class="px-3.5 py-1.5 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] text-xs text-primary backdrop-blur-xl transition-all flex items-center space-x-1.5 flex-shrink-0 focusable-item">
+                        class="px-3.5 py-1.5 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] text-xs text-primary backdrop-blur-xl transition-all flex items-center space-x-1.5 flex-shrink-0 focusable-item">
                         <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i>
                         <span>Bonus Space</span>
                     </button>
@@ -334,24 +360,27 @@
 
         <!-- Player One说明与兑换一体化弹窗 -->
         <div id="donateModal"
-            class="fixed inset-0 z-[80] flex items-center justify-center bg-black/60 hidden backdrop-blur-sm transition-opacity duration-200 opacity-0 pointer-events-none">
-            <div class="bg-black/75 border border-gray-700/60 shadow-2xl backdrop-blur-md rounded-2xl p-6 w-[90%] max-w-sm flex flex-col text-center">
+            class="fixed inset-0 z-[80] flex items-center justify-center hidden transition-opacity duration-200 opacity-0 pointer-events-none">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
+            <div class="relative z-10 bg-black/25 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md rounded-2xl p-6 w-[90%] max-w-sm flex flex-col text-center">
                 <div class="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-3 border border-amber-500/20">
                     <i data-lucide="flask-conical" class="stroke-amber-400 w-6 h-6"></i>
                 </div>
                 <h3 id="donateModalTitle" class="text-lg font-bold text-white mb-1">EmbyX Lab</h3>
-                <p id="donateModalDesc" class="text-xs text-gray-400 mb-4 leading-relaxed">
+                <p id="donateModalDesc" class="text-xs text-gray-300 mb-4 leading-relaxed">
                     Player One Preview: Short drama mode, casting, transcoding & experimental features<br>
-                    <span class="text-amber-300 font-medium">🧋 Buy me a milk tea (¥9.9) & become Player One!</span>
+                    <span class="text-amber-300 font-medium">☕️ Buy me a coffee ($2.99) & become Player One!</span>
                 </p>
                 
                 <div class="flex justify-center gap-4 mb-4">
                     <div class="flex flex-col items-center gap-1.5 flex-1">
-                        <img src="wechat.webp" alt="WeChat Pay" class="w-full aspect-square rounded-xl object-cover border border-white/10">
+                        <img src="img/wechat.webp" alt="WeChat Pay" class="w-full aspect-square rounded-xl object-cover border border-white/10">
                         <span class="text-[10px] text-gray-400">WeChat Pay</span>
                     </div>
                     <div class="flex flex-col items-center gap-1.5 flex-1">
-                        <img src="alipay.webp" alt="Alipay" class="w-full aspect-square rounded-xl object-cover border border-white/10">
+                        <img src="img/alipay.webp" alt="Alipay" class="w-full aspect-square rounded-xl object-cover border border-white/10">
                         <span class="text-[10px] text-gray-400">Alipay</span>
                     </div>
                 </div>
@@ -359,8 +388,8 @@
                 <!-- 激活码输入区域 -->
                 <div class="mb-3">
                     <div class="relative flex items-center">
-                        <input type="text" id="donateCodeInput" placeholder="Enter 8-digit activation code"
-                               class="w-full h-10 bg-gray-900/90 text-white font-mono text-sm tracking-wider rounded-lg pl-3 pr-20 outline-none border border-gray-700 focus:border-amber-400 transition-colors uppercase">
+                        <input type="text" id="donateCodeInput" placeholder="activation code"
+                               class="w-full h-10 bg-black/40 text-white font-mono text-sm tracking-wider rounded-lg pl-3 pr-20 outline-none border border-white/10 focus:border-amber-400 transition-colors uppercase">
                         <button id="submitDonateCodeBtn" onclick="window.DonateManager?.verifySecretCode(document.getElementById('donateCodeInput').value)"
                                 class="absolute right-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-md text-xs font-bold active:scale-95 transition-all shadow">
                             Confirm
@@ -372,48 +401,54 @@
                 <p class="text-[11px] text-gray-400 mb-4">Thanks to every Player One supporting indie dev & open source 🩷</p>
 
                 <button onclick="window.DonateManager?.hideDonateModal()"
-                    class="w-full bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded-lg text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+                    class="w-full bg-white/10 border border-white/10 text-gray-200 py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
 
         <div id="mediaInfoModal"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-50 flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
             <div
-                class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm max-h-[80vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                class="relative z-10 bg-black/25 rounded-2xl p-6 w-[85%] max-w-sm max-h-[80vh] overflow-y-auto border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <div class="relative flex items-center justify-center mb-4 min-h-[32px]">
-                    <button id="mediaInfoPrevVerBtn" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-all hidden absolute left-0" title="Previous Version">
+                    <button id="mediaInfoPrevVerBtn" class="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white active:scale-90 transition-all hidden absolute left-0" title="Previous Version">
                         <i data-lucide="chevron-left" class="w-6 h-6"></i>
                     </button>
                     <h3 id="mediaInfoTitle" class="text-white text-lg font-bold text-center">
                         Media Info
                     </h3>
-                    <button id="mediaInfoNextVerBtn" class="w-8 h-8 flex items-center justify-center text-gray-400 hover:text-white active:scale-90 transition-all hidden absolute right-0" title="Next Version">
+                    <button id="mediaInfoNextVerBtn" class="w-8 h-8 flex items-center justify-center text-gray-300 hover:text-white active:scale-90 transition-all hidden absolute right-0" title="Next Version">
                         <i data-lucide="chevron-right" class="w-6 h-6"></i>
                     </button>
                 </div>
-                <div id="mediaInfoContent" class="text-sm text-gray-300">
+                <div id="mediaInfoContent" class="text-sm text-gray-200">
                     <div class="flex justify-center py-4"><i data-lucide="loader-2"
-                             class="w-6 h-6 animate-spin text-gray-500"></i></div>
+                             class="w-6 h-6 animate-spin text-gray-400"></i></div>
                 </div>
                 <button id="closeMediaInfoBtn"
-                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
         <div id="syncConfirmModal"
-            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-[60] flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
             <div
-                class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm border border-gray-700/50 shadow-2xl backdrop-blur-sm text-center">
+                class="relative z-10 bg-black/25 rounded-2xl p-6 w-[85%] max-w-sm border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md text-center">
                 <div
                     class="w-14 h-14 bg-primary/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-primary/20">
                     <i data-lucide="refresh-cw" class="stroke-primary w-6 h-6"></i>
                 </div>
                 <h3 class="text-xl font-bold text-white mb-2">Sync Progress</h3>
-                <p id="syncFileName" class="text-gray-400 text-sm mb-6 leading-relaxed"></p>
+                <p id="syncFileName" class="text-gray-300 text-sm mb-6 leading-relaxed"></p>
                 <div class="flex space-x-3">
                     <button id="cancelSyncBtn"
-                        class="flex-1 px-4 py-2.5 rounded-xl bg-gray-800 text-gray-300 font-medium active:scale-95 transition-all">Ignore</button>
+                        class="flex-1 px-4 py-2.5 rounded-xl bg-white/10 border border-white/10 text-gray-200 font-medium hover:bg-white/20 active:scale-95 transition-all">Ignore</button>
                     <button id="confirmSyncBtn"
                         class="flex-1 px-4 py-2.5 rounded-xl bg-primary text-white font-medium active:scale-95 transition-all">Sync</button>
                 </div>
@@ -421,23 +456,26 @@
         </div>
 
         <div id="deleteConfirmModal"
-            class="fixed inset-0 z-[60] flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-[60] flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
             <div
-                class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm border border-gray-700/50 shadow-2xl backdrop-blur-sm text-center">
+                class="relative z-10 bg-black/25 rounded-2xl p-6 w-[85%] max-w-sm border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md text-center">
                 <div
                     class="w-14 h-14 bg-secondary/10 rounded-full flex items-center justify-center mx-auto mb-4 border border-secondary/20">
                     <i data-lucide="trash-2" class="text-secondary w-7 h-7"></i>
                 </div>
                 <h3 class="text-white text-lg font-bold mb-2">Delete Media</h3>
                 <p class="text-secondary text-xs font-semibold px-4 mb-4 leading-relaxed">⚠️ Warning: This will permanently delete the source file from Emby!</p>
-                <div class="bg-gray-800/40 rounded-lg p-3 mb-6 border border-gray-700/30">
+                <div class="bg-black/20 rounded-xl p-3 mb-6 border border-white/10">
                     <p id="deleteFileName" class="text-gray-300 text-xs break-all opacity-80"></p>
                 </div>
                 <div class="flex space-x-3">
                     <button id="cancelDeleteBtn"
-                        class="flex-1 bg-gray-800/80 border border-gray-700/50 text-gray-300 py-2.5 rounded-lg font-medium active:scale-95 transition-all">Cancel</button>
+                        class="flex-1 bg-white/10 border border-white/10 text-gray-200 py-2.5 rounded-xl font-medium hover:bg-white/20 active:scale-95 transition-all">Cancel</button>
                     <button id="confirmDeleteBtn"
-                        class="flex-1 bg-secondary text-white py-2.5 rounded-lg font-bold active:opacity-90 shadow-lg shadow-secondary/20 transition-all">Delete</button>
+                        class="flex-1 bg-secondary text-white py-2.5 rounded-xl font-bold active:opacity-90 shadow-lg shadow-secondary/20 transition-all">Delete</button>
                 </div>
             </div>
         </div>
@@ -479,7 +517,7 @@
         </div>
 
         <div
-            class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/25 backdrop-blur-md border-t border-white/5 z-30 transition-opacity duration-300 pb-2 pt-1">
+            class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/25 backdrop-blur-xl border-t border-white/5 z-30 transition-opacity duration-300 pb-2 pt-1">
             <div class="flex justify-around items-center h-12">
                 <div id="viewModeBtn" class="nav-btn text-gray-400">
                     <i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>
@@ -521,43 +559,120 @@
                             <i data-lucide="server" class="w-4 h-4 mr-2"></i>Server Settings
                         </h2>
                         <!-- 飞牛网关一键授权登录（仅在检测到飞牛统一网关时动态展示） -->
-                        <div id="fnosOAuthBox" class="hidden mb-4 p-4 rounded-lg border border-primary/40 bg-primary/10 transition-all">
+                        <div id="fnosOAuthBox" class="relative z-30 hidden mb-4 p-5 rounded-2xl border border-primary/30 bg-primary/10 backdrop-blur-md transition-all shadow-lg">
                             <div class="flex items-center space-x-2 mb-3">
-                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse"></span>
-                                <span id="fnosOAuthTitle" class="text-sm font-bold text-white">fnOS Video Detected</span>
+                                <span class="w-2 h-2 rounded-full bg-primary animate-pulse flex-shrink-0"></span>
+                                <span id="fnosOAuthTitle" class="text-sm font-bold text-white truncate">fnOS Video Detected</span>
+                                <button type="button" id="fnosHelpBtn" title="fnOS User Notice"
+                                    class="text-gray-400 hover:text-primary active:text-primary transition-colors focus:outline-none p-0.5 rounded focusable-item flex items-center justify-center flex-shrink-0">
+                                    <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                </button>
                             </div>
                             <button id="fnosOAuthBtn" type="button"
                                 class="w-full h-11 flex items-center justify-center bg-primary hover:bg-primary/90 text-white text-sm rounded-lg font-bold active:scale-95 shadow-lg shadow-primary/20 transition-all focusable-item">
                                 <i data-lucide="log-in" class="w-4 h-4 mr-2"></i>Log in with NAS Account
                             </button>
+
+                            <!-- fnOS User Notice Tooltip 弹窗 -->
+                            <div id="fnosHelpTooltip"
+                                class="hidden absolute top-12 left-5 right-5 z-40 bg-gray-800/70 backdrop-blur-2xl border border-white/15 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_16px_32px_rgba(0,0,0,0.7)] space-y-2.5">
+                                <div class="flex items-center justify-between pb-2 border-b border-white/10">
+                                    <div class="flex items-center space-x-1.5 text-yellow-500 text-xs font-bold">
+                                        <span>⚠️ fnOS User Notice</span>
+                                    </div>
+                                    <button type="button" id="closeFnosHelpBtn"
+                                        class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                        title="Close">
+                                        <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
+                                <p class="text-xs text-gray-300 leading-relaxed">
+                                    The built-in Webview in fnOS App has issues causing stutter and failing to swipe up/down to switch videos.
+                                </p>
+                                <div class="space-y-1.5 pt-1 text-xs">
+                                    <div class="bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                        <div class="font-bold text-primary mb-0.5">PWA App</div>
+                                        <div class="text-[11px] text-gray-400">All platforms: Android, iOS, HarmonyOS, Win, Mac, Linux</div>
+                                        <div class="text-[11px] text-gray-300 font-mono mt-0.5 select-all">Open NAS-IP:8090 in browser, add to home screen</div>
+                                    </div>
+                                    <div class="bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                        <div class="font-bold text-primary mb-0.5">Standalone Client</div>
+                                        <div class="text-[11px] text-gray-300">Android users can download and install EmbyX.apk</div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
-                            <div>
-                                <label class="text-gray-400 text-xs block mb-1.5">Auto-complete IP or Domain</label>
+                        <div class="space-y-4 bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md">
+                            <div class="relative">
+                                <div class="flex items-center space-x-1.5 mb-1.5">
+                                    <label class="text-gray-400 text-xs">IP or Domain</label>
+                                    <button type="button" id="serverHelpBtn" title="Address Format Examples"
+                                        class="text-gray-400 hover:text-primary active:text-primary transition-colors focus:outline-none p-0.5 rounded focusable-item flex items-center justify-center">
+                                        <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
                                 <input type="text" id="configServer" placeholder="Emby / Jellyfin / fnOS supported"
-                                    class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
+                                    class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
+
+                                <!-- 服务器地址Address Format Examples Tooltip 弹窗 -->
+                                <div id="serverHelpTooltip"
+                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-gray-800/70 backdrop-blur-2xl border border-white/15 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_16px_32px_rgba(0,0,0,0.7)] space-y-2">
+                                    <div class="flex items-center justify-between pb-2 border-b border-white/10">
+                                        <div class="flex items-center space-x-1.5 text-primary text-xs font-bold">
+                                            <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                                            <span>Address Format Examples</span>
+                                        </div>
+                                        <button type="button" id="closeServerHelpBtn"
+                                            class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                            title="Close">
+                                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                    <ul class="space-y-1.5 text-xs">
+                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-300 select-all">
+                                            <span class="text-white">10.1.1.3</span>
+                                            <span class="text-[11px] text-gray-400 font-sans ml-2"> (Default port 8096/8090)</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                            <span>10.1.1.3:8096</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                            <span>http://10.1.1.3:8096</span>
+                                        </li>
+                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-300 select-all">
+                                            <span class="text-white">5nav.eu.org</span>
+                                            <span class="text-[11px] text-gray-400 font-sans ml-2"> (Default port 443)</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                            <span>https://5nav.eu.org</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                            <span>https://5nav.eu.org:8099</span>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-gray-400 text-xs block mb-1.5">Username</label>
-                                    <input type="text" id="configUser" placeholder="Support Us"
-                                        class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
+                                    <input type="text" id="configUser" placeholder="Spread the word"
+                                        class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
                                 </div>
                                 <div>
                                     <label class="text-gray-400 text-xs block mb-1.5">Password</label>
-                                    <input type="password" id="configPwd" placeholder="Donate"
-                                        class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
+                                    <input type="password" id="configPwd" placeholder="Support Me"
+                                        class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
                                 </div>
                             </div>
                             <div id="rowPlayQuality"
-                                class="relative flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all">
+                                class="relative flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all">
                                 <label for="configPlayQuality"
                                     class="text-gray-300 text-sm cursor-pointer flex-1 flex items-center">
                                     <span>Playback Quality</span>
                                     <i id="playQualityLockIcon" data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary ml-1.5 hidden"></i>
                                 </label>
                                 <select id="configPlayQuality"
-                                    class="focusable-item bg-gray-900 text-white text-xs rounded px-2.5 py-1.5 outline-none border border-gray-700 focus:border-primary transition-colors cursor-pointer">
+                                    class="focusable-item bg-black/50 text-white text-xs rounded-lg px-2.5 py-1.5 outline-none border border-white/10 focus:border-primary transition-colors cursor-pointer">
                                     <option value="direct">Direct Play</option>
                                     <option value="auto">Auto Transcode</option>
                                     <option value="1080p">1080P - 8Mbps</option>
@@ -566,16 +681,16 @@
                                 <div id="playQualityLockMask" class="absolute inset-0 z-10 cursor-pointer hidden"></div>
                             </div>
                             <div id="rowAutoplay" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configAutoplay').click();">
-                                <label for="configAutoplay" class="text-gray-300 text-sm cursor-pointer flex-1">Autoplay
+                                <label for="configAutoplay" class="text-gray-300 text-sm cursor-pointer flex-1">Autoplay Next
                                 </label>
                                 <input type="checkbox" id="configAutoplay"
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none"
                                     checked>
                             </div>
                             <div id="rowShortDrama" tabindex="0"
-                                class="relative focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="relative focusable-item flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configShortDrama').click();">
                                 <label for="configShortDrama" class="text-gray-300 text-sm cursor-pointer flex-1 flex items-center">
                                     <span>Short Drama Mode</span>
@@ -586,7 +701,7 @@
                                 <div id="shortDramaLockMask" class="absolute inset-0 z-10 cursor-pointer hidden"></div>
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configDeleteMode').click();">
                                 <label for="configDeleteMode"
                                     class="text-yellow-500/90 text-sm cursor-pointer flex-1 font-medium">Allow Delete Media ⚠️
@@ -603,20 +718,19 @@
                         </div>
                     </div>
 
-                    <div class="border-t border-dashed border-gray-600 w-full mt-5 mb-5">
+                    <div class="border-t border-dashed border-gray-600/70 w-full my-6">
                     </div>
-
 
                     <div>
                         <h2 class="text-primary font-bold text-sm mb-5 flex items-center">
                             <i data-lucide="badge-info" class="w-4 h-4 mr-2"></i>About
                         </h2>
                         <div
-                            class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
+                            class="bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div id="profileAppIconBox"
                                      style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
-                                    <img src="icon.png" style="height: 80%; width: 80%; object-fit: cover;">
+                                    <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover;">
                                 </div>
                                 <div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -633,9 +747,8 @@
                             </div>
 
                             <div>
-                                <p class="text-gray-300">👋 Hi~ I'm<a href="https://juneix.github.io" target="_blank"
-                                        class="text-primary hover:underline">@Juneix</a>，<b>EmbyX</b> 是一款专为 Emby / Jellyfin（兼容飞牛影视🔥）打造的
-                                    Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人Libraries焕发全新的刷片体验。🎉</p>
+                                <p class="text-gray-300">👋 Hi~ I'm <a href="https://juneix.github.io" target="_blank"
+                                        class="text-primary hover:underline">@Juneix</a>，<b>EmbyX</b> is a TikTok-style web player for Emby / Jellyfin and FygoOS. Experience your private media library in a whole new, immersive way.🎉</p>
                             </div>
 
                             <div
@@ -741,19 +854,19 @@
                                 <div class="grid grid-cols-2 md:grid-cols-4 gap-2 mt-4">
                                     <a href="https://x.com/juneix_tse" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/x/white" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/x.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="X" /> Twitter • Follow</a>
                                     <a href="https://t.me/juneix_en" target="_blank"
                                         class="flex items-center justify-center text-[#26A5E4] bg-[#26A5E4]/10 hover:bg-[#26A5E4]/20 px-3 h-11 rounded-full transition-colors border border-[#26A5E4]/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/telegram/26A5E4"
+                                        <img src="img/telegram.svg"
                                             class="w-3.5 h-3.5 mr-1.5" alt="Telegram" /> Telegram • Channel</a>
                                     <a href="https://ko-fi.com/juneixtse" target="_blank"
                                         class="flex items-center justify-center text-[#FF6433] bg-[#FF5E5B]/10 hover:bg-[#FF5E5B]/20 px-3 h-11 rounded-full transition-colors border border-[#FF5E5B]/20 text-[10px] whitespace-nowrap">
-                                        <img src="https://cdn.simpleicons.org/kofi/FF6433" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/kofi.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="Ko-fi" /> Ko-fi • Support</a>
                                     <a href="https://github.com/juneix/embyx" target="_blank"
                                         class="flex items-center justify-center text-white bg-white/10 hover:bg-white/20 px-3 h-11 rounded-full transition-colors border border-white/20 text-[10px] whitespace-nowrap active:scale-95">
-                                        <img src="https://cdn.simpleicons.org/github/white" class="w-3.5 h-3.5 mr-1.5"
+                                        <img src="img/github.svg" class="w-3.5 h-3.5 mr-1.5"
                                             alt="GitHub" /> GitHub • Stars</a>
                                 </div>
                             </div>
@@ -771,20 +884,26 @@
         </div>
 
         <div id="libraryModal"
-            class="fixed inset-0 bg-black/20 z-50 flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-50 flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
             <div
-                class="bg-black/50 rounded-xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                class="relative z-10 bg-black/25 rounded-2xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <h3 class="text-white text-lg font-bold mb-4 text-center">Select Library</h3>
                 <div id="librariesList" class="grid grid-cols-2 gap-2"></div>
                 <button id="closeLibraryBtn"
-                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
         <div id="addToPlaylistModal"
-            class="fixed inset-0 bg-black/20 z-50 flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-50 flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- 图层 1：Fullscreen独立背景遮罩 -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- 图层 2：浮动卡片 -->
             <div
-                class="bg-black/50 rounded-xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                class="relative z-10 bg-black/25 rounded-2xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <div class="relative flex items-center justify-center mb-4 min-h-[2rem]">
                     <h3 class="text-white text-lg font-bold text-center">Playlists</h3>
                     <button id="modalCreatePlaylistBtn" title="Create Playlist" class="focusable-item absolute right-0 p-1 rounded-full text-primary hover:bg-primary/20 active:scale-95 transition-all">
@@ -793,7 +912,7 @@
                 </div>
                 <div id="playlistAddList" class="grid grid-cols-2 gap-2"></div>
                 <button id="closeAddToPlaylistBtn"
-                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
@@ -958,10 +1077,10 @@
                 if (this.dom.muteBtn) {
                     const iconName = this.state.isMuted ? 'volume-x' : 'volume-2';
                     const iconColor = this.state.isMuted ? 'text-secondary' : 'stroke-white';
-                    this.dom.muteBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${iconName}" class="${iconColor} w-6 h-6 drop-shadow-md"></i></div>`;
+                    this.dom.muteBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${iconName}" class="${iconColor} w-6 h-6 drop-shadow-md"></i></div>`;
                 }
                 if (this.dom.scaleBtn) {
-                    this.dom.scaleBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
+                    this.dom.scaleBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
                 }
 
                 // 初始化视图模式按钮图标
@@ -1346,7 +1465,7 @@
                 if (muteIcon) {
                     const iconName = this.state.isMuted ? 'volume-x' : 'volume-2';
                     const iconColor = this.state.isMuted ? 'text-secondary' : 'stroke-white';
-                    this.dom.muteBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${iconName}" class="${iconColor} w-6 h-6 drop-shadow-md"></i></div>`;
+                    this.dom.muteBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${iconName}" class="${iconColor} w-6 h-6 drop-shadow-md"></i></div>`;
                     if (typeof lucide !== 'undefined' && lucide.createIcons) {
                         lucide.createIcons({ nameAttr: 'data-lucide', attrs: {}, nodes: [this.dom.muteBtn] });
                     }
@@ -1557,7 +1676,7 @@
             }
 
             getImageSrc(video) {
-                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'poster.webp');
+                return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'img/poster.webp');
             }
 
             // ═══ UI 组件 ═══
@@ -1572,7 +1691,7 @@
                 const favDiv = document.createElement('div');
                 const isFavSelected = this.state.currentLibraryId === 'favorites';
                 favDiv.setAttribute('tabindex', '0');
-                favDiv.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                favDiv.className = `focusable-item col-span-1 p-2.5 rounded-xl cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/40' : 'bg-white/10 text-gray-200 hover:bg-white/15 border border-white/5'}`;
                 favDiv.innerHTML = `<i data-lucide="${isFavSelected ? 'check-circle' : 'folder-heart'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">Favorites</span>`;
                 favDiv.onclick = () => {
                     this.state.currentPerson = null;
@@ -1595,7 +1714,7 @@
 
                 if (playlistsData && playlistsData.Items && playlistsData.Items.length > 0) {
                     const headerPl = document.createElement('div');
-                    headerPl.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
+                    headerPl.className = 'col-span-2 text-xs text-gray-400 mt-2 mb-1 pl-1 font-medium';
                     headerPl.textContent = 'Playlists';
                     list.appendChild(headerPl);
 
@@ -1603,7 +1722,7 @@
                         const div = document.createElement('div');
                         const isSelected = pl.Id === this.state.currentLibraryId;
                         div.setAttribute('tabindex', '0');
-                        div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                        div.className = `focusable-item col-span-1 p-2.5 rounded-xl cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/40' : 'bg-white/10 text-gray-200 hover:bg-white/15 border border-white/5'}`;
                         div.innerHTML = `<i data-lucide="${isSelected ? 'check-circle' : 'list-video'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>`;
                         // pl.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = pl.Name;
@@ -1639,7 +1758,7 @@
 
                 if (filteredViews && filteredViews.length > 0) {
                     const headerLib = document.createElement('div');
-                    headerLib.className = 'col-span-2 text-xs text-gray-500 mt-2 mb-1 pl-1';
+                    headerLib.className = 'col-span-2 text-xs text-gray-400 mt-2 mb-1 pl-1 font-medium';
                     headerLib.textContent = 'Libraries';
                     list.appendChild(headerLib);
 
@@ -1655,7 +1774,7 @@
                         }
 
                         div.setAttribute('tabindex', '0');
-                        div.className = `focusable-item col-span-1 p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/50' : 'bg-white/10 text-gray-300 hover:bg-white/20'}`;
+                        div.className = `focusable-item col-span-1 p-2.5 rounded-xl cursor-pointer text-sm flex items-center gap-2 ${isSelected ? 'bg-primary/20 text-primary font-bold border border-primary/40' : 'bg-white/10 text-gray-200 hover:bg-white/15 border border-white/5'}`;
                         div.innerHTML = `<i data-lucide="${iconName}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate"></span>`;
                         // lib.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = lib.Name;
@@ -1842,12 +1961,12 @@
 
                         const div = document.createElement('div');
                         div.setAttribute('tabindex', '0');
-                        div.className = `focusable-item p-2.5 rounded cursor-pointer text-sm flex items-center gap-2 transition-all active:scale-95 ${
+                        div.className = `focusable-item p-2.5 rounded-xl cursor-pointer text-sm flex items-center gap-2 transition-all active:scale-95 ${
                             isContained 
                                 ? 'bg-primary/20 text-primary font-bold border border-primary/40' 
                                 : isLastSelected
-                                    ? 'bg-white/20 text-white border border-primary/40'
-                                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                                    ? 'bg-white/15 text-white border border-primary/40'
+                                    : 'bg-white/10 text-gray-200 hover:bg-white/15 border border-white/5'
                         }`;
                         
                         div.innerHTML = `
@@ -2065,14 +2184,14 @@
 
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = item.UserData?.IsFavorite === true;
-                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    favBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons({ nameAttr: 'data-lucide', nodes: [favBtn] });
 
                     const starBtn = document.getElementById('addToPlaylistBtn');
                     if (starBtn) {
                         const set = this.state.itemPlaylistsMap[String(item.Id)];
                         const inPlaylist = set && set.size > 0;
-                        starBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="star" class="${inPlaylist ? 'text-yellow-400 fill-yellow-400' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                        starBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="star" class="${inPlaylist ? 'text-yellow-400 fill-yellow-400' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                         lucide.createIcons({ nameAttr: 'data-lucide', nodes: [starBtn] });
                     }
                 }
@@ -2383,7 +2502,7 @@
                 });
 
                 const scaleBtn = this.dom.scaleBtn;
-                scaleBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
+                scaleBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${this.state.isScaleFill ? 'maximize-2' : 'minimize-2'}" class="stroke-white w-6 h-6 drop-shadow-md"></i></div>`;
                 lucide.createIcons();
             }
 
@@ -2407,7 +2526,7 @@
                     this.toggleFavorite();
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = this.state.favorites.has(String(this.state.videos[this.state.currentIndex]?.Id));
-                    favBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    favBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="heart" class="${isFav ? 'text-secondary fill-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons();
                     this.showInterfaceTemp();
                 };
@@ -2526,7 +2645,7 @@
                     }
 
                     const muteBtn = this.dom.muteBtn;
-                    muteBtn.innerHTML = `<div class="w-12 h-12 flex items-center justify-center"><i data-lucide="${this.state.isMuted ? 'volume-x' : 'volume-2'}" class="${this.state.isMuted ? 'text-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
+                    muteBtn.innerHTML = `<div class="w-12 h-12 rounded-full flex items-center justify-center transition-colors"><i data-lucide="${this.state.isMuted ? 'volume-x' : 'volume-2'}" class="${this.state.isMuted ? 'text-secondary' : 'stroke-white'} w-6 h-6 drop-shadow-md"></i></div>`;
                     lucide.createIcons();
                 };
 
@@ -2683,6 +2802,59 @@
                 };
                 document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
 
+                const serverHelpBtn = document.getElementById('serverHelpBtn');
+                const serverHelpTooltip = document.getElementById('serverHelpTooltip');
+                const closeServerHelpBtn = document.getElementById('closeServerHelpBtn');
+                if (serverHelpBtn && serverHelpTooltip) {
+                    serverHelpBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (fnosHelpTooltip) fnosHelpTooltip.classList.add('hidden');
+                        serverHelpTooltip.classList.toggle('hidden');
+                        if (!serverHelpTooltip.classList.contains('hidden') && window.lucide) {
+                            lucide.createIcons();
+                        }
+                    };
+                }
+                if (closeServerHelpBtn && serverHelpTooltip) {
+                    closeServerHelpBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        serverHelpTooltip.classList.add('hidden');
+                    };
+                }
+
+                const fnosHelpBtn = document.getElementById('fnosHelpBtn');
+                const fnosHelpTooltip = document.getElementById('fnosHelpTooltip');
+                const closeFnosHelpBtn = document.getElementById('closeFnosHelpBtn');
+                if (fnosHelpBtn && fnosHelpTooltip) {
+                    fnosHelpBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        if (serverHelpTooltip) serverHelpTooltip.classList.add('hidden');
+                        fnosHelpTooltip.classList.toggle('hidden');
+                        if (!fnosHelpTooltip.classList.contains('hidden') && window.lucide) {
+                            lucide.createIcons();
+                        }
+                    };
+                }
+                if (closeFnosHelpBtn && fnosHelpTooltip) {
+                    closeFnosHelpBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        fnosHelpTooltip.classList.add('hidden');
+                    };
+                }
+
+                document.addEventListener('click', (e) => {
+                    if (serverHelpTooltip && !serverHelpTooltip.classList.contains('hidden')) {
+                        if (!serverHelpTooltip.contains(e.target) && !serverHelpBtn.contains(e.target) && e.target !== document.getElementById('configServer')) {
+                            serverHelpTooltip.classList.add('hidden');
+                        }
+                    }
+                    if (fnosHelpTooltip && !fnosHelpTooltip.classList.contains('hidden')) {
+                        if (!fnosHelpTooltip.contains(e.target) && !fnosHelpBtn.contains(e.target)) {
+                            fnosHelpTooltip.classList.add('hidden');
+                        }
+                    }
+                });
+
                 this.dom.confirmDeleteBtn.onclick = () => this.executeDelete();
                 this.dom.cancelDeleteBtn.onclick = () => this.toggleModal('deleteConfirmModal', false);
                 this.dom.confirmSyncBtn.onclick = () => this.applyCloudSync();
@@ -2741,7 +2913,51 @@
             }
 
             // --- 通用辅助 ---
+            closeAllModals(exceptId = null) {
+                const isExcepted = (id) => {
+                    if (!exceptId) return false;
+                    if (Array.isArray(exceptId)) return exceptId.includes(id);
+                    return id === exceptId;
+                };
+                const modals = ['donateModal', 'syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'castModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
+                modals.forEach(id => {
+                    if (isExcepted(id)) return;
+                    const el = document.getElementById(id);
+                    if (!el) return;
+                    if (id === 'profilePage') {
+                        if (el.classList.contains('active')) {
+                            el.classList.remove('active');
+                            if (this.nav) this.nav.blurModal(el);
+                        }
+                    } else if (id === 'castModal') {
+                        if (this.castManager) {
+                            this.castManager.closeModal();
+                        } else {
+                            el.classList.add('hidden', 'opacity-0', 'pointer-events-none');
+                            el.classList.remove('opacity-100');
+                        }
+                    } else if (id === 'donateModal') {
+                        if (window.DonateManager) {
+                            window.DonateManager.hideDonateModal();
+                        } else {
+                            el.classList.add('hidden', 'opacity-0', 'pointer-events-none');
+                            el.classList.remove('opacity-100');
+                        }
+                    } else {
+                        if (!el.classList.contains('hidden')) {
+                            el.classList.add('hidden');
+                            if (this.nav) this.nav.blurModal(el);
+                        }
+                    }
+                });
+            }
+
             toggleModal(id, show) {
+                if (show) {
+                    const isProfileActive = document.getElementById('profilePage')?.classList.contains('active');
+                    const except = (id === 'donateModal' && isProfileActive) ? ['donateModal', 'profilePage'] : id;
+                    this.closeAllModals(except);
+                }
                 if (!show && this.input && this.input.hasHistoryLayer('modal', id) && !this.input._isHandlingPop) {
                     window.history.back();
                     return;
@@ -2751,6 +2967,17 @@
                     if (show) { el.classList.add('active'); this.state.currentTab = 'my'; }
                     else { el.classList.remove('active'); }
                     if (show) this.updateTabHighlight();
+                } else if (id === 'donateModal') {
+                    if (show) {
+                        if (window.DonateManager) window.DonateManager.showDonateModal();
+                        else el.classList.remove('hidden', 'opacity-0', 'pointer-events-none');
+                    } else {
+                        if (window.DonateManager) window.DonateManager.hideDonateModal();
+                        else {
+                            el.classList.add('opacity-0', 'pointer-events-none');
+                            setTimeout(() => el.classList.add('hidden'), 200);
+                        }
+                    }
                 } else {
                     if (show) el.classList.remove('hidden'); else el.classList.add('hidden');
                 }

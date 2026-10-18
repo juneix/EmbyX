@@ -17,6 +17,9 @@
         async show() {
             if (!this.app) return;
             const app = this.app;
+            if (app.closeAllModals) {
+                app.closeAllModals('mediaInfoModal');
+            }
             const item = app.state.videos[app.state.currentIndex];
             if (!item) return;
 
@@ -292,10 +295,10 @@
             let aCodecHtml = '';
             if (aStreams.length === 0) {
                 const fallbackCodec = (src.AudioCodec || 'Unknown').toUpperCase();
-                aCodecHtml = `<span class="text-gray-200 font-mono">${fallbackCodec}</span>`;
+                aCodecHtml = `<span class="text-white/70 font-mono">${fallbackCodec}</span>`;
             } else if (aStreams.length === 1) {
                 const text = formatAudioStream(aStreams[0]);
-                aCodecHtml = `<span class="text-white font-medium font-mono">${text}</span>`;
+                aCodecHtml = `<span class="text-white/70 font-mono">${text}</span>`;
             } else {
                 const activeIdx = activeAudioStream ? activeAudioStream.Index : aStreams[0].Index;
                 aCodecHtml = aStreams.map(s => {
@@ -303,8 +306,8 @@
                     const isActive = (s.Index === activeIdx);
                     return isActive
                         ? `<span class="text-white font-medium font-mono">${text}</span>`
-                        : `<span class="text-gray-500 font-mono">${text}</span>`;
-                }).join(` <span class="text-gray-600">/</span> `);
+                        : `<span class="text-white/50 font-mono">${text}</span>`;
+                }).join(` <span class="text-white/30">/</span> `);
             }
 
             const bitrate = src.Bitrate ? (src.Bitrate / 1000000).toFixed(2) + ' Mbps' : 'Unknown';
@@ -355,33 +358,33 @@
             }
 
             app.dom.mediaInfoContent.innerHTML = `
-                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                    <span class="text-gray-500 text-right">Resolution</span>
-                    <span class="col-span-2 text-gray-200 font-mono">${w}x${h}@${fps}</span>
+                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                    <span class="text-white font-medium text-right">Resolution</span>
+                    <span class="col-span-2 text-white/80 font-mono">${w}x${h}@${fps}</span>
                 </div>
-                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                    <span class="text-gray-500 text-right">Container</span>
-                    <span class="col-span-2 text-gray-200">${c.toUpperCase()}</span>
+                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                    <span class="text-white font-medium text-right">Container</span>
+                    <span class="col-span-2 text-white/80">${c.toUpperCase()}</span>
                 </div>
-                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                    <span class="text-gray-500 text-right">Video Codec</span>
-                    <span class="col-span-2 text-gray-200 font-mono">${vCodecStr}</span>
+                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                    <span class="text-white font-medium text-right">Video Codec</span>
+                    <span class="col-span-2 text-white/80 font-mono">${vCodecStr}</span>
                 </div>
-                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                    <span class="text-gray-500 text-right">Audio Codec</span>
+                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                    <span class="text-white font-medium text-right">Audio Codec</span>
                     <span class="col-span-2">${aCodecHtml}</span>
                 </div>
-                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                    <span class="text-gray-500 text-right">Bitrate</span>
-                    <span class="col-span-2 text-gray-200 font-mono">${bitrate}</span>
+                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                    <span class="text-white font-medium text-right">Bitrate</span>
+                    <span class="col-span-2 text-white/80 font-mono">${bitrate}</span>
                 </div>
-                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-gray-700/50">
-                    <span class="text-gray-500 text-right">File Size</span>
-                    <span class="col-span-2 text-gray-200 font-mono">${fileSizeStr}</span>
+                <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                    <span class="text-white font-medium text-right">File Size</span>
+                    <span class="col-span-2 text-white/80 font-mono">${fileSizeStr}</span>
                 </div>
                 <div class="grid grid-cols-3 gap-2 py-2 items-center">
-                    <span class="text-gray-500 text-right">Playback Mode</span>
-                    <span class="col-span-2 text-gray-200">${transcodeState}</span>
+                    <span class="text-white font-medium text-right">Playback Mode</span>
+                    <span class="col-span-2 text-white/80">${transcodeState}</span>
                 </div>
             `;
         }

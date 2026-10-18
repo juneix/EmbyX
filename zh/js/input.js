@@ -316,9 +316,14 @@
                         }
                     } else if (lowKey === 'm') {
                         app.dom.muteBtn?.click();
-                    } else if (lowKey === 'c') {
+                    } else if (lowKey === 't' || lowKey === 'c') {
                         if (!isGridActive) {
-                            app.castManager?.showPicker();
+                            const castModal = document.getElementById('castModal');
+                            if (castModal && !castModal.classList.contains('hidden') && !castModal.classList.contains('opacity-0')) {
+                                app.castManager?.closeModal();
+                            } else {
+                                app.castManager?.showPicker();
+                            }
                         }
                     } else if (lowKey === 'u') {
                         this.showCenterHeartAnimation();

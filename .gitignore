@@ -4,6 +4,7 @@ __pycache__/
 android/
 strm_out/
 strm_test/
+.vscode/
 .mimocode/
 .zcode/
 key/
