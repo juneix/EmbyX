@@ -30,7 +30,7 @@ EmbyX is a TikTok-style web player for Emby / Jellyfin and FygoOS. Experience yo
 - **Privacy First**: All data stays **on your device**, no cloud uploads.
 
 **💎 Bonus**
-- **Short Drama Mode**: swipe through short dramas in portrait, across TV Shows libraries and folder views
+- **Short Drama Mode**: portrait viewing for TV Shows libraries and folder views
 - **Cast to TV**: AirPlay, Chromecast, and DLNA supported
 - **Auto-transcoding**: optimized for older devices or streaming on mobile data
 
