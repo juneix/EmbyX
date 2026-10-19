@@ -112,37 +112,53 @@ print("  Patched AndroidManifest.xml")
 
 # ── 3. MainActivity.java 补丁 ────────────────────────────────────────────────
 main_activity_path = f"android/app/src/main/java/{PKG_PATH}/MainActivity.java"
-with open(main_activity_path, "r", encoding="utf-8") as f:
-    main_activity = f.read()
+os.makedirs(os.path.dirname(main_activity_path), exist_ok=True)
 
-immersive_code = """
+exit_toast_text = "再按一次退出应用" if LANG == "zh" else "Press back again to exit"
+cache_cleared_toast = "应用缓存已清理" if LANG == "zh" else "App cache cleared"
+
+main_activity_template = """package __PKG_NAME__;
+
+import android.content.Intent;
+import android.graphics.Color;
+import android.graphics.drawable.ColorDrawable;
+import android.os.Bundle;
+import android.view.View;
+import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
+import android.webkit.ValueCallback;
+import android.widget.Toast;
+import androidx.activity.OnBackPressedCallback;
+import androidx.core.splashscreen.SplashScreen;
+import com.getcapacitor.BridgeActivity;
+import java.io.File;
+
+public class MainActivity extends BridgeActivity {
+
     @Override
-    public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
-        if (hasFocus) {
-            getWindow().getDecorView().setSystemUiVisibility(
-                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
-                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-                | android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-                | android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
-                | android.view.View.SYSTEM_UI_FLAG_FULLSCREEN);
-        }
-    }
-"""
+    public void onCreate(Bundle savedInstanceState) {
+        SplashScreen.installSplashScreen(this);
+        super.onCreate(savedInstanceState);
 
-# 注入返回键手势拦截 (OnBackPressedCallback) 与原生缓存清除接口 (EmbyXNative)
-native_bridge_code = """
-        // 1. 注册原生侧滑/物理返回键手势拦截调度器 (Predictive Back Support)
-        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+        // 三重保险：Window + WebView 全程变黑，彻底解决闪白问题
+        getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().setBackgroundColor(Color.BLACK);
+        }
+
+        // 1. 保持屏幕常亮
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+
+        // 2. 注册原生侧滑/物理返回键手势拦截调度器 (Predictive Back Support)
+        getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
             private long lastBackPressTime = 0;
 
             @Override
             public void handleOnBackPressed() {
-                if (bridge != null && bridge.getWebView() != null) {
-                    bridge.getWebView().evaluateJavascript(
+                if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                    MainActivity.this.bridge.getWebView().evaluateJavascript(
                         "(function() { return (window.InputManager && typeof window.InputManager.handleNativeBack === 'function') ? window.InputManager.handleNativeBack() : false; })()",
-                        new android.webkit.ValueCallback<String>() {
+                        new ValueCallback<String>() {
                             @Override
                             public void onReceiveValue(String value) {
                                 // 若前端已消费（关闭弹窗、退出搜索、退回宫格），则不退出 App
@@ -153,11 +169,11 @@ native_bridge_code = """
                                 long now = System.currentTimeMillis();
                                 if (now - lastBackPressTime < 2000) {
                                     setEnabled(false);
-                                    finish();
+                                    MainActivity.this.finish();
                                 } else {
                                     lastBackPressTime = now;
-                                    bridge.getWebView().evaluateJavascript(
-                                        "if(window.app && typeof window.app.showToast === 'function') { window.app.showToast('再按一次退出应用'); }",
+                                    MainActivity.this.bridge.getWebView().evaluateJavascript(
+                                        "if(window.app && typeof window.app.showToast === 'function') { window.app.showToast('__EXIT_TOAST__'); }",
                                         null
                                     );
                                 }
@@ -166,24 +182,24 @@ native_bridge_code = """
                     );
                 } else {
                     setEnabled(false);
-                    finish();
+                    MainActivity.this.finish();
                 }
             }
         });
 
-        // 2. 注入 EmbyXNative 桥接对象：重置配置时彻底清理私有目录海报图片磁盘缓存
+        // 3. 注入 EmbyXNative 桥接对象：重置配置时彻底清理私有目录海报图片磁盘缓存
         if (this.bridge != null && this.bridge.getWebView() != null) {
             this.bridge.getWebView().addJavascriptInterface(new Object() {
-                @android.webkit.JavascriptInterface
+                @JavascriptInterface
                 public void clearAppCache() {
-                    runOnUiThread(new Runnable() {
+                    MainActivity.this.runOnUiThread(new Runnable() {
                         @Override
                         public void run() {
                             try {
-                                if (bridge != null && bridge.getWebView() != null) {
-                                    bridge.getWebView().clearCache(true);
+                                if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                                    MainActivity.this.bridge.getWebView().clearCache(true);
                                 }
-                                java.io.File cacheDir = getCacheDir();
+                                File cacheDir = MainActivity.this.getCacheDir();
                                 if (cacheDir != null && cacheDir.isDirectory()) {
                                     deleteRecursive(cacheDir);
                                 }
@@ -191,58 +207,58 @@ native_bridge_code = """
                         }
                     });
                 }
-
-                private void deleteRecursive(java.io.File fileOrDir) {
-                    if (fileOrDir.isDirectory()) {
-                        java.io.File[] children = fileOrDir.listFiles();
-                        if (children != null) {
-                            for (java.io.File child : children) {
-                                deleteRecursive(child);
-                            }
-                        }
-                    }
-                    fileOrDir.delete();
-                }
             }, "EmbyXNative");
         }
 
-        // 3. 处理桌面长按快捷方式 (App Shortcuts) 点击事件：清理缓存
+        // 4. 处理桌面长按快捷方式 (App Shortcuts) 点击事件：清理缓存
         handleIntent(getIntent());
-"""
+    }
 
-shortcut_handler_code = """
     @Override
-    protected void onNewIntent(android.content.Intent intent) {
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        if (hasFocus) {
+            getWindow().getDecorView().setSystemUiVisibility(
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                | View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                | View.SYSTEM_UI_FLAG_FULLSCREEN);
+        }
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
         handleIntent(intent);
     }
 
-    private void handleIntent(android.content.Intent intent) {
+    private void handleIntent(Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
         if ("juneix.embyx.ACTION_CLEAR_CACHE".equals(action)) {
-            // 异步静默清理 WebView 与私有缓存目录
             new Thread(new Runnable() {
                 @Override
                 public void run() {
                     try {
-                        runOnUiThread(new Runnable() {
+                        MainActivity.this.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                if (bridge != null && bridge.getWebView() != null) {
-                                    bridge.getWebView().clearCache(true);
+                                if (MainActivity.this.bridge != null && MainActivity.this.bridge.getWebView() != null) {
+                                    MainActivity.this.bridge.getWebView().clearCache(true);
                                 }
                             }
                         });
-                        java.io.File cacheDir = getCacheDir();
+                        File cacheDir = MainActivity.this.getCacheDir();
                         if (cacheDir != null && cacheDir.isDirectory()) {
-                            deleteRecursiveStatic(cacheDir);
+                            deleteRecursive(cacheDir);
                         }
-                        runOnUiThread(new Runnable() {
+                        MainActivity.this.runOnUiThread(new Runnable() {
                             @Override
                             public void run() {
-                                android.widget.Toast.makeText(MainActivity.this, "应用缓存已清理", android.widget.Toast.LENGTH_SHORT).show();
+                                Toast.makeText(MainActivity.this, "__CACHE_TOAST__", Toast.LENGTH_SHORT).show();
                             }
                         });
                     } catch (Exception e) {}
@@ -251,36 +267,30 @@ shortcut_handler_code = """
         }
     }
 
-    private static void deleteRecursiveStatic(java.io.File fileOrDir) {
+    private static void deleteRecursive(File fileOrDir) {
         if (fileOrDir.isDirectory()) {
-            java.io.File[] children = fileOrDir.listFiles();
+            File[] children = fileOrDir.listFiles();
             if (children != null) {
-                for (java.io.File child : children) {
-                    deleteRecursiveStatic(child);
+                for (File child : children) {
+                    deleteRecursive(child);
                 }
             }
         }
         fileOrDir.delete();
     }
+}
 """
 
-# 添加 FLAG_KEEP_SCREEN_ON、OnBackPressedCallback、EmbyXNative 与 Shortcuts 处理器
-if "FLAG_KEEP_SCREEN_ON" not in main_activity:
-    main_activity = main_activity.replace(
-        "super.onCreate(savedInstanceState);",
-        "super.onCreate(savedInstanceState);\n        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);" + native_bridge_code
-    )
-
-if "handleIntent" not in main_activity:
-    main_activity = main_activity.replace("}", shortcut_handler_code + "\n}", 1)
-
-# 添加全屏沉浸式覆盖
-if "onWindowFocusChanged" not in main_activity:
-    main_activity = main_activity.replace("}", immersive_code + "\n}", 1)
+main_activity_content = (
+    main_activity_template
+    .replace("__PKG_NAME__", PKG_NAME)
+    .replace("__EXIT_TOAST__", exit_toast_text)
+    .replace("__CACHE_TOAST__", cache_cleared_toast)
+)
 
 with open(main_activity_path, "w", encoding="utf-8") as f:
-    f.write(main_activity)
-print("  Patched MainActivity.java (fullscreen + keep screen on + OnBackPressedCallback + EmbyXNative)")
+    f.write(main_activity_content)
+print("  Generated MainActivity.java (fullscreen + keep screen on + OnBackPressedCallback + EmbyXNative + Shortcuts + SplashScreen)")
 
 # ── 4. EmbyXDreamService.java ───────────────────────────────────────────────
 # 屏保服务使用 Android DreamService，内嵌 WebView 加载本地 index.html，读取 localStorage 中 Emby 配置自动播放
@@ -375,14 +385,17 @@ strings_path = "android/app/src/main/res/values/strings.xml"
 if os.path.exists(strings_path):
     with open(strings_path, "r", encoding="utf-8") as f:
         strings_content = f.read()
-    if "shortcut_clear_cache_short" not in strings_content:
-        short_lbl = "清除缓存" if LANG == "zh" else "Clear Cache"
-        long_lbl = "清除 EmbyX 应用缓存" if LANG == "zh" else "Clear EmbyX Cache"
+    short_lbl = "清除缓存" if LANG == "zh" else "Clear Cache"
+    long_lbl = "清除 EmbyX 应用缓存" if LANG == "zh" else "Clear EmbyX Cache"
+    if "shortcut_clear_cache_short" in strings_content:
+        strings_content = re.sub(r'<string name="shortcut_clear_cache_short">.*?</string>', f'<string name="shortcut_clear_cache_short">{short_lbl}</string>', strings_content)
+        strings_content = re.sub(r'<string name="shortcut_clear_cache_long">.*?</string>', f'<string name="shortcut_clear_cache_long">{long_lbl}</string>', strings_content)
+    else:
         extra_strings = f'    <string name="shortcut_clear_cache_short">{short_lbl}</string>\n    <string name="shortcut_clear_cache_long">{long_lbl}</string>\n</resources>'
         strings_content = strings_content.replace("</resources>", extra_strings)
-        with open(strings_path, "w", encoding="utf-8") as f:
-            f.write(strings_content)
-        print("  Patched strings.xml with shortcut labels")
+    with open(strings_path, "w", encoding="utf-8") as f:
+        f.write(strings_content)
+    print("  Patched strings.xml with shortcut labels")
 
 # ── 6. 注入 APK 版本号到 build.gradle ───────────────────────────────────────
 gradle_path = "android/app/build.gradle"
@@ -504,25 +517,7 @@ for rel_path in target_files:
 if not splash_style_found:
     print("  WARNING: AppTheme.NoActionBarLaunch style not found in any res files!")
 
-# ── 9. MainActivity 注入启动页入口 ──────────────────────────────────────────
-with open(main_activity_path, "r", encoding="utf-8") as f:
-    ma = f.read()
-
-if "import androidx.core.splashscreen.SplashScreen;" not in ma:
-    ma = ma.replace("import android.os.Bundle;", "import android.os.Bundle;\nimport androidx.core.splashscreen.SplashScreen;")
-
-if "SplashScreen.installSplashScreen(this)" not in ma:
-    # 注入官方 SplashScreen 入口，并增加“三重保险”防止闪白：
-    # 1. installSplashScreen() 必须在 super.onCreate 之前
-    # 2. 强行将 Window 背景设为黑（防止 Theme 没生效）
-    # 3. 强行将 WebView 背景设为黑（防止 HTML 渲染慢）
-    ma = ma.replace(
-        "super.onCreate(savedInstanceState);",
-        "SplashScreen.installSplashScreen(this);\n        super.onCreate(savedInstanceState);\n        // 三重保险：Window + WebView 全程变黑，彻底解决闪白问题\n        getWindow().setBackgroundDrawable(new android.graphics.drawable.ColorDrawable(android.graphics.Color.BLACK));\n        this.bridge.getWebView().setBackgroundColor(android.graphics.Color.BLACK);"
-    )
-
-with open(main_activity_path, "w", encoding="utf-8") as f:
-    f.write(ma)
-print("  Injected installSplashScreen() and black background to MainActivity.java")
+# ── 9. MainActivity 启动页入口校验 ──────────────────────────────────────────
+print("  Verified SplashScreen and black background in MainActivity.java")
 
 print(f"\nPatch complete! ({LANG} version, pkg={PKG_NAME}, v{version_name})")
