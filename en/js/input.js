@@ -319,7 +319,7 @@
                     } else if (lowKey === 't' || lowKey === 'c') {
                         if (!isGridActive) {
                             const castModal = document.getElementById('castModal');
-                            if (castModal && !castModal.classList.contains('hidden') && !castModal.classList.contains('opacity-0')) {
+                            if (castModal && !castModal.classList.contains('hidden')) {
                                 app.castManager?.closeModal();
                             } else {
                                 app.castManager?.showPicker();
@@ -668,14 +668,14 @@
                 const openModalId = typeof app.getActiveModalId === 'function' ? app.getActiveModalId() : null;
                 if (openModalId) {
                     app.toggleModal(openModalId, false);
-                    return;
+                    return true;
                 }
 
                 // 2. 检查并重置搜索态
                 if (app.state?.searchTerm) {
                     if (app.grid && typeof app.grid.restorePreSearch === 'function') {
                         app.grid.restorePreSearch();
-                        return;
+                        return true;
                     }
                 }
 
@@ -683,28 +683,42 @@
                 if (app.state?.currentPerson || app.state?.isFilteredByTag) {
                     if (typeof app.resetFilters === 'function') {
                         app.resetFilters();
-                        return;
+                        return true;
                     }
                 }
 
                 // 4. 检查全屏视频流 -> 回退到 3:4 宫格海报探索
                 if (app.state?.viewMode === 'stream') {
                     app.toggleViewMode();
-                    return;
+                    return true;
                 }
 
                 // 5. 检查短剧/分季文件夹多层下钻 -> 返回上一级目录
                 if (app.drama && app.drama.folderStack && app.drama.folderStack.length > 0) {
                     app.drama.popFolder();
-                    return;
+                    return true;
                 }
 
-                // 6. 若已在根视图（grid），不做拦截，浏览器执行原生后退/退出行为
+                // 6. 若已在根视图（grid），返回 false，代表未消费，交给宿主处理退出
+                return false;
             } catch (err) {
                 console.warn('[InputManager] handlePopState error:', err);
+                return false;
             } finally {
                 this._isHandlingPop = false;
             }
+        }
+
+        /**
+         * Android 原生侧滑/返回按键桥接入口
+         * 由 Android MainActivity 通过 evaluateJavascript 触发
+         * 返回 true 表示由前端消费了返回行为；返回 false 表示已处于根界面
+         */
+        static handleNativeBack() {
+            if (window.app && window.app.input) {
+                return window.app.input.handlePopState();
+            }
+            return false;
         }
     }
 

@@ -335,6 +335,46 @@
                 } catch (e) {
                     console.warn('Reset server prefs failed (silent):', e);
                 }
+
+                try {
+                    // 1. Android APK 原生私有缓存目录与 WebView 磁盘缓存彻底清除
+                    if (window.EmbyXNative && typeof window.EmbyXNative.clearAppCache === 'function') {
+                        window.EmbyXNative.clearAppCache();
+                    }
+                } catch (e) {
+                    console.warn('Native clearAppCache failed:', e);
+                }
+
+                try {
+                    // 2. 深度清理 PWA / Service Worker 离线缓存 (CacheStorage)
+                    if (typeof window !== 'undefined' && window.caches && typeof window.caches.keys === 'function') {
+                        const cacheKeys = await window.caches.keys();
+                        await Promise.all(cacheKeys.map(key => window.caches.delete(key)));
+                    }
+                } catch (e) {
+                    console.warn('Clear CacheStorage failed:', e);
+                }
+
+                try {
+                    // 3. 深度清理 IndexedDB 本地数据库
+                    if (typeof window !== 'undefined' && window.indexedDB && typeof window.indexedDB.databases === 'function') {
+                        const dbs = await window.indexedDB.databases();
+                        if (Array.isArray(dbs)) {
+                            dbs.forEach(db => {
+                                if (db.name) window.indexedDB.deleteDatabase(db.name);
+                            });
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Clear IndexedDB failed:', e);
+                }
+
+                try {
+                    if (typeof sessionStorage !== 'undefined') {
+                        sessionStorage.clear();
+                    }
+                } catch (e) {}
+
                 localStorage.clear();
                 location.reload();
             }

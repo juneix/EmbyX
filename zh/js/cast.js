@@ -132,8 +132,8 @@
 
             // 2. 无论是否发现服务端设备，统一弹出 EmbyX 规范设备选择卡片
             // 严禁跳过卡片直接静默调起系统原生投屏
-            this.renderDeviceList(sessions || []);
             this.openModal();
+            this.renderDeviceList(sessions || []);
         }
 
         triggerSystemCast() {
@@ -623,29 +623,31 @@
             }
             if (this.dom.castModal) {
                 this.dom.castModal.classList.remove('hidden');
-                void this.dom.castModal.offsetHeight;
-                this.dom.castModal.classList.remove('opacity-0', 'pointer-events-none');
-                this.dom.castModal.classList.add('opacity-100');
-                if (this.dom.castModalCard) {
-                    this.dom.castModalCard.classList.remove('translate-y-4', 'opacity-0');
-                    this.dom.castModalCard.classList.add('translate-y-0', 'opacity-100');
+                if (this.app?.nav) {
+                    this.app.nav.focusModal(this.dom.castModal);
+                }
+                if (this.app?.input && typeof this.app.input.pushLayer === 'function') {
+                    this.app.input.pushLayer('modal', { id: 'castModal' });
+                }
+                if (typeof this.app?.showInterfaceTemp === 'function') {
+                    this.app.showInterfaceTemp();
                 }
             }
         }
 
         closeModal() {
+            if (this.app?.input && this.app.input.hasHistoryLayer('modal', 'castModal') && !this.app.input._isHandlingPop) {
+                window.history.back();
+                return;
+            }
             if (this.dom.castModal) {
-                this.dom.castModal.classList.remove('opacity-100');
-                this.dom.castModal.classList.add('opacity-0', 'pointer-events-none');
-                if (this.dom.castModalCard) {
-                    this.dom.castModalCard.classList.remove('translate-y-0', 'opacity-100');
-                    this.dom.castModalCard.classList.add('translate-y-4', 'opacity-0');
+                this.dom.castModal.classList.add('hidden');
+                if (this.app?.nav) {
+                    this.app.nav.blurModal(this.dom.castModal);
                 }
-                setTimeout(() => {
-                    if (this.dom.castModal && this.dom.castModal.classList.contains('opacity-0')) {
-                        this.dom.castModal.classList.add('hidden');
-                    }
-                }, 200);
+                if (typeof this.app?.showInterfaceTemp === 'function') {
+                    this.app.showInterfaceTemp();
+                }
             }
         }
     }

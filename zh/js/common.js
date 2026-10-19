@@ -389,6 +389,18 @@
         }
     } catch (e) {}
 
+    // 检测 iOS PWA (主屏幕应用) 并为 <html> 注入 .ios-pwa 标记
+    // 用于精确区分 iOS 状态栏强制避让与其他设备（常规浏览器、Android APK）的自然间距
+    try {
+        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
+        const isStandalone = window.navigator.standalone === true ||
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+        if (isIOS && isStandalone && document.documentElement) {
+            document.documentElement.classList.add('ios-pwa');
+        }
+    } catch (e) {}
+
     // Mount to global window
     window.EmbyXCommon = {
         getServerType,

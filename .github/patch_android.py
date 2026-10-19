@@ -58,11 +58,32 @@ manifest = manifest.replace("@mipmap/ic_launcher_round", "@drawable/icon")
 manifest = manifest.replace("@mipmap/ic_launcher", "@drawable/icon")
 manifest = manifest.replace("@drawable/icon_round", "@drawable/icon")
 
-# 添加 WAKE_LOCK 权限（屏保与视频常亮需要）
-if "android.permission.WAKE_LOCK" not in manifest:
+# 添加 WAKE_LOCK 与媒体前台播放权限（屏保、后台播放与视频常亮需要）
+extra_perms = [
+    '    <uses-permission android:name="android.permission.WAKE_LOCK" />',
+    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />',
+    '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />'
+]
+for perm in extra_perms:
+    perm_name = perm.split('"')[1]
+    if perm_name not in manifest:
+        manifest = manifest.replace("</manifest>", f"{perm}\n</manifest>")
+
+# 增强 MainActivity 支持画中画 (Picture-in-Picture) 与桌面长按快捷方式 (Shortcuts)
+shortcut_meta = """
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
+"""
+if 'android:supportsPictureInPicture="true"' not in manifest:
     manifest = manifest.replace(
-        "</manifest>",
-        '    <uses-permission android:name="android.permission.WAKE_LOCK" />\n</manifest>'
+        'android:name=".MainActivity"',
+        f'android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:configChanges="screenSize|smallestScreenSize|screenLayout|orientation"'
+    )
+if 'android.app.shortcuts' not in manifest:
+    manifest = manifest.replace(
+        '</activity>',
+        f'{shortcut_meta}        </activity>'
     )
 
 # 注册系统屏保服务 EmbyXDreamService
@@ -110,12 +131,148 @@ immersive_code = """
     }
 """
 
-# 添加 FLAG_KEEP_SCREEN_ON（防止视频播放时熄屏）
+# 注入返回键手势拦截 (OnBackPressedCallback) 与原生缓存清除接口 (EmbyXNative)
+native_bridge_code = """
+        // 1. 注册原生侧滑/物理返回键手势拦截调度器 (Predictive Back Support)
+        getOnBackPressedDispatcher().addCallback(this, new androidx.activity.OnBackPressedCallback(true) {
+            private long lastBackPressTime = 0;
+
+            @Override
+            public void handleOnBackPressed() {
+                if (bridge != null && bridge.getWebView() != null) {
+                    bridge.getWebView().evaluateJavascript(
+                        "(function() { return (window.InputManager && typeof window.InputManager.handleNativeBack === 'function') ? window.InputManager.handleNativeBack() : false; })()",
+                        new android.webkit.ValueCallback<String>() {
+                            @Override
+                            public void onReceiveValue(String value) {
+                                // 若前端已消费（关闭弹窗、退出搜索、退回宫格），则不退出 App
+                                if ("true".equalsIgnoreCase(value)) {
+                                    return;
+                                }
+                                // 若在根大厅未消费，提供 2 秒内双击防误触退出
+                                long now = System.currentTimeMillis();
+                                if (now - lastBackPressTime < 2000) {
+                                    setEnabled(false);
+                                    finish();
+                                } else {
+                                    lastBackPressTime = now;
+                                    bridge.getWebView().evaluateJavascript(
+                                        "if(window.app && typeof window.app.showToast === 'function') { window.app.showToast('再按一次退出应用'); }",
+                                        null
+                                    );
+                                }
+                            }
+                        }
+                    );
+                } else {
+                    setEnabled(false);
+                    finish();
+                }
+            }
+        });
+
+        // 2. 注入 EmbyXNative 桥接对象：重置配置时彻底清理私有目录海报图片磁盘缓存
+        if (this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().addJavascriptInterface(new Object() {
+                @android.webkit.JavascriptInterface
+                public void clearAppCache() {
+                    runOnUiThread(new Runnable() {
+                        @Override
+                        public void run() {
+                            try {
+                                if (bridge != null && bridge.getWebView() != null) {
+                                    bridge.getWebView().clearCache(true);
+                                }
+                                java.io.File cacheDir = getCacheDir();
+                                if (cacheDir != null && cacheDir.isDirectory()) {
+                                    deleteRecursive(cacheDir);
+                                }
+                            } catch (Exception e) {}
+                        }
+                    });
+                }
+
+                private void deleteRecursive(java.io.File fileOrDir) {
+                    if (fileOrDir.isDirectory()) {
+                        java.io.File[] children = fileOrDir.listFiles();
+                        if (children != null) {
+                            for (java.io.File child : children) {
+                                deleteRecursive(child);
+                            }
+                        }
+                    }
+                    fileOrDir.delete();
+                }
+            }, "EmbyXNative");
+        }
+
+        // 3. 处理桌面长按快捷方式 (App Shortcuts) 点击事件：清理缓存
+        handleIntent(getIntent());
+"""
+
+shortcut_handler_code = """
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleIntent(intent);
+    }
+
+    private void handleIntent(android.content.Intent intent) {
+        if (intent == null) return;
+        String action = intent.getAction();
+        if ("juneix.embyx.ACTION_CLEAR_CACHE".equals(action)) {
+            // 异步静默清理 WebView 与私有缓存目录
+            new Thread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                if (bridge != null && bridge.getWebView() != null) {
+                                    bridge.getWebView().clearCache(true);
+                                }
+                            }
+                        });
+                        java.io.File cacheDir = getCacheDir();
+                        if (cacheDir != null && cacheDir.isDirectory()) {
+                            deleteRecursiveStatic(cacheDir);
+                        }
+                        runOnUiThread(new Runnable() {
+                            @Override
+                            public void run() {
+                                android.widget.Toast.makeText(MainActivity.this, "应用缓存已清理", android.widget.Toast.LENGTH_SHORT).show();
+                            }
+                        });
+                    } catch (Exception e) {}
+                }
+            }).start();
+        }
+    }
+
+    private static void deleteRecursiveStatic(java.io.File fileOrDir) {
+        if (fileOrDir.isDirectory()) {
+            java.io.File[] children = fileOrDir.listFiles();
+            if (children != null) {
+                for (java.io.File child : children) {
+                    deleteRecursiveStatic(child);
+                }
+            }
+        }
+        fileOrDir.delete();
+    }
+"""
+
+# 添加 FLAG_KEEP_SCREEN_ON、OnBackPressedCallback、EmbyXNative 与 Shortcuts 处理器
 if "FLAG_KEEP_SCREEN_ON" not in main_activity:
     main_activity = main_activity.replace(
         "super.onCreate(savedInstanceState);",
-        "super.onCreate(savedInstanceState);\n        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);"
+        "super.onCreate(savedInstanceState);\n        getWindow().addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);" + native_bridge_code
     )
+
+if "handleIntent" not in main_activity:
+    main_activity = main_activity.replace("}", shortcut_handler_code + "\n}", 1)
 
 # 添加全屏沉浸式覆盖
 if "onWindowFocusChanged" not in main_activity:
@@ -123,7 +280,7 @@ if "onWindowFocusChanged" not in main_activity:
 
 with open(main_activity_path, "w", encoding="utf-8") as f:
     f.write(main_activity)
-print("  Patched MainActivity.java (fullscreen + keep screen on)")
+print("  Patched MainActivity.java (fullscreen + keep screen on + OnBackPressedCallback + EmbyXNative)")
 
 # ── 4. EmbyXDreamService.java ───────────────────────────────────────────────
 # 屏保服务使用 Android DreamService，内嵌 WebView 加载本地 index.html，读取 localStorage 中 Emby 配置自动播放
@@ -181,7 +338,7 @@ with open(dream_service_path, "w", encoding="utf-8") as f:
     f.write(dream_service_code)
 print(f"  Created EmbyXDreamService.java at {dream_service_path}")
 
-# ── 5. dream_info.xml ────────────────────────────────────────────────────────
+# ── 5. dream_info.xml & shortcuts.xml ────────────────────────────────────────
 os.makedirs("android/app/src/main/res/xml", exist_ok=True)
 xml_code = f"""<?xml version="1.0" encoding="utf-8"?>
 <dream android:settingsActivity="{PKG_NAME}.MainActivity"
@@ -191,6 +348,41 @@ xml_code = f"""<?xml version="1.0" encoding="utf-8"?>
 with open("android/app/src/main/res/xml/dream_info.xml", "w", encoding="utf-8") as f:
     f.write(xml_code)
 print("  Created dream_info.xml")
+
+# 桌面长按快捷方式定义 (App Shortcuts)
+shortcut_label = "清除缓存" if LANG == "zh" else "Clear Cache"
+shortcuts_xml = f"""<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="clear_cache"
+        android:enabled="true"
+        android:icon="@drawable/icon"
+        android:shortcutShortLabel="@string/shortcut_clear_cache_short"
+        android:shortcutLongLabel="@string/shortcut_clear_cache_long">
+        <intent
+            android:action="juneix.embyx.ACTION_CLEAR_CACHE"
+            android:targetPackage="{PKG_NAME}"
+            android:targetClass="{PKG_NAME}.MainActivity" />
+    </shortcut>
+</shortcuts>
+"""
+with open("android/app/src/main/res/xml/shortcuts.xml", "w", encoding="utf-8") as f:
+    f.write(shortcuts_xml)
+print("  Created shortcuts.xml")
+
+# 注入快捷方式多语言文案到 strings.xml
+strings_path = "android/app/src/main/res/values/strings.xml"
+if os.path.exists(strings_path):
+    with open(strings_path, "r", encoding="utf-8") as f:
+        strings_content = f.read()
+    if "shortcut_clear_cache_short" not in strings_content:
+        short_lbl = "清除缓存" if LANG == "zh" else "Clear Cache"
+        long_lbl = "清除 EmbyX 应用缓存" if LANG == "zh" else "Clear EmbyX Cache"
+        extra_strings = f'    <string name="shortcut_clear_cache_short">{short_lbl}</string>\n    <string name="shortcut_clear_cache_long">{long_lbl}</string>\n</resources>'
+        strings_content = strings_content.replace("</resources>", extra_strings)
+        with open(strings_path, "w", encoding="utf-8") as f:
+            f.write(strings_content)
+        print("  Patched strings.xml with shortcut labels")
 
 # ── 6. 注入 APK 版本号到 build.gradle ───────────────────────────────────────
 gradle_path = "android/app/build.gradle"

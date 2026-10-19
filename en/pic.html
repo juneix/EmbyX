@@ -90,7 +90,6 @@
             .interface-hidden .bottom-info,
             .interface-hidden .bottom-nav,
             .interface-hidden .right-toolbar,
-            .interface-hidden #bottomScrim,
             .interface-hidden #fullscreenBtn,
             .interface-hidden #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
@@ -102,6 +101,12 @@
             .grid-active #fullscreenBtn,
             .grid-active #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
+            }
+
+            /* 仅在 iOS PWA (主屏幕应用状态栏常驻) 下向下避让状态栏 */
+            .ios-pwa #deleteBtn,
+            .ios-pwa #fullscreenBtn {
+                top: calc(10px + env(safe-area-inset-top)) !important;
             }
             
             /* 遥控器与键盘焦点高亮（tvOS 拟态发光，废除生硬黑缝） */
@@ -261,8 +266,8 @@
 
         </div>
 
-        <!-- 左上角管理删除按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
-        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] left-4 z-30 transition-opacity duration-300"
+        <!-- 左上角管理删除按钮，默认 top-4 (16px) 自然留白，iOS PWA 由 .ios-pwa 自适应下移 -->
+        <div class="absolute top-4 left-4 z-30 transition-opacity duration-300"
             id="deleteBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
@@ -270,8 +275,8 @@
             </div>
         </div>
 
-        <!-- 右上角全屏按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
-        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
+        <!-- 右上角全屏按钮，默认 top-4 (16px) 自然留白，iOS PWA 由 .ios-pwa 自适应下移 -->
+        <div class="absolute top-4 right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
@@ -317,9 +322,6 @@
             </div>
         </div>
 
-        <!-- 底部渐变黑影遮罩 (Scrim) -->
-        <div class="absolute bottom-0 left-0 right-0 h-[280px] bg-gradient-to-t from-black/60 via-black/20 to-transparent z-10 pointer-events-none transition-opacity duration-300" id="bottomScrim"></div>
-
         <div
             class="bottom-info absolute bottom-20 left-4 right-4 z-20 transition-opacity duration-300 pointer-events-none">
             <div id="metaInfoContainer" class="mb-3 w-[85%] pr-4 pointer-events-auto transition-all duration-300">
@@ -336,16 +338,16 @@
         <div
             class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/25 backdrop-blur-xl border-t border-white/5 z-30 transition-opacity duration-300 pb-2 pt-1">
             <div class="flex justify-around items-center h-12">
-                <div id="viewModeBtn" class="nav-btn text-gray-400">
+                <div id="viewModeBtn" class="nav-btn text-white">
                     <i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>
                 </div>
-                <div id="playModeBtn" class="nav-btn text-gray-400">
+                <div id="playModeBtn" class="nav-btn text-white">
                     <i data-lucide="repeat" class="stroke-current w-5 h-5"></i>
                 </div>
-                <div id="libraryBtn" class="nav-btn text-gray-400">
+                <div id="libraryBtn" class="nav-btn text-white">
                     <i data-lucide="folder-open" class="stroke-current w-5 h-5"></i>
                 </div>
-                <div id="myBtn" class="nav-btn text-gray-400">
+                <div id="myBtn" class="nav-btn text-white">
                     <i data-lucide="user-round" class="stroke-current w-5 h-5"></i>
                 </div>
             </div>
@@ -638,7 +640,7 @@
         </div>
 
         <div id="toast"
-            class="fixed top-[10%] left-1/2 -translate-x-1/2 bg-black/25 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
+            class="fixed top-[18%] left-1/2 -translate-x-1/2 bg-black/25 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
             Message
         </div>
         <div id="loading"
@@ -2326,8 +2328,8 @@
             updateTabHighlight() {
                 [this.dom.myBtn, this.dom.libraryBtn, this.dom.playModeBtn, this.dom.viewModeBtn].forEach(btn => {
                     if (btn) {
-                        btn.classList.add('text-gray-400');
-                        btn.classList.remove('text-white');
+                        btn.classList.add('text-white');
+                        btn.classList.remove('text-gray-400');
                     }
                 });
             }

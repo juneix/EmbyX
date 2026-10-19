@@ -94,7 +94,6 @@
             .interface-hidden .bottom-info:not(.show-progress),
             .interface-hidden .bottom-nav,
             .interface-hidden .right-toolbar,
-            .interface-hidden #bottomScrim,
             .interface-hidden #fullscreenBtn,
             .interface-hidden #castBtn,
             .interface-hidden #deleteBtn {
@@ -116,6 +115,13 @@
             .grid-active #castBtn,
             .grid-active #deleteBtn {
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
+            }
+
+            /* 仅在 iOS PWA (主屏幕应用状态栏常驻) 下向下避让状态栏 */
+            .ios-pwa #deleteBtn,
+            .ios-pwa #castBtn,
+            .ios-pwa #fullscreenBtn {
+                top: calc(10px + env(safe-area-inset-top)) !important;
             }
             
             /* 遥控器与键盘焦点高亮（tvOS 拟态发光，废除生硬黑缝） */
@@ -305,8 +311,8 @@
 
         </div>
 
-        <!-- 左上角管理删除按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
-        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] left-4 z-30 transition-opacity duration-300"
+        <!-- 左上角管理删除按钮，默认 top-4 (16px) 自然留白，iOS PWA 由 .ios-pwa 自适应下移 -->
+        <div class="absolute top-4 left-4 z-30 transition-opacity duration-300"
             id="deleteBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full">
@@ -315,7 +321,7 @@
         </div>
 
         <!-- 右上角Cast按钮（Fullscreen按钮左侧，统一磨砂风格） -->
-        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-[4.5rem] z-30 transition-opacity duration-300"
+        <div class="absolute top-4 right-[4.5rem] z-30 transition-opacity duration-300"
             id="castBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="Cast">
@@ -323,8 +329,8 @@
             </div>
         </div>
 
-        <!-- 右上角Fullscreen按钮，微调顶部距离，例如 1rem (16px) 或 10px -->
-        <div class="absolute top-[calc(10px+env(safe-area-inset-top))] right-4 z-30 transition-opacity duration-300"
+        <!-- 右上角Fullscreen按钮，默认 top-4 (16px) 自然留白，iOS PWA 由 .ios-pwa 自适应下移 -->
+        <div class="absolute top-4 right-4 z-30 transition-opacity duration-300"
             id="fullscreenBtn">
             <div
                 class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="Fullscreen">
@@ -334,12 +340,12 @@
 
         <!-- Cast设备选择卡片（EmbyX 统一规范底部悬浮卡片） -->
         <div id="castModal"
-            class="fixed inset-0 z-50 flex items-end justify-center hidden transition-opacity duration-200 opacity-0 pointer-events-none">
+            class="fixed inset-0 z-50 flex items-end justify-center hidden transition-opacity duration-300">
             <!-- 图层 1：Fullscreen独立背景遮罩 -->
             <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
             <!-- 图层 2：浮动卡片 -->
             <div id="castModalCard"
-                class="relative z-10 bg-black/25 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md rounded-2xl p-4 w-[92%] max-w-sm mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col transform transition-all duration-200 ease-out translate-y-4 opacity-0">
+                class="relative z-10 bg-black/25 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md rounded-2xl p-4 w-[92%] max-w-sm mb-[calc(1.5rem+env(safe-area-inset-bottom))] flex flex-col">
                 
                 <!-- 顶部极简应用头部 -->
                 <div class="flex items-center space-x-2.5 mb-3 pb-3 border-b border-white/10 flex-shrink-0">
@@ -480,9 +486,6 @@
             </div>
         </div>
 
-        <!-- 底部渐变黑影遮罩 (Scrim) -->
-        <div class="absolute bottom-0 left-0 right-0 h-[280px] bg-gradient-to-t from-black/60 via-black/20 to-transparent z-10 pointer-events-none transition-opacity duration-300" id="bottomScrim"></div>
-
         <!-- 拖拽/快进进度悬浮 OSD (位于屏幕 65% 高度，黄金开阔区) -->
         <div id="progressOSD"
             class="absolute top-[65%] left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] flex items-center space-x-1.5 text-white font-mono text-sm tracking-wider opacity-0 pointer-events-none transition-opacity duration-200">
@@ -519,16 +522,16 @@
         <div
             class="bottom-nav absolute bottom-0 left-0 right-0 bg-black/25 backdrop-blur-xl border-t border-white/5 z-30 transition-opacity duration-300 pb-2 pt-1">
             <div class="flex justify-around items-center h-12">
-                <div id="viewModeBtn" class="nav-btn text-gray-400">
+                <div id="viewModeBtn" class="nav-btn text-white">
                     <i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>
                 </div>
-                <div id="playModeBtn" class="nav-btn text-gray-400">
+                <div id="playModeBtn" class="nav-btn text-white">
                     <i data-lucide="repeat" class="stroke-current w-5 h-5"></i>
                 </div>
-                <div id="libraryBtn" class="nav-btn text-gray-400">
+                <div id="libraryBtn" class="nav-btn text-white">
                     <i data-lucide="folder-open" class="stroke-current w-5 h-5"></i>
                 </div>
-                <div id="myBtn" class="nav-btn text-gray-400">
+                <div id="myBtn" class="nav-btn text-white">
                     <i data-lucide="user-round" class="stroke-current w-5 h-5"></i>
                 </div>
             </div>
@@ -575,29 +578,29 @@
 
                             <!-- fnOS User Notice Tooltip 弹窗 -->
                             <div id="fnosHelpTooltip"
-                                class="hidden absolute top-12 left-5 right-5 z-40 bg-gray-800/70 backdrop-blur-2xl border border-white/15 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_16px_32px_rgba(0,0,0,0.7)] space-y-2.5">
+                                class="hidden absolute top-12 left-5 right-5 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_20px_40px_rgba(0,0,0,0.8)] space-y-2.5">
                                 <div class="flex items-center justify-between pb-2 border-b border-white/10">
-                                    <div class="flex items-center space-x-1.5 text-yellow-500 text-xs font-bold">
+                                    <div class="flex items-center space-x-1.5 text-yellow-400 text-xs font-bold">
                                         <span>⚠️ fnOS User Notice</span>
                                     </div>
                                     <button type="button" id="closeFnosHelpBtn"
-                                        class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                        class="text-gray-300 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
                                         title="Close">
                                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                     </button>
                                 </div>
-                                <p class="text-xs text-gray-300 leading-relaxed">
+                                <p class="text-xs text-gray-100 leading-relaxed font-normal">
                                     The built-in Webview in fnOS App has issues causing stutter and failing to swipe up/down to switch videos.
                                 </p>
                                 <div class="space-y-1.5 pt-1 text-xs">
                                     <div class="bg-black/40 p-2.5 rounded-lg border border-white/10">
                                         <div class="font-bold text-primary mb-0.5">PWA App</div>
-                                        <div class="text-[11px] text-gray-400">All platforms: Android, iOS, HarmonyOS, Win, Mac, Linux</div>
-                                        <div class="text-[11px] text-gray-300 font-mono mt-0.5 select-all">Open NAS-IP:8090 in browser, add to home screen</div>
+                                        <div class="text-[11px] text-gray-300">All platforms: Android, iOS, HarmonyOS, Win, Mac, Linux</div>
+                                        <div class="text-[11px] text-white font-mono mt-0.5 select-all">Open NAS-IP:8090 in browser, add to home screen</div>
                                     </div>
                                     <div class="bg-black/40 p-2.5 rounded-lg border border-white/10">
                                         <div class="font-bold text-primary mb-0.5">Standalone Client</div>
-                                        <div class="text-[11px] text-gray-300">Android users can download and install EmbyX.apk</div>
+                                        <div class="text-[11px] text-white">Android users can download and install EmbyX.apk</div>
                                     </div>
                                 </div>
                             </div>
@@ -616,37 +619,37 @@
 
                                 <!-- 服务器地址Address Format Examples Tooltip 弹窗 -->
                                 <div id="serverHelpTooltip"
-                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-gray-800/70 backdrop-blur-2xl border border-white/15 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_16px_32px_rgba(0,0,0,0.7)] space-y-2">
+                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_20px_40px_rgba(0,0,0,0.8)] space-y-2">
                                     <div class="flex items-center justify-between pb-2 border-b border-white/10">
                                         <div class="flex items-center space-x-1.5 text-primary text-xs font-bold">
                                             <i data-lucide="info" class="w-3.5 h-3.5"></i>
                                             <span>Address Format Examples</span>
                                         </div>
                                         <button type="button" id="closeServerHelpBtn"
-                                            class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                            class="text-gray-300 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
                                             title="Close">
                                             <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                         </button>
                                     </div>
                                     <ul class="space-y-1.5 text-xs">
-                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-300 select-all">
-                                            <span class="text-white">10.1.1.3</span>
-                                            <span class="text-[11px] text-gray-400 font-sans ml-2"> (Default port 8096/8090)</span>
+                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                            <span class="text-white font-medium">10.1.1.3</span>
+                                            <span class="text-[11px] text-gray-200 font-sans ml-2"> (Default port 8096/8090)</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>10.1.1.3:8096</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>http://10.1.1.3:8096</span>
                                         </li>
-                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-300 select-all">
-                                            <span class="text-white">5nav.eu.org</span>
-                                            <span class="text-[11px] text-gray-400 font-sans ml-2"> (Default port 443)</span>
+                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                            <span class="text-white font-medium">5nav.eu.org</span>
+                                            <span class="text-[11px] text-gray-200 font-sans ml-2"> (Default port 443)</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>https://5nav.eu.org</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white select-all">
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>https://5nav.eu.org:8099</span>
                                         </li>
                                     </ul>
@@ -921,7 +924,7 @@
         </div>
 
         <div id="toast"
-            class="fixed top-[10%] left-1/2 -translate-x-1/2 bg-black/25 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
+            class="fixed top-[18%] left-1/2 -translate-x-1/2 bg-black/25 px-4 py-2 rounded-full text-white text-sm pointer-events-none transition-opacity duration-300 opacity-0 z-[100] w-max max-w-[80vw] whitespace-normal text-center border border-white/10 backdrop-blur-xl shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)]">
             Message
         </div>
         <div id="loading"
@@ -2204,8 +2207,8 @@
             updateTabHighlight() {
                 [this.dom.myBtn, this.dom.libraryBtn, this.dom.playModeBtn, this.dom.viewModeBtn].forEach(btn => {
                     if (btn) {
-                        btn.classList.add('text-gray-400');
-                        btn.classList.remove('text-white');
+                        btn.classList.add('text-white');
+                        btn.classList.remove('text-gray-400');
                     }
                 });
             }
@@ -2937,8 +2940,8 @@
                         if (this.castManager) {
                             this.castManager.closeModal();
                         } else {
-                            el.classList.add('hidden', 'opacity-0', 'pointer-events-none');
-                            el.classList.remove('opacity-100');
+                            el.classList.add('hidden');
+                            if (this.nav) this.nav.blurModal(el);
                         }
                     } else if (id === 'donateModal') {
                         if (window.DonateManager) {

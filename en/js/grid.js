@@ -149,7 +149,7 @@
                 </span>
                 <span class="flex-1"></span>
                 <button id="gridFolderSearchBtn" title="搜索"
-                    class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-gray-400 hover:text-white'}">
+                    class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-white hover:text-white/80'}">
                     <i data-lucide="folder-search" class="w-4 h-4"></i>
                 </button>
                 <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
@@ -175,11 +175,11 @@
             if (!searchBar.innerHTML) {
                 searchBar.innerHTML = `
                     <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                        <i data-lucide="search" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
+                        <i data-lucide="search" class="w-4 h-4 text-white flex-shrink-0"></i>
                         <input id="gridSearchInput" type="search"
                                value="${app.state.searchTerm}"
                                placeholder="视频名、演员、描述…"
-                               class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500 min-w-0">
+                               class="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/80 min-w-0">
                     </div>
                 `;
             }
