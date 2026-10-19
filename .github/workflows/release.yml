@@ -1,7 +1,7 @@
-name: Android APK 构建
+name: Android APK 构建与发布
 
 # 触发条件：
-# 1. 每次推送代码到 main 分支：自动构建并更新名为 "latest" 的 Release (Rolling Release)
+# 1. 每次推送代码到 main 分支：自动构建并更新名为 "preview" 的 Pre-release (Rolling Release)
 # 2. 推送 v* 格式的 tag（如 v1.0）：自动构建并发布正式 Release
 # 3. 手动触发（workflow_dispatch）：手动指定 tag 发布
 on:
@@ -24,10 +24,10 @@ permissions:
   contents: write
 
 jobs:
-  # ── 中文版 APK 构建 ──────────────────────────────────────────────────────────
-  build-android-zh:
-    name: Build EmbyX-zh APK
+  build-and-release:
+    name: Build APKs & Publish Release
     runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
     steps:
       - uses: actions/checkout@v6
 
@@ -42,7 +42,16 @@ jobs:
         with:
           node-version: 22
 
-      # 动态生成中文版 capacitor.config.json（webDir 指向 zh/ 目录）
+      - name: Install Capacitor dependencies
+        run: npm install
+
+      # 解码 Android 签名证书
+      - name: Decode Android Keystore
+        run: |
+          mkdir -p key
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > key/embyx.jks
+
+      # ── 1. 构建中文版 APK ──────────────────────────────────────────────────────────
       - name: Create capacitor.config.json (zh)
         run: |
           cat > capacitor.config.json << 'EOF'
@@ -66,24 +75,15 @@ jobs:
           }
           EOF
 
-      - name: Install Capacitor dependencies
-        run: npm install
-
-      - name: Add & Sync Android Platform
+      - name: Add & Sync Android Platform (zh)
         run: |
           npx cap add android
           npx cap sync android
 
-      # 运行补丁脚本：替换图标、注册屏保、添加全屏模式
       - name: Patch Android Project (zh)
         run: python .github/patch_android.py --lang zh
 
-      - name: Decode Android Keystore (zh)
-        run: |
-          mkdir -p key
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > key/embyx.jks
-
-      - name: Build Debug APK
+      - name: Build Debug APK (zh)
         run: |
           cd android
           chmod +x gradlew
@@ -93,34 +93,10 @@ jobs:
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
-      - name: Rename to EmbyX-zh.apk
+      - name: Move and Rename to EmbyX-zh.apk
         run: mv android/app/build/outputs/apk/debug/app-debug.apk EmbyX-zh.apk
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: embyx-zh
-          path: EmbyX-zh.apk
-
-  # ── 英文版 APK 构建 ──────────────────────────────────────────────────────────
-  build-android-en:
-    name: Build EmbyX-en APK
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Setup JDK 21
-        uses: actions/setup-java@v4
-        with:
-          java-version: '21'
-          distribution: 'temurin'
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: 22
-
-      # 动态生成英文版 capacitor.config.json（webDir 指向 en/ 目录）
+      # ── 2. 构建英文版 APK ──────────────────────────────────────────────────────────
       - name: Create capacitor.config.json (en)
         run: |
           cat > capacitor.config.json << 'EOF'
@@ -144,60 +120,32 @@ jobs:
           }
           EOF
 
-      - name: Install Capacitor dependencies
-        run: npm install
+      - name: Sync Android Platform (en)
+        run: npx cap sync android
 
-      - name: Add & Sync Android Platform
-        run: |
-          npx cap add android
-          npx cap sync android
-
-      # 运行补丁脚本：替换图标、注册屏保、添加全屏模式
       - name: Patch Android Project (en)
         run: python .github/patch_android.py --lang en
 
-      - name: Decode Android Keystore (en)
-        run: |
-          mkdir -p key
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > key/embyx.jks
-
-      - name: Build Debug APK
+      - name: Build Debug APK (en)
         run: |
           cd android
-          chmod +x gradlew
           ./gradlew assembleDebug
         env:
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
 
-      - name: Rename to EmbyX-en.apk
+      - name: Move and Rename to EmbyX-en.apk
         run: mv android/app/build/outputs/apk/debug/app-debug.apk EmbyX-en.apk
 
-      - name: Upload Artifact
-        uses: actions/upload-artifact@v7
-        with:
-          name: embyx-en
-          path: EmbyX-en.apk
-
-  # ── 发布 Release ─────────────────────────────────────────────────────────────
-  # 当推送到 main 分支、打 v* 标签或手动触发时执行
-  release:
-    name: Create GitHub Release
-    needs: [build-android-zh, build-android-en]
-    runs-on: ubuntu-latest
-    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/') || github.ref == 'refs/heads/main'
-    steps:
-      - name: Download all artifacts
-        uses: actions/download-artifact@v7
-
+      # ── 3. 校验并直接发布到 GitHub Release ───────────────────────────────────────
       - name: Verify APK files exist
         run: |
-          ls -R
-          test -f "embyx-zh/EmbyX-zh.apk"
-          test -f "embyx-en/EmbyX-en.apk"
+          test -f "EmbyX-zh.apk"
+          test -f "EmbyX-en.apk"
+          ls -lh EmbyX-*.apk
 
-      - name: Create Release
+      - name: Publish to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           # 如果是 main 分支，固定使用 preview 标签以便滚动更新
@@ -207,7 +155,7 @@ jobs:
           draft: false
           fail_on_unmatched_files: true
           files: |
-            embyx-zh/EmbyX-zh.apk
-            embyx-en/EmbyX-en.apk
+            EmbyX-zh.apk
+            EmbyX-en.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
