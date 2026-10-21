@@ -26,6 +26,7 @@
     <script src="lib/tailwind.min.js" data-cfasync="false"></script>
     <script src="lib/lucide.min.js"></script>
     <script src="js/common.js"></script>
+    <script src="js/auth.js"></script>
     <script src="js/openlist.js"></script>
     <script src="js/input.js"></script>
     <script src="js/gallery.js"></script>
@@ -227,6 +228,11 @@
                 }
             }
         }
+
+        /* 顶部安全区：默认 0（安卓 PWA/APK 已申请全屏，无需避让）；仅 iOS PWA 状态栏常驻时下移，
+           与 #castBtn / #fullscreenBtn 的处理保持一致 */
+        :root { --safe-top: 0px; }
+        .ios-pwa { --safe-top: env(safe-area-inset-top, 0px); }
     </style>
 </head>
 
@@ -286,18 +292,21 @@
         </div>
 
         <div id="mediaInfoModal"
-            class="fixed inset-0 z-50 flex items-center justify-center bg-black/20 hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-50 flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- Layer 1: full-screen scrim -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- Layer 2: floating card -->
             <div
-                class="bg-black/50 rounded-2xl p-6 w-[85%] max-w-sm max-h-[80vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                class="relative z-10 bg-black/25 rounded-2xl p-6 w-[85%] max-w-sm max-h-[80vh] overflow-y-auto border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <h3 class="text-white text-lg font-bold mb-4 text-center">
                     Photo Info
                 </h3>
-                <div id="mediaInfoContent" class="text-sm text-gray-300">
+                <div id="mediaInfoContent" class="text-sm text-gray-200">
                     <div class="flex justify-center py-4"><i data-lucide="loader-2"
-                            class="w-6 h-6 animate-spin text-gray-500"></i></div>
+                            class="w-6 h-6 animate-spin text-gray-400"></i></div>
                 </div>
                 <button id="closeMediaInfoBtn"
-                    class="w-full mt-6 bg-gray-800/80 border border-gray-700/50 text-gray-200 py-2.5 rounded-lg font-medium hover:bg-gray-700 active:scale-95 transition-all">Close</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
@@ -378,26 +387,74 @@
                         <h2 class="text-primary font-bold text-sm mb-5 flex items-center">
                             <i data-lucide="server" class="w-4 h-4 mr-2"></i>Server Settings
                         </h2>
-                        <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
-                            <div>
-                                <label class="text-gray-400 text-xs block mb-1.5">IP or Domain</label>
-                                <input type="text" id="configServer" placeholder="Emby / Jellyfin / fnOS / OpenList supported"
-                                    class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
+                        <div class="space-y-4 bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md">
+                            <div class="relative">
+                                <div class="flex items-center space-x-1.5 mb-1.5">
+                                    <label class="text-gray-400 text-xs">IP or Domain</label>
+                                    <button type="button" id="serverHelpBtn" title="Address Format Examples"
+                                        class="text-gray-400 hover:text-primary active:text-primary transition-colors focus:outline-none p-0.5 rounded focusable-item flex items-center justify-center">
+                                        <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
+                                    </button>
+                                </div>
+                                <div class="relative">
+                                    <input type="text" id="configServer" placeholder="Emby / Jellyfin / fnOS / OpenList supported"
+                                        class="w-full h-11 bg-black/40 text-white text-sm rounded-lg pl-3 pr-11 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
+                                    <img id="serverTypeIcon" alt="" src="img/emby.webp"
+                                        class="hidden absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 object-contain pointer-events-none">
+                                </div>
+
+                                <!-- Server address format examples tooltip -->
+                                <div id="serverHelpTooltip"
+                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_20px_40px_rgba(0,0,0,0.8)] space-y-2">
+                                    <div class="flex items-center justify-between pb-2 border-b border-white/10">
+                                        <div class="flex items-center space-x-1.5 text-primary text-xs font-bold">
+                                            <i data-lucide="info" class="w-3.5 h-3.5"></i>
+                                            <span>Address Format Examples</span>
+                                        </div>
+                                        <button type="button" id="closeServerHelpBtn"
+                                            class="text-gray-300 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                            title="Close">
+                                            <i data-lucide="x" class="w-3.5 h-3.5"></i>
+                                        </button>
+                                    </div>
+                                    <ul class="space-y-1.5 text-xs">
+                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                            <span class="text-white font-medium">10.1.1.3</span>
+                                            <span class="text-[11px] text-gray-200 font-sans ml-2">(default 8096/8090 port)</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                            <span>10.1.1.3:8096</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                            <span>http://10.1.1.3:8096</span>
+                                        </li>
+                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                            <span class="text-white font-medium">5nav.eu.org</span>
+                                            <span class="text-[11px] text-gray-200 font-sans ml-2">(default 443 port)</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                            <span>https://5nav.eu.org</span>
+                                        </li>
+                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                            <span>https://5nav.eu.org:8099</span>
+                                        </li>
+                                    </ul>
+                                </div>
                             </div>
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-gray-400 text-xs block mb-1.5">Username</label>
                                     <input type="text" id="configUser" placeholder="Your username"
-                                        class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
+                                        class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
                                 </div>
                                 <div>
                                     <label class="text-gray-400 text-xs block mb-1.5">Password</label>
                                     <input type="password" id="configPwd" placeholder="Your password"
-                                        class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
+                                        class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
                                 </div>
                             </div>
                             <div id="rowAutoplay" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configAutoplay').click();">
                                 <label for="configAutoplay" class="text-gray-300 text-sm cursor-pointer flex-1">Auto Slideshow
                                 </label>
@@ -406,14 +463,14 @@
                                     checked>
                             </div>
                             <div id="rowSlideshowInterval" tabindex="0"
-                                class="focusable-item flex items-center justify-between gap-3 py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all group">
+                                class="focusable-item flex items-center justify-between gap-3 py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all group">
                                 <label for="configSlideshowInterval"
                                     class="text-gray-300 text-sm cursor-pointer flex-1">Slideshow Interval (seconds)</label>
                                 <input type="number" id="configSlideshowInterval" min="5" max="3600" step="1" value="30"
-                                    class="w-24 h-9 bg-gray-950 text-white text-sm text-center rounded px-2 outline-none border border-gray-700 focus:border-primary transition-colors">
+                                    class="w-24 h-9 bg-black/50 text-white text-sm text-center rounded-lg px-2 outline-none border border-white/10 focus:border-primary transition-colors">
                             </div>
                             <div id="rowMagazineMode" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configMagazineMode').click();">
                                 <label for="configMagazineMode" class="text-gray-300 text-sm cursor-pointer flex-1">Magazine Mode
                                 </label>
@@ -421,7 +478,7 @@
                                     class="rounded text-primary bg-gray-700 border-none w-4 h-4 pointer-events-none">
                             </div>
                             <div id="rowDeleteMode" tabindex="0"
-                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-gray-900/40 rounded-lg border border-transparent hover:bg-gray-800/60 transition-all cursor-pointer group"
+                                class="focusable-item flex items-center justify-between py-2.5 px-3 bg-black/25 rounded-lg border border-white/5 hover:border-white/10 hover:bg-black/40 transition-all cursor-pointer group"
                                 onclick="document.getElementById('configDeleteMode').click();">
                                 <label for="configDeleteMode"
                                     class="text-yellow-500/90 text-sm cursor-pointer flex-1 font-medium">Allow Delete Media ⚠️
@@ -447,7 +504,7 @@
                             <i data-lucide="badge-info" class="w-4 h-4 mr-2"></i>About
                         </h2>
                         <div
-                            class="bg-gray-800/40 p-5 rounded-xl border border-gray-700/50 space-y-5 text-sm text-gray-300 leading-relaxed">
+                            class="bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
                                     <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover;">
@@ -614,13 +671,16 @@
         </div>
 
         <div id="libraryModal"
-            class="fixed inset-0 bg-black/20 z-50 flex items-center justify-center hidden backdrop-blur-sm transition-opacity duration-300">
+            class="fixed inset-0 z-50 flex items-center justify-center hidden transition-opacity duration-300">
+            <!-- Layer 1: full-screen scrim -->
+            <div class="absolute inset-0 bg-black/40 backdrop-blur-sm pointer-events-none -z-10"></div>
+            <!-- Layer 2: floating card -->
             <div
-                class="bg-black/50 rounded-xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-gray-700/50 shadow-2xl backdrop-blur-sm">
+                class="relative z-10 bg-black/25 rounded-2xl p-5 w-[90%] max-w-lg max-h-[70vh] overflow-y-auto border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_20px_40px_rgba(0,0,0,0.5)] backdrop-blur-md">
                 <h3 class="text-white text-lg font-bold mb-4 text-center">Select Library</h3>
                 <div id="librariesList" class="grid grid-cols-2 gap-2"></div>
                 <button id="closeLibraryBtn"
-                    class="w-full mt-4 bg-white/10 border border-white/10 text-gray-300 py-2.5 rounded text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
+                    class="w-full mt-4 bg-white/10 border border-white/10 text-white py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">Close</button>
             </div>
         </div>
 
@@ -651,11 +711,10 @@
     </div>
 
     <script>
-        class EmbyApp {
-            getAuthHeaders(token = '', extra = {}) {
-                return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);
-            }
+        // 页面弹窗清单（getActiveModalId / closeAllModals 共用，新增弹窗只改这一处）
+        const MODAL_IDS = ['deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
 
+        class EmbyApp {
             constructor() {
                 // 应用状态
                 this.state = {
@@ -665,7 +724,6 @@
                     favorites: new Set(),
                     playMode: 'sequence',
                     viewMode: 'stream',
-                    isAutoplay: true,
                     currentTab: 'home',
                     currentLibraryId: null,
                     isScaleFill: true,
@@ -688,12 +746,12 @@
                 this.csTimer = null;
                 this.playFeedbackTimer = null;
                 this.dom = {}; // DOM 元素缓存
-                this.nav = new SpatialNavigator({ app: this });
-                this.input = this.nav;
+                this.input = new InputManager({ app: this });
                 this.gallery = new Gallery({ app: this });
                 this.photoMetadataCache = this.gallery.photoMetadataCache;
                 this.photoMetadataControllers = this.gallery.photoMetadataControllers;
                 this.config.deviceName = this.getDeviceName();
+                this.auth = new AuthManager(this, { keyPrefix: 'emby_pic' });
                 this.init();
             }
 
@@ -725,8 +783,7 @@
 
             // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
             getActiveModalId() {
-                const modals = ['deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
-                return modals.find(id => {
+                return MODAL_IDS.find(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
                     if (id === 'profilePage') return el.classList.contains('active');
@@ -749,15 +806,13 @@
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
-                const vEl = document.querySelector('.bg-primary\\/20.text-xs');
+                const vEl = document.getElementById('appVersionBadge');
                 this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
 
                 this.loadFavorites();
                 this.initGlobalPlaylistIndex();
                 this.bindEvents();
                 this.input.bindHistory();
-
-                this.state.isAutoplay = this.config.autoplay !== false;
 
                 // 根据持久化状态同步 UI 图标
                 if (this.dom.scaleBtn) {
@@ -772,7 +827,7 @@
                 const playBtn = this.dom.playModeBtn;
                 // 若为随机模式，显示 shuffle；否则根据是否Auto Slideshow显示 repeat 或 repeat-1
                 const isSeq = this.state.playMode === 'sequence';
-                const playIcon = isSeq ? (this.state.isAutoplay ? 'repeat' : 'repeat-1') : 'shuffle';
+                const playIcon = isSeq ? (this.config.autoplay ? 'repeat' : 'repeat-1') : 'shuffle';
                 playBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
 
                 lucide.createIcons();
@@ -850,69 +905,21 @@
                 return (items || []).filter(item => !this.isPosterLikePhoto(item));
             }
 
+            // Delegates shared config to AuthManager; page-private slideshow/magazine stays here
             loadConfig() {
-                this.config.server = localStorage.getItem('emby_server') || '';
-                this.config.user = localStorage.getItem('emby_user') || '';
-                this.config.token = localStorage.getItem('emby_token') || '';
-                this.config.userId = localStorage.getItem('emby_uid') || '';
-                this.config.autoplay = localStorage.getItem('emby_pic_autoplay') !== 'false';
+                this.auth.loadConfig();
+            }
+
+            loadPageConfig() {
                 this.config.slideshowInterval = this.clampSlideshowInterval(localStorage.getItem('emby_pic_slideshow_interval') || '30');
                 this.config.magazineMode = localStorage.getItem('emby_pic_magazine_mode') === 'true';
-                this.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
-                this.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
-
-                // 生成或读取设备唯一 ID，解决多设备识别冲突问题
-                if (!localStorage.getItem('emby_device_id')) {
-                    const randomId = Math.random().toString(36).slice(2, 10);
-                    localStorage.setItem('emby_device_id', `EmbyX-${randomId}`);
-                }
-                this.config.deviceId = localStorage.getItem('emby_device_id');
-
-                // 读取高频交互状态
-                const savedScale = localStorage.getItem('emby_is_scale_fill');
-                if (savedScale !== null) this.state.isScaleFill = savedScale === 'true';
-
-                const savedPlayMode = localStorage.getItem('emby_play_mode');
-                if (savedPlayMode !== null) this.state.playMode = savedPlayMode;
-
-                const savedLibId = localStorage.getItem('emby_pic_lib_id');
-                const savedLibType = localStorage.getItem('emby_pic_lib_type');
-                if (savedLibId) {
-                    this.state.currentLibraryId = savedLibId;
-                    this.state.currentLibraryType = savedLibType || 'library';
-                } else if (EmbyXCommon.getServerType() === 'openlist') {
-                    // OpenList has no server-side favorites; open the mount root by default
-                    this.state.currentLibraryId = localStorage.getItem('openlist_base_path') || '/';
-                    this.state.currentLibraryType = 'library';
-                } else {
-                    this.state.currentLibraryId = 'favorites';
-                    this.state.currentLibraryType = 'favorites';
-                }
-
-                // 填充 UI
-                if (this.dom.configServer) this.dom.configServer.value = this.config.server;
-                if (this.dom.configUser) this.dom.configUser.value = this.config.user;
-                if (this.dom.configPwd && this.config.token) {
-                    // 显示与实际Password位数一致的掩码（Password长度存入 localStorage，不存Password本身）
-                    const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    this.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
-                }
-                if (this.dom.configAutoplay) this.dom.configAutoplay.checked = this.config.autoplay;
                 if (this.dom.configSlideshowInterval) this.dom.configSlideshowInterval.value = this.config.slideshowInterval;
                 if (this.dom.configMagazineMode) this.dom.configMagazineMode.checked = this.config.magazineMode;
-                if (this.dom.configDeleteMode) this.dom.configDeleteMode.checked = this.config.deleteMode;
+            }
 
-                // 基于配置同步UI
-                this.dom.deleteBtn.style.display = this.config.deleteMode ? 'flex' : 'none';
-                if (this.dom.playModeBtn) {
-                    this.dom.playModeBtn.innerHTML = `<i data-lucide="${this.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                    lucide.createIcons();
-                }
-
-                // Jellyfin 初始化挂载
-                if (EmbyXCommon.getServerType() === 'jellyfin') {
-                    enableJellyfinFetchProxy();
-                }
+            savePageConfig() {
+                localStorage.setItem('emby_pic_slideshow_interval', this.clampSlideshowInterval(this.dom.configSlideshowInterval.value));
+                localStorage.setItem('emby_pic_magazine_mode', this.dom.configMagazineMode.checked);
             }
 
             async detectFnOS(server) {
@@ -920,122 +927,13 @@
             }
 
             async saveConfig() {
-                let server = this.dom.configServer.value.trim().replace(/\/$/, "");
-                const user = this.dom.configUser.value.trim();
-                const pwd = this.dom.configPwd.value.trim();
-
-                const autoplay = this.dom.configAutoplay.checked;
-                const slideshowInterval = this.clampSlideshowInterval(this.dom.configSlideshowInterval.value);
-                const magazineMode = this.dom.configMagazineMode.checked;
-                const deleteMode = this.dom.configDeleteMode.checked;
-                if (this.dom.configSlideshowInterval) this.dom.configSlideshowInterval.value = slideshowInterval;
-
-                if (!server || !user) return this.showToast('Please fill in all fields');
-
-                this.toggleLoading(true);
-
-                // 自动补全协议头和端口
-                const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
-                server = normalizedServer;
-
-                try {
-                    // 如果是用旧 token 更新设置，跳过登录（仅当输入为掩码且旧Password长度大于0）
-                    const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                    const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
-                    if (isUnchangedPwd && this.config.token && this.config.server === server && this.config.user === user) {
-                        // 服务器未变，fnOS 状态沿用内存值，无需重新发探测请求
-                        const fnOS = this.config.fnOS;
-                        localStorage.setItem('emby_pic_autoplay', autoplay);
-                        localStorage.setItem('emby_pic_slideshow_interval', slideshowInterval);
-                        localStorage.setItem('emby_pic_magazine_mode', magazineMode);
-                        localStorage.setItem('emby_delete_mode', deleteMode);
-                        if (fnOS) localStorage.setItem('emby_fnOS', 'true');
-                        else localStorage.removeItem('emby_fnOS');
-
-                        // 清理数据缓存，保留核心设置并重新加载
-                        localStorage.removeItem('emby_views_cache');
-                        localStorage.removeItem('emby_favorites');
-                        location.reload();
-                        return;
-                    }
-
-                    const auth = await EmbyXCommon.authenticate({
-                        server,
-                        user,
-                        pwd,
-                        deviceName: this.config.deviceName,
-                        deviceId: this.config.deviceId,
-                        appVersion: this.config.appVersion,
-                        isAutoFilled
-                    });
-
-                    const { data, userId, fnOS, finalServer, serverType } = auth;
-                    server = finalServer;
-
-                    // 登录成功后的处理
-                    localStorage.setItem('emby_server', server);
-                    localStorage.setItem('emby_user', user);
-                    localStorage.setItem('emby_token', data.AccessToken);
-                    localStorage.setItem('emby_uid', userId);
-                    localStorage.setItem('emby_pic_autoplay', autoplay);
-                    localStorage.setItem('emby_pic_slideshow_interval', slideshowInterval);
-                    localStorage.setItem('emby_pic_magazine_mode', magazineMode);
-                    localStorage.setItem('emby_delete_mode', deleteMode);
-                    if (fnOS) localStorage.setItem('emby_fnOS', 'true');
-                    else localStorage.removeItem('emby_fnOS');
-
-                    this.config = { ...this.config, server, user, token: data.AccessToken, userId, autoplay, slideshowInterval, magazineMode, deleteMode, fnOS };
-
-                    // 将Password位数存入 localStorage，不存Password本身，空Password记为 0
-                    const pwdLen2 = pwd.length;
-                    localStorage.setItem('emby_pwd_len', pwdLen2);
-                    this.dom.configPwd.value = '*'.repeat(pwdLen2);
-                    this.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
-                    if (this.dom.playModeBtn) {
-                        this.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                        lucide.createIcons();
-                    }
-
-                    // 清理数据缓存，保留核心设置并重新加载
-                    localStorage.removeItem('emby_views_cache');
-                    localStorage.removeItem('emby_favorites');
-                    localStorage.removeItem('emby_pic_lib_id');
-                    localStorage.removeItem('emby_pic_lib_type');
-                    localStorage.setItem('embyx_server_type', serverType || 'emby');
-                    location.reload();
-                } catch (e) {
-                    console.error('saveConfig error:', e);
-                    // 分辨常见错误类型并规范 Toast 空格
-                    const status = e?.status;
-                    if (status === 401 || status === 'NO_TOKEN') {
-                        this.showToast('❌ Auth failed: Invalid Username or Password');
-                    } else if (status === 404) {
-                        this.showToast('❌ Connection Failed: Check port');
-                    } else if (status) {
-                        this.showToast('❌ Connection Failed ' + status + '，请检查 Emby 日志');
-                    } else {
-                        const msg = e?.message || '';
-                        const isHttps = location.protocol === 'https:';
-                        const targetHttp = server.startsWith('http:');
-                        if (isHttps && targetHttp) {
-                            // HTTPS 页面请求 HTTP Emby 会被浏览器拦截（Mixed Content）
-                            this.showToast('❌ Blocked: Mixed Content (HTTPS -> HTTP)');
-                        } else if (msg.includes('Failed to fetch') || msg.includes('NetworkError') || msg.includes('ERR_CONNECTION')) {
-                            this.showToast('❌ Cannot connect to server');
-                        } else {
-                            this.showToast('❌ Connection Failed: ' + (msg || '未知错误'));
-                        }
-                    }
-                } finally {
-                    this.toggleLoading(false);
-                }
+                // Persist page-private settings first; shared config and login go through AuthManager
+                this.savePageConfig();
+                return this.auth.saveConfig();
             }
 
-            resetConfig() {
-                if (confirm('Are you sure you want to reset all settings?')) {
-                    localStorage.clear();
-                    location.reload();
-                }
+            async resetConfig() {
+                return this.auth.resetConfig();
             }
 
             async loadFavorites() {
@@ -1370,41 +1268,52 @@
                 const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
                 const countStr = totalCount > 999 ? '999+' : String(totalCount);
 
-                safeHeader.className = 'w-full flex items-center gap-2 bg-black/50 backdrop-blur-sm border-b border-gray-800/50 px-3 pb-3';
-                safeHeader.style.paddingTop = 'max(8px, env(safe-area-inset-top, 8px))';
+                safeHeader.className = 'absolute top-0 left-0 right-0 z-20 bg-black/25 backdrop-blur-xl border-b border-white/10 flex flex-col transition-all';
+                safeHeader.style.paddingTop = 'var(--safe-top)';
 
                 const isSearchActive = !!this.state.searchTerm;
-                safeHeader.innerHTML = `
-                    <span class="text-sm font-bold text-gray-200 truncate max-w-[40%]">${libraryName}</span>
+
+                const headerNav = document.createElement('div');
+                headerNav.id = 'gridHeaderNav';
+                headerNav.className = 'flex items-center gap-2 px-3 h-[60px] w-full';
+                headerNav.innerHTML = `
+                    <span class="text-sm font-bold text-gray-200 truncate max-w-[40%] flex items-center">${libraryName}</span>
                     <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                         ${countStr}
                         <span class="w-1.5"></span>
-                        <button id="gridShuffleBtn" title="Shuffle Photos" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20">
+                        <button id="gridShuffleBtn" title="Shuffle" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20 flex items-center justify-center">
                             <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
                         </button>
                     </span>
                     <span class="flex-1"></span>
                     <button id="gridFolderSearchBtn" title="Search"
-                        class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-gray-400 hover:text-white'}">
+                        class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-white hover:text-white/80'}">
                         <i data-lucide="folder-search" class="w-4 h-4"></i>
                     </button>
-                    <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
-                    <span class="text-xs font-bold text-white tabular-nums">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
-                    <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
+                    <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
+                    <span class="text-xs font-bold text-white tabular-nums flex items-center">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
+                    <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
                 `;
+                safeHeader.innerHTML = '';
+                safeHeader.appendChild(headerNav);
 
-                searchBar.className = `w-full bg-black/50 border-b border-gray-800/50 px-3 py-2 ${this.state.searchTerm ? '' : 'hidden'}`;
+                searchBar.className = `w-full px-3 pb-2.5 pt-0.5 ${isSearchActive ? '' : 'hidden'}`;
                 if (!searchBar.innerHTML) {
                     searchBar.innerHTML = `
                         <div class="flex items-center gap-2 bg-white/10 rounded-lg px-3 py-2">
-                            <i data-lucide="search" class="w-4 h-4 text-gray-400 flex-shrink-0"></i>
+                            <i data-lucide="search" class="w-4 h-4 text-white flex-shrink-0"></i>
                             <input id="gridSearchInput" type="search"
                                    value="${this.state.searchTerm}"
-                                   placeholder="Search photo title, person, description..."
-                                   class="flex-1 bg-transparent text-white text-sm outline-none placeholder-gray-500 min-w-0">
+                                   placeholder="Photo name, person, description…"
+                                   class="flex-1 bg-transparent text-white text-sm outline-none placeholder-white/80 min-w-0">
                         </div>
                     `;
                 }
+                if (!safeHeader.contains(searchBar)) safeHeader.appendChild(searchBar);
+
+                const headerNavHeight = isSearchActive ? 'calc(7.25rem + var(--safe-top))' : 'calc(3.75rem + var(--safe-top))';
+                scrollArea.style.paddingTop = headerNavHeight;
+                scrollArea.style.paddingBottom = 'calc(4.5rem + env(safe-area-inset-bottom, 0px))';
 
                 const shuffleBtn = document.getElementById('gridShuffleBtn');
                 if (shuffleBtn) {
@@ -1537,6 +1446,11 @@
                             const bar = document.getElementById('gridSearchBar');
                             if (bar) {
                                 bar.classList.toggle('hidden');
+                                if (scrollArea) {
+                                    scrollArea.style.paddingTop = bar.classList.contains('hidden') ?
+                                        'calc(3.75rem + var(--safe-top))' :
+                                        'calc(7.25rem + var(--safe-top))';
+                                }
                                 if (!bar.classList.contains('hidden')) {
                                     document.getElementById('gridSearchInput')?.focus();
                                 }
@@ -2995,6 +2909,32 @@
                 document.getElementById('saveConfigBtn').onclick = () => this.saveConfig();
                 document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
 
+                const serverHelpBtn = document.getElementById('serverHelpBtn');
+                const serverHelpTooltip = document.getElementById('serverHelpTooltip');
+                const closeServerHelpBtn = document.getElementById('closeServerHelpBtn');
+                if (serverHelpBtn && serverHelpTooltip) {
+                    serverHelpBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        serverHelpTooltip.classList.toggle('hidden');
+                        if (!serverHelpTooltip.classList.contains('hidden') && window.lucide) {
+                            lucide.createIcons();
+                        }
+                    };
+                }
+                if (closeServerHelpBtn && serverHelpTooltip) {
+                    closeServerHelpBtn.onclick = (e) => {
+                        e.stopPropagation();
+                        serverHelpTooltip.classList.add('hidden');
+                    };
+                }
+                document.addEventListener('click', (e) => {
+                    if (serverHelpTooltip && !serverHelpTooltip.classList.contains('hidden')) {
+                        if (!serverHelpTooltip.contains(e.target) && !serverHelpBtn.contains(e.target) && e.target !== document.getElementById('configServer')) {
+                            serverHelpTooltip.classList.add('hidden');
+                        }
+                    }
+                });
+
                 this.dom.confirmDeleteBtn.onclick = () => this.executeDelete();
                 this.dom.cancelDeleteBtn.onclick = () => this.toggleModal('deleteConfirmModal', false);
 
@@ -3035,7 +2975,7 @@
                             libraryActive ? document.getElementById('libraryModal') :
                                 document.getElementById('videoContainer');
 
-                        const consumed = this.nav.handleKey(e, {
+                        const consumed = this.input.handleKey(e, {
                             isInput,
                             isGrid: isPhotoGrid,
                             currentGridIndex: this.state.currentIndex,
@@ -3179,20 +3119,19 @@
 
             // --- 通用辅助 ---
             closeAllModals(exceptId = null) {
-                const modals = ['syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
-                modals.forEach(id => {
+                MODAL_IDS.forEach(id => {
                     if (id === exceptId) return;
                     const el = document.getElementById(id);
                     if (!el) return;
                     if (id === 'profilePage') {
                         if (el.classList.contains('active')) {
                             el.classList.remove('active');
-                            if (this.nav) this.nav.blurModal(el);
+                            if (this.input) this.input.blurModal(el);
                         }
                     } else {
                         if (!el.classList.contains('hidden')) {
                             el.classList.add('hidden');
-                            if (this.nav) this.nav.blurModal(el);
+                            if (this.input) this.input.blurModal(el);
                         }
                     }
                 });
@@ -3218,50 +3157,19 @@
 
                 // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
-                    this.nav.focusModal(el);
+                    this.input.focusModal(el);
                     this.input?.pushLayer('modal', { id });
                 } else {
-                    this.nav.blurModal(el);
+                    this.input.blurModal(el);
                 }
 
                 // 核心逻辑：无论打开还是Close弹窗，都调用 showInterfaceTemp
                 this.showInterfaceTemp();
                 if (!show) this.scheduleSlideshow();
             }
-
-            toggleLoading(show) {
-                const el = this.dom.loading;
-                if (show) {
-                    el.classList.remove('hidden');
-                    // 加载中强制隐藏当前播放按钮，避免状态冲突导致的闪烁
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const btn = document.getElementById(`playBtn-${slideIdx}`);
-                    if (btn) btn.classList.remove('paused');
-                } else {
-                    el.classList.add('hidden');
-                }
-            }
-
-            showToast(msg, duration = 3000) {
-                // 清除上一个计时器，防止快速连发 Toast 时提前消失
-                // duration: 显示时长（ms），默认 3000。重要提示可传更大值，如 5000
-                if (this._toastTimer) clearTimeout(this._toastTimer);
-                const t = this.dom.toast;
-                t.textContent = msg;
-                t.classList.remove('opacity-0');
-                this._toastTimer = setTimeout(() => t.classList.add('opacity-0'), duration);
-            }
-
-            escapeHtml(str) {
-                if (!str) return '';
-                return String(str)
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;');
-            }
         }
+
+        EmbyXCommon.installPageUtilities(EmbyApp);
 
         window.onload = () => {
             lucide.createIcons();

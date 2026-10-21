@@ -22,6 +22,65 @@
         }
     }
 
+    const SERVER_TYPE_ICONS = {
+        emby: 'img/emby.webp',
+        jellyfin: 'img/jellyfin.webp',
+        fnos: 'img/fnos.webp',
+        openlist: 'img/openlist.webp'
+    };
+
+    // 登录态下在服务器地址输入框右侧回显类型图标（飞牛 OAuth 仅写 emby_fnOS，故优先判断）
+    function updateServerTypeIcon(imgEl) {
+        if (!imgEl || typeof localStorage === 'undefined') return;
+        if (!localStorage.getItem('emby_server') || !localStorage.getItem('emby_token')) {
+            imgEl.classList.add('hidden');
+            return;
+        }
+        const type = localStorage.getItem('emby_fnOS') === 'true' ? 'fnos' : getServerType();
+        imgEl.src = SERVER_TYPE_ICONS[type] || SERVER_TYPE_ICONS.emby;
+        imgEl.classList.remove('hidden');
+    }
+
+    // 页面级公共工具：两页 EmbyApp 逐字节相同的实现，挂到原型上一次生效
+    function installPageUtilities(AppClass) {
+        if (!AppClass || !AppClass.prototype) return;
+        const proto = AppClass.prototype;
+        proto.getAuthHeaders = function (token = '', extra = {}) {
+            return Object.assign(getAuthHeaders(this.config, token), extra);
+        };
+        proto.toggleLoading = function (show) {
+            const el = this.dom.loading;
+            if (!el) return;
+            if (show) {
+                el.classList.remove('hidden');
+                // 加载中强制隐藏当前播放按钮，避免状态冲突导致的闪烁
+                const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
+                const btn = document.getElementById(`playBtn-${slideIdx}`);
+                if (btn) btn.classList.remove('paused');
+            } else {
+                el.classList.add('hidden');
+            }
+        };
+        proto.showToast = function (msg, duration = 3000) {
+            // 清除上一个计时器，防止快速连发 Toast 时提前消失
+            if (this._toastTimer) clearTimeout(this._toastTimer);
+            const t = this.dom.toast;
+            if (!t) return;
+            t.textContent = msg;
+            t.classList.remove('opacity-0');
+            this._toastTimer = setTimeout(() => t.classList.add('opacity-0'), duration);
+        };
+        proto.escapeHtml = function (str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        };
+    }
+
     // 1. Jellyfin authentication and route compatibility interceptor
     function enableJellyfinFetchProxy() {
         if (window._jellyfinProxyEnabled) return;
@@ -469,6 +528,8 @@
     window.EmbyXCommon = {
         getServerType,
         setServerType,
+        updateServerTypeIcon,
+        installPageUtilities,
         normalizeUrl,
         enableFetchProxy: enableJellyfinFetchProxy,
         enableJellyfinFetchProxy,

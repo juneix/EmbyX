@@ -227,6 +227,11 @@
             animation: heart-burst 0.6s ease-out forwards;
             will-change: transform, opacity;
         }
+
+        /* 顶部安全区：默认 0（安卓 PWA/APK 已申请全屏，无需避让）；仅 iOS PWA 状态栏常驻时下移，
+           与 #castBtn / #fullscreenBtn 的处理保持一致 */
+        :root { --safe-top: 0px; }
+        .ios-pwa { --safe-top: env(safe-area-inset-top, 0px); }
     </style>
 </head>
 
@@ -615,8 +620,12 @@
                                         <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
                                     </button>
                                 </div>
-                                <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视 / OpenList"
-                                    class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
+                                <div class="relative">
+                                    <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视 / OpenList"
+                                        class="w-full h-11 bg-black/40 text-white text-sm rounded-lg pl-3 pr-11 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
+                                    <img id="serverTypeIcon" alt="" src="img/emby.webp"
+                                        class="hidden absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 object-contain pointer-events-none">
+                                </div>
 
                                 <!-- 服务器地址填写格式参考 Tooltip 弹窗 -->
                                 <div id="serverHelpTooltip"
@@ -955,11 +964,10 @@
         // § 1. EmbyApp 类 — 构造与基础方法
         // ═══════════════════════════════════════
 
-        class EmbyApp {
-            getAuthHeaders(token = '', extra = {}) {
-                return Object.assign(EmbyXCommon.getAuthHeaders(this.config, token), extra);
-            }
+        // 页面弹窗清单（getActiveModalId / closeAllModals 共用，新增弹窗只改这一处）
+        const MODAL_IDS = ['donateModal', 'syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'castModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
 
+        class EmbyApp {
             constructor() {
                 this._isFirstLoad = true; // 启动加载锁，防时间戳自污染
                 // 应用状态
@@ -970,9 +978,8 @@
                     favorites: new Set(),
                     playMode: 'sequence',
                     viewMode: 'stream',
-                    isAutoplay: true,
                     currentTab: 'home',
-                    currentLibraryId: localStorage.getItem('emby_lib_id') || null,
+                    currentLibraryId: null,
                     isScaleFill: true,
                     isMuted: false,
                     lastReportTime: 0,
@@ -1005,11 +1012,10 @@
                 this.grid = new GridViewManager(this);
                 this.mediaInfo = new MediaInfoModal(this);
                 this.input = new InputManager({ app: this });
-                this.nav = this.input; // 兼容原有调用
                 this.player = new VideoPlayer({
                     app: this,
                     onEnded: () => {
-                        if (this.state.viewMode === 'stream' && this.state.isAutoplay) {
+                        if (this.state.viewMode === 'stream' && this.config.autoplay) {
                             this.nextVideo();
                         }
                     },
@@ -1053,8 +1059,7 @@
 
             // 检查当前是否有任何弹窗/面板处于打开状态并返回最上层弹窗 ID
             getActiveModalId() {
-                const modals = ['donateModal', 'syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'castModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
-                return modals.find(id => {
+                return MODAL_IDS.find(id => {
                     const el = document.getElementById(id);
                     if (!el) return false;
                     if (id === 'profilePage') return el.classList.contains('active');
@@ -1081,14 +1086,12 @@
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
-                const vEl = document.querySelector('.bg-primary\\/20.text-xs');
+                const vEl = document.getElementById('appVersionBadge');
                 this.config.appVersion = vEl ? vEl.textContent.replace('v', '').trim() : '1.1';
 
                 this.loadFavorites();
                 this.initGlobalPlaylistIndex();
                 this.bindEvents();
-
-                this.state.isAutoplay = this.config.autoplay !== false;
 
                 // 短剧模式初始视图设为宫格选剧大厅
                 if (this.config.shortDrama) {
@@ -1118,7 +1121,7 @@
                 const playBtn = this.dom.playModeBtn;
                 // 若为随机模式，显示 shuffle；否则根据是否自动连播显示 repeat 或 repeat-1
                 const isSeq = this.state.playMode === 'sequence';
-                const playIcon = isSeq ? (this.state.isAutoplay ? 'repeat' : 'repeat-1') : 'shuffle';
+                const playIcon = isSeq ? (this.config.autoplay ? 'repeat' : 'repeat-1') : 'shuffle';
                 playBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
 
                 lucide.createIcons();
@@ -2976,22 +2979,21 @@
                     if (Array.isArray(exceptId)) return exceptId.includes(id);
                     return id === exceptId;
                 };
-                const modals = ['donateModal', 'syncConfirmModal', 'deleteConfirmModal', 'mediaInfoModal', 'castModal', 'addToPlaylistModal', 'libraryModal', 'profilePage'];
-                modals.forEach(id => {
+                MODAL_IDS.forEach(id => {
                     if (isExcepted(id)) return;
                     const el = document.getElementById(id);
                     if (!el) return;
                     if (id === 'profilePage') {
                         if (el.classList.contains('active')) {
                             el.classList.remove('active');
-                            if (this.nav) this.nav.blurModal(el);
+                            if (this.input) this.input.blurModal(el);
                         }
                     } else if (id === 'castModal') {
                         if (this.castManager) {
                             this.castManager.closeModal();
                         } else {
                             el.classList.add('hidden');
-                            if (this.nav) this.nav.blurModal(el);
+                            if (this.input) this.input.blurModal(el);
                         }
                     } else if (id === 'donateModal') {
                         if (window.DonateManager) {
@@ -3003,7 +3005,7 @@
                     } else {
                         if (!el.classList.contains('hidden')) {
                             el.classList.add('hidden');
-                            if (this.nav) this.nav.blurModal(el);
+                            if (this.input) this.input.blurModal(el);
                         }
                     }
                 });
@@ -3041,10 +3043,10 @@
 
                 // 遥控器优化：打开时自动聚焦到已选中项，如没有已选中则聚焦到第一个
                 if (show) {
-                    this.nav.focusModal(el);
+                    this.input.focusModal(el);
                     this.input?.pushLayer('modal', { id });
                 } else {
-                    this.nav.blurModal(el);
+                    this.input.blurModal(el);
                 }
 
                 // 核心逻辑：无论打开还是关闭弹窗，都调用 showInterfaceTemp
@@ -3053,43 +3055,12 @@
 
             // ═══ 工具方法 ═══
 
-            toggleLoading(show) {
-                const el = this.dom.loading;
-                if (show) {
-                    el.classList.remove('hidden');
-                    // 加载中强制隐藏当前播放按钮，避免状态冲突导致的闪烁
-                    const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
-                    const btn = document.getElementById(`playBtn-${slideIdx}`);
-                    if (btn) btn.classList.remove('paused');
-                } else {
-                    el.classList.add('hidden');
-                }
-            }
-
-            showToast(msg, duration = 3000) {
-                // 清除上一个计时器，防止快速连发 Toast 时提前消失
-                // duration: 显示时长（ms），默认 3000。重要提示可传更大值，如 5000
-                if (this._toastTimer) clearTimeout(this._toastTimer);
-                const t = this.dom.toast;
-                t.textContent = msg;
-                t.classList.remove('opacity-0');
-                this._toastTimer = setTimeout(() => t.classList.add('opacity-0'), duration);
-            }
-
             formatTime(s) {
                 return this.player.formatTime(s);
             }
-
-            escapeHtml(str) {
-                if (!str) return '';
-                return String(str)
-                    .replace(/&/g, '&amp;')
-                    .replace(/</g, '&lt;')
-                    .replace(/>/g, '&gt;')
-                    .replace(/"/g, '&quot;')
-                    .replace(/'/g, '&#039;');
-            }
         }
+
+        EmbyXCommon.installPageUtilities(EmbyApp);
 
         window.onload = () => {
             lucide.createIcons();

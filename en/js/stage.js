@@ -187,7 +187,6 @@
                 if (this.app.player.activeMpegts) {
                     this.app.player.activeMpegts.destroy();
                     this.app.player.activeMpegts = null;
-                    window.activeMpegtsPlayer = null;
                 }
                 this.app.player.reportPlayback('stopped', curV);
             }

@@ -123,7 +123,7 @@
             const countStr = totalCount > 999 ? '999+' : String(totalCount);
 
             safeHeader.className = 'absolute top-0 left-0 right-0 z-20 bg-black/25 backdrop-blur-xl border-b border-white/10 flex flex-col transition-all';
-            safeHeader.style.paddingTop = 'env(safe-area-inset-top, 0px)';
+            safeHeader.style.paddingTop = 'var(--safe-top)';
 
             const isSearchActive = !!app.state.searchTerm;
             const hasFolderBack = !!(app.drama && app.drama.folderStack.length > 0);
@@ -185,8 +185,8 @@
             }
 
             scrollArea.style.paddingTop = isSearchActive ?
-                'calc(7.25rem + env(safe-area-inset-top, 0px))' :
-                'calc(3.75rem + env(safe-area-inset-top, 0px))';
+                'calc(7.25rem + var(--safe-top))' :
+                'calc(3.75rem + var(--safe-top))';
             scrollArea.style.paddingBottom = 'calc(4.5rem + env(safe-area-inset-bottom, 0px))';
 
             const shuffleBtn = document.getElementById('gridShuffleBtn');
@@ -444,8 +444,8 @@
                             bar.classList.toggle('hidden');
                             if (scrollArea) {
                                 scrollArea.style.paddingTop = bar.classList.contains('hidden') ?
-                                    'calc(3.75rem + env(safe-area-inset-top, 0px))' :
-                                    'calc(7.25rem + env(safe-area-inset-top, 0px))';
+                                    'calc(3.75rem + var(--safe-top))' :
+                                    'calc(7.25rem + var(--safe-top))';
                             }
                             if (!bar.classList.contains('hidden')) {
                                 document.getElementById('gridSearchInput')?.focus();

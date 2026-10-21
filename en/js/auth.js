@@ -9,8 +9,14 @@
     'use strict';
 
     class AuthManager {
-        constructor(app) {
+        /**
+         * @param {object} app EmbyApp instance
+         * @param {object} [options]
+         * @param {string} [options.keyPrefix='emby'] Page-private localStorage prefix; derives <prefix>_autoplay and <prefix>_lib_id/_lib_type
+         */
+        constructor(app, options) {
             this.app = app || null;
+            this.keyPrefix = (options && options.keyPrefix) || 'emby';
             this._oauthExchanging = false;
             this._fnosOAuthUrl = null;
         }
@@ -23,10 +29,13 @@
             app.config.user = localStorage.getItem('emby_user') || '';
             app.config.token = localStorage.getItem('emby_token') || '';
             app.config.userId = localStorage.getItem('emby_uid') || '';
-            app.config.playQuality = localStorage.getItem('emby_play_quality') || 'direct';
-            app.config.useStatic = (app.config.playQuality === 'direct');
-            app.config.autoplay = localStorage.getItem('emby_autoplay') !== 'false';
-            app.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
+            // Play quality and drama mode are index.html only; pic.html has no such controls
+            if (app.dom.configPlayQuality) {
+                app.config.playQuality = localStorage.getItem('emby_play_quality') || 'direct';
+                app.config.useStatic = (app.config.playQuality === 'direct');
+            }
+            app.config.autoplay = localStorage.getItem(this.keyPrefix + '_autoplay') !== 'false';
+            if (app.dom.configShortDrama) app.config.shortDrama = localStorage.getItem('emby_shortdrama') === 'true';
             app.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
             app.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
             app.config.serverId = localStorage.getItem('emby_server_id') || '';
@@ -43,14 +52,14 @@
             if (savedScale !== null) app.state.isScaleFill = savedScale === 'true';
 
             const savedMute = localStorage.getItem('emby_is_muted');
-            if (savedMute !== null) app.state.isMuted = savedMute === 'true';
+            if (savedMute !== null && 'isMuted' in app.state) app.state.isMuted = savedMute === 'true';
 
             const savedPlayMode = localStorage.getItem('emby_play_mode');
             if (savedPlayMode !== null) app.state.playMode = savedPlayMode;
             if (app.config.shortDrama) app.state.playMode = 'sequence';
 
-            const savedLibId = localStorage.getItem('emby_lib_id');
-            const savedLibType = localStorage.getItem('emby_lib_type');
+            const savedLibId = localStorage.getItem(this.keyPrefix + '_lib_id');
+            const savedLibType = localStorage.getItem(this.keyPrefix + '_lib_type');
             if (savedLibId) {
                 app.state.currentLibraryId = savedLibId;
                 app.state.currentLibraryType = savedLibType || 'library';
@@ -75,6 +84,9 @@
             if (app.dom.configShortDrama) app.dom.configShortDrama.checked = app.config.shortDrama;
             if (app.dom.configDeleteMode) app.dom.configDeleteMode.checked = app.config.deleteMode;
 
+            // Page-private settings (pic.html slideshow interval / magazine mode) are handled by the page
+            if (typeof app.loadPageConfig === 'function') app.loadPageConfig();
+
             // 基于配置同步 UI
             if (app.dom.deleteBtn) app.dom.deleteBtn.style.display = app.config.deleteMode ? 'flex' : 'none';
             if (app.dom.playModeBtn) {
@@ -86,6 +98,9 @@
             if (window.EmbyXCommon && EmbyXCommon.getServerType() === 'jellyfin' && window.enableJellyfinFetchProxy) {
                 enableJellyfinFetchProxy();
             }
+
+            // 服务器类型图标回显
+            EmbyXCommon.updateServerTypeIcon(document.getElementById('serverTypeIcon'));
 
             // 同步配置
             if (window.DonateManager && typeof window.DonateManager.syncFromServer === 'function') {
@@ -223,9 +238,9 @@
 
             const playQuality = app.dom.configPlayQuality ? app.dom.configPlayQuality.value : 'direct';
             const isStatic = playQuality === 'direct';
-            const autoplay = app.dom.configAutoplay.checked;
-            const shortDrama = app.dom.configShortDrama.checked;
-            const deleteMode = app.dom.configDeleteMode.checked;
+            const autoplay = app.dom.configAutoplay ? app.dom.configAutoplay.checked : true;
+            const shortDrama = app.dom.configShortDrama ? app.dom.configShortDrama.checked : false;
+            const deleteMode = app.dom.configDeleteMode ? app.dom.configDeleteMode.checked : false;
 
             if (!server || !user) return app.showToast('请填写完整信息');
 
@@ -239,13 +254,8 @@
                 const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
                 if (isUnchangedPwd && app.config.token && app.config.server === server && app.config.user === user) {
                     const fnOS = app.config.fnOS;
-                    localStorage.setItem('emby_play_quality', playQuality);
-                    localStorage.setItem('emby_static', isStatic);
-                    localStorage.setItem('emby_autoplay', autoplay);
-                    localStorage.setItem('emby_shortdrama', shortDrama);
-                    localStorage.setItem('emby_delete_mode', deleteMode);
-                    if (fnOS) localStorage.setItem('emby_fnOS', 'true');
-                    else localStorage.removeItem('emby_fnOS');
+                    this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS });
+                    if (typeof app.savePageConfig === 'function') app.savePageConfig();
 
                     localStorage.removeItem('emby_views_cache');
                     localStorage.removeItem('emby_favorites');
@@ -279,13 +289,8 @@
                 localStorage.setItem('emby_user', user);
                 localStorage.setItem('emby_token', data.AccessToken);
                 localStorage.setItem('emby_uid', userId);
-                localStorage.setItem('emby_play_quality', playQuality);
-                localStorage.setItem('emby_static', isStatic);
-                localStorage.setItem('emby_autoplay', autoplay);
-                localStorage.setItem('emby_shortdrama', shortDrama);
-                localStorage.setItem('emby_delete_mode', deleteMode);
-                if (fnOS) localStorage.setItem('emby_fnOS', 'true');
-                else localStorage.removeItem('emby_fnOS');
+                this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS });
+                if (typeof app.savePageConfig === 'function') app.savePageConfig();
 
                 app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
 
@@ -300,8 +305,8 @@
 
                 localStorage.removeItem('emby_views_cache');
                 localStorage.removeItem('emby_favorites');
-                localStorage.removeItem('emby_lib_id');
-                localStorage.removeItem('emby_lib_type');
+                localStorage.removeItem(this.keyPrefix + '_lib_id');
+                localStorage.removeItem(this.keyPrefix + '_lib_type');
                 location.reload();
             } catch (e) {
                 console.error('saveConfig error:', e);
@@ -327,6 +332,20 @@
             } finally {
                 app.toggleLoading(false);
             }
+        }
+
+        // Persist shared prefs; page-private keys are handled by the page's savePageConfig hook
+        savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS }) {
+            localStorage.setItem(this.keyPrefix + '_autoplay', autoplay);
+            const dom = (this.app && this.app.dom) || {};
+            if (dom.configPlayQuality) {
+                localStorage.setItem('emby_play_quality', playQuality);
+                localStorage.setItem('emby_static', isStatic);
+            }
+            if (dom.configShortDrama) localStorage.setItem('emby_shortdrama', shortDrama);
+            localStorage.setItem('emby_delete_mode', deleteMode);
+            if (fnOS) localStorage.setItem('emby_fnOS', 'true');
+            else localStorage.removeItem('emby_fnOS');
         }
 
         async resetConfig() {

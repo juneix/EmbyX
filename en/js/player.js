@@ -381,7 +381,7 @@
             if (this.app.config.useStatic) {
                 if (retryCount === 0) {
                     if (this.activeHls) { this.activeHls.destroy(); this.activeHls = null; window.activeHls = null; }
-                    if (this.activeMpegts) { this.activeMpegts.destroy(); this.activeMpegts = null; window.activeMpegtsPlayer = null; }
+                    if (this.activeMpegts) { this.activeMpegts.destroy(); this.activeMpegts = null; }
 
                     const msIdx = item?._selectedMediaSourceIndex || 0;
                     const mediaSource = item?.MediaSources?.[msIdx] || item?.MediaSources?.[0];
@@ -424,7 +424,6 @@
                             player.attachMediaElement(v);
                             player.load();
                             this.activeMpegts = player;
-                            window.activeMpegtsPlayer = player;
                             this.playVideo(index);
                         } else if (v.canPlayType('application/vnd.apple.mpegurl') ||
                             (typeof Hls !== 'undefined' && Hls.isSupported())) {
@@ -450,7 +449,7 @@
                 // 转码模式（用户主动在设置中选择了“自动转码”或指定分辨率档位）
                 if (retryCount === 0) {
                     if (this.activeHls) { this.activeHls.destroy(); this.activeHls = null; window.activeHls = null; }
-                    if (this.activeMpegts) { this.activeMpegts.destroy(); this.activeMpegts = null; window.activeMpegtsPlayer = null; }
+                    if (this.activeMpegts) { this.activeMpegts.destroy(); this.activeMpegts = null; }
                     this.app.state.playbackMethod = 'Transcode';
                     this.onFallback('Transcode');
                     this.setVideoSource(v, this._buildHlsSrc(item.Id, item, true, this.app.config.playQuality), index, item, { autoplay: true });

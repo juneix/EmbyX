@@ -2,7 +2,7 @@
   "_meta": {
     "source": "zh/pic.html",
     "target": "en/pic.html",
-    "updated": "2026-10-17"
+    "updated": "2026-10-21"
   },
   "strings": {
     "请填写完整信息": "Please fill in all fields",
@@ -123,6 +123,10 @@
     "加载人物元数据失败:": "Failed to load person metadata:",
     "获取媒体库失败:": "Failed to fetch libraries:",
     "收藏同步失败:": "Favorite sync failed:",
-    "获取人物作品失败:": "Failed to fetch person works:"
+    "获取人物作品失败:": "Failed to fetch person works:",
+    "填写格式参考": "Address Format Examples",
+    "（默认8096/8090端口）": "(default port 8096/8090)",
+    "（默认443端口）": "(default port 443)",
+    "❌ OpenList 暂不支持删除": "❌ Deletion is not supported on OpenList"
   }
 }
