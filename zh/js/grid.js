@@ -244,9 +244,9 @@
                     isActive ? 'border-2 border-primary box-border' : 'bg-gray-800'
                 }`;
 
-                // 封面图
+                // 封面图（OpenList 直链未必放行 CORS，强制 anonymous 会直接加载失败）
                 const img = document.createElement('img');
-                img.crossOrigin = 'anonymous';
+                if (!item._isOpenList) img.crossOrigin = 'anonymous';
                 img.referrerPolicy = 'no-referrer';
                 img.src = app.getImageSrc(item);
                 img.className = 'w-full h-full object-cover';

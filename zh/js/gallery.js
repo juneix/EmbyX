@@ -118,7 +118,12 @@
         }
 
         buildPhotoDownloadUrl(item) {
-            if (!item?.Id || !this.app || !this.app.config.server || !this.app.config.token) return '';
+            if (!item?.Id) return '';
+            // OpenList 直链：不经 Emby 下载路由，也不需要 api_key
+            if (item._isOpenList) {
+                return window.OpenListManager?.getPhotoUrl?.(item) || '';
+            }
+            if (!this.app || !this.app.config.server || !this.app.config.token) return '';
             const fixUrl = window.EmbyXCommon?.fixUrlForJellyfin || ((u) => u);
             return fixUrl(`${this.app.config.server}/emby/Items/${item.Id}/Download?api_key=${this.app.config.token}`);
         }
@@ -152,7 +157,10 @@
         async loadPhotoMetadata(item, signal) {
             const url = this.buildPhotoDownloadUrl(item);
             if (!url) return '-';
-            const headers = this.app.getAuthHeaders(this.app.config.token, { 'Range': 'bytes=0-262143' });
+            // OpenList 直链只带 Range，避免把 Emby 鉴权头泄露给存储源并触发无谓的 CORS 预检
+            const headers = item._isOpenList
+                ? { 'Range': 'bytes=0-262143' }
+                : this.app.getAuthHeaders(this.app.config.token, { 'Range': 'bytes=0-262143' });
             const res = await fetch(url, {
                 headers,
                 signal

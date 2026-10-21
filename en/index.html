@@ -615,7 +615,7 @@
                                         <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
                                     </button>
                                 </div>
-                                <input type="text" id="configServer" placeholder="Emby / Jellyfin / fnOS supported"
+                                <input type="text" id="configServer" placeholder="Emby / Jellyfin / fnOS / OpenList supported"
                                     class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
 
                                 <!-- 服务器地址Address Format Examples Tooltip 弹窗 -->
@@ -1704,6 +1704,10 @@
             }
 
             getImageSrc(video) {
+                // OpenList has no Emby image route: video posters only come from same-name/directory images
+                if (video && video._isOpenList) {
+                    return video.thumb || 'img/poster.webp';
+                }
                 return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'img/poster.webp');
             }
 

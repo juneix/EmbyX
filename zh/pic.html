@@ -26,6 +26,7 @@
     <script src="lib/tailwind.min.js" data-cfasync="false"></script>
     <script src="lib/lucide.min.js"></script>
     <script src="js/common.js"></script>
+    <script src="js/openlist.js"></script>
     <script src="js/input.js"></script>
     <script src="js/gallery.js"></script>
     <script data-cfasync="false">
@@ -380,7 +381,7 @@
                         <div class="space-y-4 bg-gray-800/40 p-4 rounded-lg border border-gray-700/50">
                             <div>
                                 <label class="text-gray-400 text-xs block mb-1.5">IP 或域名</label>
-                                <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视"
+                                <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视 / OpenList"
                                     class="w-full h-11 bg-gray-900 text-white text-sm rounded px-3 outline-none border border-gray-700 focus:border-primary transition-colors focusable-item">
                             </div>
                             <div class="grid grid-cols-2 gap-2">
@@ -879,6 +880,10 @@
                 if (savedLibId) {
                     this.state.currentLibraryId = savedLibId;
                     this.state.currentLibraryType = savedLibType || 'library';
+                } else if (EmbyXCommon.getServerType() === 'openlist') {
+                    // OpenList 没有服务端收藏夹，默认直接进入挂载目录
+                    this.state.currentLibraryId = localStorage.getItem('openlist_base_path') || '/';
+                    this.state.currentLibraryType = 'library';
                 } else {
                     this.state.currentLibraryId = 'favorites';
                     this.state.currentLibraryType = 'favorites';
@@ -964,7 +969,7 @@
                         isAutoFilled
                     });
 
-                    const { data, userId, fnOS, finalServer } = auth;
+                    const { data, userId, fnOS, finalServer, serverType } = auth;
                     server = finalServer;
 
                     // 登录成功后的处理
@@ -996,6 +1001,7 @@
                     localStorage.removeItem('emby_favorites');
                     localStorage.removeItem('emby_pic_lib_id');
                     localStorage.removeItem('emby_pic_lib_type');
+                    localStorage.setItem('embyx_server_type', serverType || 'emby');
                     location.reload();
                 } catch (e) {
                     console.error('saveConfig error:', e);
@@ -1047,6 +1053,7 @@
             }
 
             async initGlobalPlaylistIndex() {
+                if (EmbyXCommon.getServerType() === 'openlist') return; // OpenList 无播放列表接口
                 const { server, token, userId } = this.config;
                 if (!server || !token || !userId) return;
                 try {
@@ -1105,40 +1112,56 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
-
-                    if (searchTerm) {
-                        const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
-                    } else if (this.state.currentTag) {
-                        const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
-                    } else if (this.state.currentPerson) {
-                        url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
-                    } else if (ids) {
-                        url += `&Ids=${ids}`;
-                        if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
-                    } else if (isRandom) {
-                        url += `&SortBy=Random`;
-                        if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
-                        if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
-                    } else if (libraryId === 'favorites') {
-                        url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
-                    } else if (libraryId) {
-                        const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&${sortStr}&ParentId=${libraryId}`;
+                    let data;
+                    if (EmbyXCommon.getServerType() === 'openlist' && window.OpenListManager) {
+                        // OpenList：目录映射为照片列表，收藏夹走客户端 id 列表
+                        const targetPath = (libraryId && libraryId !== 'favorites')
+                            ? libraryId
+                            : (localStorage.getItem('openlist_base_path') || '/');
+                        data = await window.OpenListManager.fetchPhotos({
+                            path: targetPath,
+                            startIndex: fetchStartIndex,
+                            limit: PAGE_SIZE,
+                            ids: ids,
+                            searchTerm
+                        });
                     } else {
-                        const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
-                        url += `&${sortStr}`;
+                        let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Photo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems`;
+
+                        if (searchTerm) {
+                            const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
+                        } else if (this.state.currentTag) {
+                            const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
+                        } else if (this.state.currentPerson) {
+                            url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
+                        } else if (ids) {
+                            url += `&Ids=${ids}`;
+                            if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
+                        } else if (isRandom) {
+                            url += `&SortBy=Random`;
+                            if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
+                            if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
+                        } else if (libraryId === 'favorites') {
+                            url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
+                        } else if (libraryId) {
+                            const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&${sortStr}&ParentId=${libraryId}`;
+                        } else {
+                            const sortStr = 'SortBy=DateCreated&SortOrder=Descending';
+                            url += `&${sortStr}`;
+                        }
+
+                        const res = await fetch(url, {
+                            headers: this.getAuthHeaders(this.config.token)
+                        });
+                        if (!res.ok) {
+                            throw new Error(`服务器错误: ${res.status}`);
+                        }
+                        data = await res.json();
                     }
 
-                    const res = await fetch(url, {
-                        headers: this.getAuthHeaders(this.config.token)
-                    });
-                    if (!res.ok) {
-                        throw new Error(`服务器错误: ${res.status}`);
-                    }
-                    let data = await res.json();
                     const items = this.filterDisplayPhotos(data.Items || []);
 
                     if (isAppend) {
@@ -1170,6 +1193,10 @@
 
                     if (items.length === 0) {
                         this.showToast('没有找到照片');
+                        // OpenList 选中目录若无直属照片，自动呼出媒体库弹窗重新选择
+                        if (EmbyXCommon.getServerType() === 'openlist' && !searchTerm) {
+                            setTimeout(() => this.showLibraries(), 500);
+                        }
                     }
 
                     // 随机模式下加载完，直接原地洗牌（保持第一张照片在首位）
@@ -1433,12 +1460,20 @@
                     };
 
                     const img = document.createElement('img');
-                    img.crossOrigin = 'anonymous';
+                    // OpenList 直链未必放行 CORS，强制 anonymous 会让图片直接加载失败
+                    if (!video._isOpenList) img.crossOrigin = 'anonymous';
                     img.referrerPolicy = 'no-referrer';
-                    img.src = this.getImageSrc(video);
+                    const gridSrc = this.getGridImageSrc(video);
+                    img.src = gridSrc;
                     img.className = 'w-full h-full object-cover';
                     img.loading = 'lazy';
                     img.onerror = () => {
+                        // 服务端缩略图不可用时回退原图，再失败才用占位图
+                        const fullSrc = this.getImageSrc(video);
+                        if (gridSrc && fullSrc && img.src !== fullSrc) {
+                            img.src = fullSrc;
+                            return;
+                        }
                         img.onerror = null;
                         img.src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="1" height="1"%3E%3Crect width="1" height="1" fill="%23333"%2F%3E%3C%2Fsvg%3E';
                     };
@@ -1680,6 +1715,9 @@
                 const currentId = String(videoData.Id);
                 btn.dataset.videoId = currentId;
 
+                // OpenList 无人物/标签元数据接口
+                if (videoData._isOpenList || EmbyXCommon.getServerType() === 'openlist') return;
+
                 try {
                     const { server, token, userId } = this.config;
                     if (!server || !token || !userId) return;
@@ -1785,7 +1823,19 @@
             // --- 辅助功能 ---
 
             getImageSrc(video) {
+                if (!video) return 'img/poster.webp';
+                if (video._isOpenList && window.OpenListManager) {
+                    return window.OpenListManager.getPhotoUrl(video) || 'img/poster.webp';
+                }
                 return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'img/poster.webp');
+            }
+
+            // 网格视图优先用 OpenList 服务端缩略图，未开启时由适配器回退原图
+            getGridImageSrc(video) {
+                if (video && video._isOpenList && window.OpenListManager) {
+                    return window.OpenListManager.getPhotoThumbUrl(video) || this.getImageSrc(video);
+                }
+                return this.getImageSrc(video);
             }
 
             renderLibraryItems(playlistsData, viewsDataRaw) {
@@ -1793,7 +1843,8 @@
                 if (!list) return;
                 list.innerHTML = '';
 
-                const allowedTypes = ['homevideos', 'photos'];
+                // OpenList 目录映射为 CollectionType: 'folders'，需一并放行
+                const allowedTypes = ['homevideos', 'photos', 'folders'];
                 const filteredViews = viewsDataRaw.Items ? viewsDataRaw.Items.filter(item => {
                     if (!item.CollectionType) return true;
                     const cType = item.CollectionType.toLowerCase();
@@ -1867,6 +1918,7 @@
                         let iconName = isSelected ? 'check-circle' : 'clapperboard';
                         if (!isSelected) {
                             if (lib.CollectionType === 'tvshows') iconName = 'tv';
+                            else if (lib.CollectionType === 'folders') iconName = 'folder';
                             else if (lib.CollectionType === 'homevideos') iconName = 'video';
                             else if (lib.CollectionType === 'musicvideos') iconName = 'cassette-tape';
                             else if (lib.CollectionType === 'boxsets') iconName = 'archive';
@@ -2356,6 +2408,13 @@
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
+                if (item._isOpenList || EmbyXCommon.getServerType() === 'openlist') {
+                    // OpenList 适配器未开放删除接口，避免向 /emby/ 路由发起无效请求
+                    this.showToast('❌ OpenList 暂不支持删除');
+                    this.toggleModal('deleteConfirmModal', false);
+                    return;
+                }
+
                 try {
                     const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
@@ -2591,18 +2650,28 @@
                 lucide.createIcons();
 
                 try {
-                    const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
-                        headers: this.getAuthHeaders(this.config.token)
-                    });
-                    if (!res.ok) throw new Error('API Error');
-                    const data = await res.json();
+                    // OpenList 无 Emby 条目详情接口，尺寸取自解码后的图片，体积取自目录列表
+                    const isOpenList = item._isOpenList || EmbyXCommon.getServerType() === 'openlist';
+                    let data = {};
+                    if (!isOpenList) {
+                        const res = await fetch(`${this.config.server}/emby/Users/${this.config.userId}/Items/${item.Id}?api_key=${this.config.token}&Fields=MediaSources`, {
+                            headers: this.getAuthHeaders(this.config.token)
+                        });
+                        if (!res.ok) throw new Error('API Error');
+                        data = await res.json();
+                    }
 
                     const src = data?.MediaSources?.[0] || {};
                     const imageStream = src.MediaStreams?.find(s => s.Type === 'Image') || {};
-                    const w = imageStream.Width || data.Width || item.Width || '?';
-                    const h = imageStream.Height || data.Height || item.Height || '?';
+                    let w = imageStream.Width || data.Width || item.Width || '?';
+                    let h = imageStream.Height || data.Height || item.Height || '?';
+                    if (isOpenList) {
+                        const probe = await this.probeImageSize(item);
+                        if (probe) { w = probe.w; h = probe.h; }
+                    }
                     const format = (src.Container || item.Container || item.Path?.split('.').pop() || '未知').toUpperCase();
-                    const fileSizeStr = src.Size ? (src.Size > 1024 * 1024 * 1024 ? (src.Size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (src.Size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
+                    const size = src.Size || item.size || 0;
+                    const fileSizeStr = size ? (size > 1024 * 1024 * 1024 ? (size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
                     const metaText = this.getPhotoMetadataText(item);
 
                     this.dom.mediaInfoContent.innerHTML = `
@@ -2630,6 +2699,26 @@
                 } catch (e) {
                     this.dom.mediaInfoContent.innerHTML = `<div class="text-center text-red-400 py-4">获取数据失败</div>`;
                 }
+            }
+
+            // 复用已加载的 <img> 解码结果，避免为 OpenList 照片额外发起探测请求
+            async probeImageSize(item) {
+                const src = this.getImageSrc(item);
+                if (!src) return null;
+                const imgs = Array.from(this.dom.videoContainer.querySelectorAll('img'))
+                    .filter(img => img.getAttribute('src') === src);
+                for (const img of imgs) {
+                    if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                        return { w: img.naturalWidth, h: img.naturalHeight };
+                    }
+                }
+                return new Promise(resolve => {
+                    const probe = new Image();
+                    probe.referrerPolicy = 'no-referrer';
+                    probe.onload = () => resolve({ w: probe.naturalWidth, h: probe.naturalHeight });
+                    probe.onerror = () => resolve(null);
+                    probe.src = src;
+                });
             }
 
             // --- 事件绑定 ---

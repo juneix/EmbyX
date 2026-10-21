@@ -615,7 +615,7 @@
                                         <i data-lucide="help-circle" class="w-3.5 h-3.5"></i>
                                     </button>
                                 </div>
-                                <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视"
+                                <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视 / OpenList"
                                     class="w-full h-11 bg-black/40 text-white text-sm rounded-lg px-3 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
 
                                 <!-- 服务器地址填写格式参考 Tooltip 弹窗 -->
@@ -1719,6 +1719,10 @@
             }
 
             getImageSrc(video) {
+                // OpenList 没有 Emby 的图片路由：视频封面只来自同名/目录图片，缺失即占位图
+                if (video && video._isOpenList) {
+                    return video.thumb || 'img/poster.webp';
+                }
                 return EmbyXCommon.getItemImageUrl(this.config.server, video, this.config.token, 'img/poster.webp');
             }
 

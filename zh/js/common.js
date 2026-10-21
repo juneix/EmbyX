@@ -302,11 +302,14 @@
     // 6. Media library Views and Playlists fetching
     async function fetchLibrariesData({ server, token, userId, deviceName, deviceId, appVersion }) {
         if (getServerType() === 'openlist') {
+            const playlistsData = { Items: [] };
+            let viewsDataRaw = { Items: [] };
             if (window.OpenListManager && typeof window.OpenListManager.fetchViews === 'function') {
-                const views = await window.OpenListManager.fetchViews();
-                return { playlistsData: { Items: [] }, viewsDataRaw: views };
+                viewsDataRaw = await window.OpenListManager.fetchViews();
             }
-            return { playlistsData: { Items: [] }, viewsDataRaw: { Items: [] } };
+            // 与 Emby 分支保持同一份缓存键，媒体库弹窗可秒开并复用目录名称
+            localStorage.setItem('emby_views_cache', JSON.stringify({ playlists: playlistsData, views: viewsDataRaw }));
+            return { playlistsData, viewsDataRaw };
         }
         if (!server || !token || !userId) return { playlistsData: { Items: [] }, viewsDataRaw: { Items: [] } };
         const headers = getAuthHeaders({ deviceName, deviceId, appVersion, token });
