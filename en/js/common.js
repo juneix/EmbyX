@@ -172,8 +172,9 @@
         const performAuth = async (targetServer) => {
             const fnOS = await detectFnOS(targetServer);
 
-            // Determine server type (Priority: fnOS > Jellyfin > Default Emby)
+            // Determine server type (Priority: fnOS > Jellyfin > Emby > OpenList)
             let serverType = 'emby';
+            let isEmbyOrJellyfin = false;
             if (fnOS) {
                 serverType = 'fnos';
             } else {
@@ -185,9 +186,35 @@
                         const prod = (d.ProductName || '').toLowerCase();
                         if (prod.includes('jellyfin')) {
                             serverType = 'jellyfin';
+                            isEmbyOrJellyfin = true;
+                            break;
+                        } else if (d.Id || d.Version || prod.includes('emby')) {
+                            serverType = 'emby';
+                            isEmbyOrJellyfin = true;
                             break;
                         }
                     } catch (e) {}
+                }
+            }
+
+            // If not fnOS and not Emby/Jellyfin, detect OpenList
+            if (!fnOS && !isEmbyOrJellyfin && window.OpenListManager && typeof window.OpenListManager.detect === 'function') {
+                try {
+                    const isOpenList = await window.OpenListManager.detect(targetServer);
+                    if (isOpenList) {
+                        setServerType('openlist');
+                        const openListAuth = await window.OpenListManager.authenticate({ server: targetServer, user, pwd });
+                        return {
+                            data: { AccessToken: openListAuth.token, ServerId: openListAuth.serverId },
+                            userId: openListAuth.userId,
+                            serverType: 'openlist',
+                            fnOS: false,
+                            finalServer: openListAuth.server
+                        };
+                    }
+                } catch (oe) {
+                    console.warn('[OpenList] Detection/Auth error:', oe);
+                    throw oe;
                 }
             }
 
@@ -248,7 +275,7 @@
 
         try {
             const auth = await performAuth(server);
-            return { ...auth, finalServer: server };
+            return { ...auth, finalServer: auth.finalServer || server };
         } catch (err) {
             if (isAutoFilled && server.endsWith(':8096')) {
                 const fallbackServer = server.replace(/:8096$/, ':8090');
@@ -274,6 +301,13 @@
 
     // 6. Media library Views and Playlists fetching
     async function fetchLibrariesData({ server, token, userId, deviceName, deviceId, appVersion }) {
+        if (getServerType() === 'openlist') {
+            if (window.OpenListManager && typeof window.OpenListManager.fetchViews === 'function') {
+                const views = await window.OpenListManager.fetchViews();
+                return { playlistsData: { Items: [] }, viewsDataRaw: views };
+            }
+            return { playlistsData: { Items: [] }, viewsDataRaw: { Items: [] } };
+        }
         if (!server || !token || !userId) return { playlistsData: { Items: [] }, viewsDataRaw: { Items: [] } };
         const headers = getAuthHeaders({ deviceName, deviceId, appVersion, token });
 
@@ -300,6 +334,14 @@
 
     // 7. Favorites management
     async function fetchFavorites({ server, token, userId, deviceName, deviceId, appVersion }) {
+        if (getServerType() === 'openlist') {
+            const raw = (typeof localStorage !== 'undefined' && localStorage.getItem('emby_favorites')) || '[]';
+            try {
+                return new Set(JSON.parse(raw));
+            } catch (e) {
+                return new Set();
+            }
+        }
         if (!server || !token || !userId) return null;
         const headers = getAuthHeaders({ deviceName, deviceId, appVersion, token });
         const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&Fields=Id`, {
@@ -313,6 +355,19 @@
     }
 
     async function syncFavoriteStatus({ server, token, userId, itemId, isFav, deviceName, deviceId, appVersion }) {
+        if (getServerType() === 'openlist') {
+            const raw = (typeof localStorage !== 'undefined' && localStorage.getItem('emby_favorites')) || '[]';
+            let list = [];
+            try { list = JSON.parse(raw); } catch (e) {}
+            const strId = String(itemId);
+            if (isFav) {
+                if (!list.includes(strId)) list.push(strId);
+            } else {
+                list = list.filter(id => id !== strId);
+            }
+            localStorage.setItem('emby_favorites', JSON.stringify(list));
+            return true;
+        }
         if (!server || !token || !userId || !itemId) return false;
         const method = isFav ? 'POST' : 'DELETE';
         const headers = getAuthHeaders({ deviceName, deviceId, appVersion, token });
@@ -336,7 +391,13 @@
 
     // 9. Poster and avatar URL builder
     function getItemImageUrl(server, item, token, fallback = 'img/poster.webp') {
+        if (item && item.thumb) {
+            return item.thumb;
+        }
         if (item && item.ImageTags && item.ImageTags.Primary) {
+            if (item.ImageTags.Primary.startsWith('http://') || item.ImageTags.Primary.startsWith('https://')) {
+                return item.ImageTags.Primary;
+            }
             return fixUrlForJellyfin(`${server}/emby/Items/${item.Id}/Images/Primary?api_key=${token}`);
         }
         return fallback;

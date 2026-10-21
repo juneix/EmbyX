@@ -121,6 +121,12 @@
         getVideoSrc(id, mediaItem, isPrimaryPlayback = false) {
             if (isPrimaryPlayback) this.app.state.isStrmSource = false;
             const { server, token } = this.app.config;
+
+            if (mediaItem?._rawUrl) {
+                if (isPrimaryPlayback) this.app.state.playbackMethod = 'DirectPlay';
+                return mediaItem._rawUrl;
+            }
+
             const isPro = window.DonateManager ? window.DonateManager.hasEggAccess() : false;
             const quality = isPro ? (this.app.config.playQuality || (this.app.config.useStatic ? 'direct' : 'auto')) : 'direct';
 
@@ -559,12 +565,13 @@
 
         reportPlayback(event, videoEl, isKeepAlive = false) {
             if (!this.app.config.server || !this.app.config.token || this.app.state.videos.length === 0) return;
+            const videoData = this.app.state.videos[this.app.state.currentIndex];
+            if (!videoData || !videoEl) return;
+            if (videoData._isOpenList || window.EmbyXCommon?.getServerType() === 'openlist') return;
+
             const now = Date.now();
             if (event === 'progress' && now - (this.app.state.lastReportTime || 0) < 5000) return;
             if (event === 'progress') this.app.state.lastReportTime = now;
-
-            const videoData = this.app.state.videos[this.app.state.currentIndex];
-            if (!videoData || !videoEl) return;
 
             const eventMap = { 'playing': 'TimeUpdate', 'progress': 'TimeUpdate', 'stopped': 'Stopped' };
             const eventName = videoEl.paused ? 'Pause' : (eventMap[event] || 'TimeUpdate');
@@ -628,6 +635,7 @@
             const server = this.app?.config?.server;
             const token = this.app?.config?.token;
             if (!server || !token) return;
+            if (this.app?.config?.fnOS || window.EmbyXCommon?.getServerType() === 'openlist') return;
 
             const sid = playSessionId || this.app.state?.playSessionId;
             const deviceId = this.app?.config?.deviceId || 'EmbyX-Device';

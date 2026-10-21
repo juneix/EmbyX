@@ -54,6 +54,10 @@
             if (savedLibId) {
                 app.state.currentLibraryId = savedLibId;
                 app.state.currentLibraryType = savedLibType || 'library';
+            } else if (EmbyXCommon.getServerType() === 'openlist') {
+                const openlistBase = localStorage.getItem('openlist_base_path') || '/';
+                app.state.currentLibraryId = openlistBase;
+                app.state.currentLibraryType = 'library';
             } else {
                 app.state.currentLibraryId = 'favorites';
                 app.state.currentLibraryType = 'favorites';
@@ -259,12 +263,16 @@
                     isAutoFilled
                 });
 
-                const { data, userId, fnOS, finalServer } = auth;
+                const { data, userId, fnOS, serverType, finalServer } = auth;
                 server = finalServer;
 
                 const serverId = data.ServerId || (data.User && data.User.ServerId) || (data.SessionInfo && data.SessionInfo.ServerId) || '';
                 if (serverId) {
                     localStorage.setItem('emby_server_id', serverId);
+                }
+
+                if (serverType) {
+                    localStorage.setItem('embyx_server_type', serverType);
                 }
 
                 localStorage.setItem('emby_server', server);
@@ -279,11 +287,11 @@
                 if (fnOS) localStorage.setItem('emby_fnOS', 'true');
                 else localStorage.removeItem('emby_fnOS');
 
-                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
+                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
 
-                const pwdLen2 = pwd.length;
+                const pwdLen2 = pwd ? pwd.length : 0;
                 localStorage.setItem('emby_pwd_len', pwdLen2);
-                app.dom.configPwd.value = '*'.repeat(pwdLen2);
+                app.dom.configPwd.value = pwdLen2 > 0 ? '*'.repeat(pwdLen2) : '';
                 if (app.dom.deleteBtn) app.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
                 if (app.dom.playModeBtn) {
                     app.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;

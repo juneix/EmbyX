@@ -85,6 +85,7 @@
         async fetchControllableSessions() {
             const { server, token, deviceId, userId } = this.app.config;
             if (!server || !token) return [];
+            if (window.EmbyXCommon && EmbyXCommon.getServerType() === 'openlist') return [];
 
             try {
                 const params = [`api_key=${encodeURIComponent(token)}`];

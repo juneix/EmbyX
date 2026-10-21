@@ -30,6 +30,7 @@
     <script src="js/common.js"></script>
     <script src="js/input.js"></script>
     <script src="js/auth.js"></script>
+    <script src="js/openlist.js"></script>
     <script src="js/drama.js"></script>
     <script src="js/grid.js"></script>
     <script src="js/media-info.js"></script>
@@ -971,7 +972,7 @@
                     viewMode: 'stream',
                     isAutoplay: true,
                     currentTab: 'home',
-                    currentLibraryId: null,
+                    currentLibraryId: localStorage.getItem('emby_lib_id') || null,
                     isScaleFill: true,
                     isMuted: false,
                     lastReportTime: 0,
@@ -1260,59 +1261,73 @@
                         fetchStartIndex += this.state.videos.length;
                     }
 
-                    let url;
+                    let data;
                     const isFolderView = this.drama && this.drama.isFolderModeActive();
-                    if (isFolderView) {
-                        if (this.state.viewMode !== 'grid') {
-                            this.state.viewMode = 'grid';
-                            if (this.dom.viewModeBtn) {
-                                this.dom.viewModeBtn.innerHTML = '<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>';
-                                if (window.lucide) lucide.createIcons();
-                            }
-                            const app = document.getElementById('app');
-                            if (app) {
-                                app.classList.remove('interface-hidden');
-                                app.classList.add('grid-active');
-                            }
-                            if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
-                        }
-                        url = this.drama.getFetchUrl(this.config, libraryId, fetchStartIndex, PAGE_SIZE);
+                    const isOpenList = EmbyXCommon.getServerType() === 'openlist';
+                    if (isOpenList && window.OpenListManager) {
+                        const targetOpenlistPath = (this.drama && this.drama.currentFolderId) ? this.drama.currentFolderId : ((libraryId && libraryId !== 'favorites') ? libraryId : (localStorage.getItem('openlist_base_path') || '/'));
+                        const isFolderMode = !!(this.config.shortDrama && this.state.viewMode === 'grid');
+                        data = await window.OpenListManager.fetchItems({
+                            path: targetOpenlistPath,
+                            startIndex: fetchStartIndex,
+                            limit: PAGE_SIZE,
+                            isFolderMode: isFolderMode,
+                            searchTerm
+                        });
                     } else {
-                        url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber`;
-
-                        if (searchTerm) {
-                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                            url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
-                        } else if (this.state.currentTag) {
-                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                            url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
-                        } else if (this.state.currentPerson) {
-                            url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
-                        } else if (ids) {
-                            url += `&Ids=${ids}`;
-                        } else if (isRandom) {
-                            // 换一批模式：服务端随机取 99 个（适用于所有模式）
-                            url += `&SortBy=Random`;
-                            if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
-                            if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
-                        } else if (libraryId === 'favorites') {
-                            url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
-                        } else if (libraryId) {
-                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                            url += `&${sortStr}&ParentId=${libraryId}`;
+                        let url;
+                        if (isFolderView) {
+                            if (this.state.viewMode !== 'grid') {
+                                this.state.viewMode = 'grid';
+                                if (this.dom.viewModeBtn) {
+                                    this.dom.viewModeBtn.innerHTML = '<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>';
+                                    if (window.lucide) lucide.createIcons();
+                                }
+                                const app = document.getElementById('app');
+                                if (app) {
+                                    app.classList.remove('interface-hidden');
+                                    app.classList.add('grid-active');
+                                }
+                                if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
+                            }
+                            url = this.drama.getFetchUrl(this.config, libraryId, fetchStartIndex, PAGE_SIZE);
                         } else {
-                            const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
-                            url += `&${sortStr}`;
-                        }
-                    }
+                            url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber`;
 
-                    const res = await fetch(url, {
-                        headers: this.getAuthHeaders(this.config.token)
-                    });
-                    if (!res.ok) {
-                        throw new Error(`服务器错误: ${res.status}`);
+                            if (searchTerm) {
+                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
+                            } else if (this.state.currentTag) {
+                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
+                            } else if (this.state.currentPerson) {
+                                url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
+                            } else if (ids) {
+                                url += `&Ids=${ids}`;
+                            } else if (isRandom) {
+                                // 换一批模式：服务端随机取 99 个（适用于所有模式）
+                                url += `&SortBy=Random`;
+                                if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
+                                if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
+                            } else if (libraryId === 'favorites') {
+                                url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
+                            } else if (libraryId) {
+                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                url += `&${sortStr}&ParentId=${libraryId}`;
+                            } else {
+                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                url += `&${sortStr}`;
+                            }
+                        }
+
+                        const res = await fetch(url, {
+                            headers: this.getAuthHeaders(this.config.token)
+                        });
+                        if (!res.ok) {
+                            throw new Error(`服务器错误: ${res.status}`);
+                        }
+                        data = await res.json();
                     }
-                    let data = await res.json();
                     let items = data.Items || [];
                     // 严格过滤图片文件（图片由专门的 pic.html 负责展示，主视频页绝不混入图片）
                     items = items.filter(item => item && item.Type !== 'Photo' && item.MediaType !== 'Photo' && item.Type !== 'PhotoAlbum');
@@ -1349,6 +1364,11 @@
 
                     if (items.length === 0) {
                         this.showToast('没有找到视频');
+                        if (isOpenList && !searchTerm && !isAppend) {
+                            setTimeout(() => {
+                                this.showLibraries();
+                            }, 500);
+                        }
                     }
 
                     // 短剧模式：尝试从本地恢复进度
@@ -1506,7 +1526,7 @@
 
                 btn.classList.add('hidden');
                 this.recalculateMetaInfoHeight();
-                if (!videoData || !videoData.Id) return;
+                if (!videoData || !videoData.Id || videoData._isOpenList || EmbyXCommon.getServerType() === 'openlist') return;
 
                 const currentId = String(videoData.Id);
                 btn.dataset.videoId = currentId;
@@ -2204,6 +2224,16 @@
                         tagsHtml = ' ' + rawTags.map(tag => `<span class="tag-item font-bold text-primary hover:underline cursor-pointer mr-1.5 inline break-all" data-tag="${this.escapeHtml(tag)}">#${this.escapeHtml(tag)}</span>`).join(' ');
                     }
                     this.dom.videoDescription.innerHTML = this.escapeHtml(overviewText) + tagsHtml;
+
+                    if (item._isOpenList && item._nfoPath && !item._nfoLoaded && window.OpenListManager && typeof window.OpenListManager.loadNfo === 'function') {
+                        window.OpenListManager.loadNfo(item).then(() => {
+                            if (this.state.videos[this.state.currentIndex] === item) {
+                                this.dom.videoTitle.textContent = item.Name;
+                                const updatedOverview = item.Overview || '暂无简介';
+                                this.dom.videoDescription.innerHTML = this.escapeHtml(updatedOverview) + tagsHtml;
+                            }
+                        });
+                    }
 
                     const favBtn = document.getElementById('favoriteBtn');
                     const isFav = item.UserData?.IsFavorite === true;

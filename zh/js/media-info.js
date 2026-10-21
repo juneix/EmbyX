@@ -41,7 +41,23 @@
             }
 
             try {
-                if (!item._fullSourcesFetched) {
+                if (item._isOpenList) {
+                    if (item._nfoPath && !item._nfoLoaded && window.OpenListManager && typeof window.OpenListManager.loadNfo === 'function') {
+                        await window.OpenListManager.loadNfo(item);
+                    }
+                    if (!item.MediaSources || item.MediaSources.length === 0) {
+                        const ext = (item.FileName || item.Path || '').split('.').pop() || 'mp4';
+                        item.MediaSources = [{
+                            Id: item.Id,
+                            ItemId: item.Id,
+                            Name: item.Name,
+                            Container: ext.toLowerCase(),
+                            Size: item.size || 0,
+                            MediaStreams: []
+                        }];
+                    }
+                    item._fullSourcesFetched = true;
+                } else if (!item._fullSourcesFetched) {
                     const detailUrl = `${app.config.server}/emby/Users/${app.config.userId}/Items/${item.Id}?api_key=${app.config.token}&Fields=MediaSources,PartCount`;
                     const res = await fetch(detailUrl, { headers: app.getAuthHeaders(app.config.token) });
                     if (res.ok) {
@@ -202,6 +218,50 @@
                         switchToSource((item._selectedMediaSourceIndex || 0) + 1);
                     }
                 };
+            }
+
+            if (item._isOpenList) {
+                const slideIdx = (app.state.currentIndex % 3 + 3) % 3;
+                const curVideoEl = document.getElementById(`video-p${slideIdx}`);
+                const realW = curVideoEl?.videoWidth || '?';
+                const realH = curVideoEl?.videoHeight || '?';
+                const duration = curVideoEl?.duration || 0;
+                const c = (item.FileName || item.Path || '').split('.').pop() || 'MP4';
+                const bitrate = (item.size && duration > 0) ? ((item.size * 8) / duration / 1000000).toFixed(2) + ' Mbps' : '未知';
+                const fileSizeStr = item.size ? (item.size > 1024 * 1024 * 1024 ? (item.size / (1024 * 1024 * 1024)).toFixed(1) + ' GB' : (item.size / (1024 * 1024)).toFixed(1) + ' MB') : '未知';
+                const transcodeState = '直接播放';
+
+                app.dom.mediaInfoContent.innerHTML = `
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                        <span class="text-white font-medium text-right">分辨率</span>
+                        <span class="col-span-2 text-white/80 font-mono">${realW}x${realH}</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                        <span class="text-white font-medium text-right">封装格式</span>
+                        <span class="col-span-2 text-white/80">${c.toUpperCase()}</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                        <span class="text-white font-medium text-right">视频编码</span>
+                        <span class="col-span-2 text-white/80 font-mono">-</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                        <span class="text-white font-medium text-right">音频编码</span>
+                        <span class="col-span-2 text-white/80 font-mono">-</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                        <span class="text-white font-medium text-right">总码率</span>
+                        <span class="col-span-2 text-white/80 font-mono">${bitrate}</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center border-b border-white/10">
+                        <span class="text-white font-medium text-right">文件体积</span>
+                        <span class="col-span-2 text-white/80 font-mono">${fileSizeStr}</span>
+                    </div>
+                    <div class="grid grid-cols-3 gap-2 py-2 items-center">
+                        <span class="text-white font-medium text-right">播放策略</span>
+                        <span class="col-span-2 text-white/80">${transcodeState}</span>
+                    </div>
+                `;
+                return;
             }
 
             if (src._isPart && (!src.MediaStreams || src.MediaStreams.length === 0)) {

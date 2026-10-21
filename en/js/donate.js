@@ -103,6 +103,10 @@
                 btn.disabled = false;
                 btn.textContent = 'Confirm';
                 btn.className = 'absolute right-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 rounded-md text-xs font-bold active:scale-95 transition-all shadow';
+                if (targetId && targetId.startsWith('openlist-unbound-') && err) {
+                    err.textContent = 'OpenList server ID is not bound. Please login once with an admin account to initialize it.';
+                    err.classList.remove('hidden');
+                }
             }
         }
 
@@ -170,6 +174,17 @@
             }
 
             const targetId = this.getCurrentTargetId();
+            if (targetId && targetId.startsWith('openlist-unbound-')) {
+                if (errEl) {
+                    errEl.textContent = 'OpenList server ID is not bound. Please login once with an admin account to initialize it.';
+                    errEl.classList.remove('hidden');
+                }
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Confirm';
+                }
+                return false;
+            }
 
             try {
                 const resp = await fetch(this.API_VERIFY_URL, {
@@ -225,6 +240,7 @@
 
         async saveToServerPrefs(isPro) {
             try {
+                if (window.EmbyXCommon && EmbyXCommon.getServerType() === 'openlist') return;
                 const server = localStorage.getItem('emby_server') || (window.app && window.app.config && window.app.config.server);
                 const token = localStorage.getItem('emby_token') || (window.app && window.app.config && window.app.config.token);
                 const userId = localStorage.getItem('emby_uid') || (window.app && window.app.config && window.app.config.userId);
@@ -303,7 +319,7 @@
                     return;
                 }
 
-                if (server && token && userId) {
+                if (server && token && userId && (!window.EmbyXCommon || EmbyXCommon.getServerType() !== 'openlist')) {
                     const isJellyfin = window.EmbyXCommon && EmbyXCommon.getServerType() === 'jellyfin';
                     const base = server.replace(/\/+$/, '');
                     const url = `${base}${isJellyfin ? '' : '/emby'}/DisplayPreferences/usersettings?userId=${userId}&client=EmbyX`;
