@@ -1,5 +1,16 @@
 /**
  * EmbyX Donate & Player One Passcode Engine (DonateManager)
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * An open-source project. The ¥9.9 is just "support it if you like it", not a defense.
+ * Modify it, fork it, ship a competitor — none of that is a problem.
+ *
+ * Thinking about working around it? You can, but there is no point.
+ * Just have your AI build you a custom player — it fits your needs better
+ * and costs far fewer tokens.
+ *
+ * This lock will not stop anyone determined. It only asks: would you like to support it?
+ * ────────────────────────────────────────────────────────────────────────────
  */
 
 (function () {
@@ -25,11 +36,7 @@
 
         _setEggProof(targetId, token) {
             if (!targetId) return;
-            const validToken = String(token || 'verified_p1');
-            _eggMemoryMap.set(targetId, validToken);
-            try {
-                localStorage.setItem(`_p1_token_${targetId}`, validToken);
-            } catch (e) {}
+            _eggMemoryMap.set(targetId, String(token || 'verified_p1'));
         }
 
         _clearEggProof(targetId) {
@@ -56,14 +63,7 @@
         hasEggAccess() {
             const targetId = this.getCurrentTargetId();
             if (!targetId) return false;
-            if (_eggMemoryMap.has(targetId)) return true;
-
-            const token = localStorage.getItem(`_p1_token_${targetId}`);
-            if (token && typeof token === 'string' && token.length > 0) {
-                _eggMemoryMap.set(targetId, token);
-                return true;
-            }
-            return false;
+            return _eggMemoryMap.has(targetId);
         }
 
         isPlayerOne() {
@@ -87,7 +87,7 @@
             const boundCode = this.getBoundCode(targetId);
 
             if (isP1) {
-                input.value = boundCode || '8K3M-9P2X';
+                input.value = boundCode || 'Activated';
                 input.readOnly = true;
                 input.classList.remove('border-gray-700', 'focus:border-amber-400');
                 input.classList.add('border-amber-500/40', 'bg-amber-500/10', 'text-amber-300', 'font-bold', 'text-center');

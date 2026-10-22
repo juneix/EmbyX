@@ -441,14 +441,46 @@
     }
 
     // 8. Delete media item
+    // Emby / Jellyfin 的删除路由在 Jellyfin 12 已迁至根路径 /Items/{id}，
+    // 且 /emby/* 兼容层没有 DELETE 路由（返回 404），因此 Jellyfin 必须显式走根路径。
+    // 返回 { ok, status, reason }：reason 用于区分权限不足 / 服务端错误 / 已不存在。
     async function deleteMediaItem({ server, token, itemId, deviceName, deviceId, appVersion }) {
-        if (!server || !token || !itemId) return { ok: false, status: 400 };
+        if (!server || !token || !itemId) return { ok: false, status: 400, reason: 'bad-request' };
+
+        const type = getServerType();
+        if (type === 'openlist') {
+            if (!window.OpenListManager || typeof window.OpenListManager.remove !== 'function') {
+                return { ok: false, status: 0, reason: 'unsupported' };
+            }
+            return window.OpenListManager.remove(itemId);
+        }
+
         const headers = getAuthHeaders({ deviceName, deviceId, appVersion, token });
-        const res = await fetch(`${server}/emby/Items/${itemId}?api_key=${token}`, {
+        const basePath = type === 'jellyfin' ? '' : '/emby';
+        const res = await fetch(`${server}${basePath}/Items/${encodeURIComponent(itemId)}?api_key=${token}`, {
             method: 'DELETE',
             headers
         });
-        return { ok: res.ok, status: res.status };
+
+        if (res.ok) return { ok: true, status: res.status };
+
+        let reason = 'error';
+        if (res.status === 401 || res.status === 403) reason = 'forbidden';
+        else if (res.status === 404) reason = 'not-found';
+        else if (res.status >= 500) reason = 'server-error';
+        return { ok: false, status: res.status, reason };
+    }
+
+    // 8.1 当前账号是否具备删除权限
+    // Emby / Jellyfin：登录响应里的 User.Policy（IsAdministrator 或 EnableContentDeletion）
+    // OpenList：/api/me 的 permission 第 7 位（128 = PermRemove）
+    function canDeleteMedia(config = {}) {
+        const type = config.serverType || getServerType();
+        if (type === 'openlist') {
+            return !!(config.openlistCanRemove);
+        }
+        if (type === 'fnos') return false;
+        return !!config.canDelete;
     }
 
     // 9. Poster and avatar URL builder
@@ -543,6 +575,7 @@
         fetchFavorites,
         syncFavoriteStatus,
         deleteMediaItem,
+        canDeleteMedia,
         getItemImageUrl,
         getPersonImageUrl,
         checkGitHubUpdate

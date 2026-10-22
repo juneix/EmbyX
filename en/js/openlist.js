@@ -646,6 +646,63 @@
             }
         }
 
+        /**
+         * Delete a single file (physical, irreversible).
+         * item is an entry from fetchItems; Id/Path are absolute paths.
+         * Returns { ok, status, reason } matching EmbyXCommon.deleteMediaItem.
+         */
+        async remove(itemOrPath) {
+            const filePath = typeof itemOrPath === 'string'
+                ? itemOrPath
+                : (itemOrPath && (itemOrPath.Path || itemOrPath.Id)) || '';
+            if (!filePath) return { ok: false, status: 400, reason: 'bad-request' };
+            if (!this.origin) this.initFromStorage();
+
+            const idx = filePath.lastIndexOf('/');
+            const dir = idx <= 0 ? '/' : filePath.slice(0, idx);
+            const name = filePath.slice(idx + 1);
+            if (!name) return { ok: false, status: 400, reason: 'bad-request' };
+
+            try {
+                const res = await fetch(`${this.origin}/api/fs/remove`, {
+                    method: 'POST',
+                    headers: this.getHeaders(),
+                    body: JSON.stringify({ dir, names: [name] })
+                });
+                if (!res.ok) {
+                    const reason = res.status === 401 || res.status === 403 ? 'forbidden' : 'server-error';
+                    return { ok: false, status: res.status, reason };
+                }
+                const json = await res.json();
+                if (json.code === 200) return { ok: true, status: 200 };
+                // 403 / 401 业务码：无删除权限
+                const reason = json.code === 401 || json.code === 403 ? 'forbidden' : 'server-error';
+                return { ok: false, status: json.code, reason, message: json.message || '' };
+            } catch (e) {
+                return { ok: false, status: 0, reason: 'network', message: e.message || '' };
+            }
+        }
+
+        /**
+         * Read the current account permissions and decide whether deletion is allowed.
+         * OpenList's permission is a bitmask; bit 7 (128) is PermRemove.
+         * Guest mode (no token) can never delete.
+         */
+        async fetchCanRemove() {
+            const token = this.token || (typeof localStorage !== 'undefined' && localStorage.getItem('openlist_token')) || '';
+            if (!token) return false;
+            if (!this.origin) this.initFromStorage();
+            try {
+                const res = await fetch(`${this.origin}/api/me`, { headers: this.getHeaders() });
+                if (!res.ok) return false;
+                const json = await res.json();
+                if (json.code !== 200 || !json.data) return false;
+                return ((Number(json.data.permission) || 0) & 128) !== 0;
+            } catch (e) {
+                return false;
+            }
+        }
+
         async getPlayUrl(item) {
             if (!item) return '';
             if (item._rawUrl) return item._rawUrl;

@@ -646,6 +646,63 @@
             }
         }
 
+        /**
+         * 删除单个文件（物理删除，不可恢复）。
+         * item 为 fetchItems 产出的条目，Id/Path 均为绝对路径。
+         * 返回 { ok, status, reason }，与 EmbyXCommon.deleteMediaItem 保持一致。
+         */
+        async remove(itemOrPath) {
+            const filePath = typeof itemOrPath === 'string'
+                ? itemOrPath
+                : (itemOrPath && (itemOrPath.Path || itemOrPath.Id)) || '';
+            if (!filePath) return { ok: false, status: 400, reason: 'bad-request' };
+            if (!this.origin) this.initFromStorage();
+
+            const idx = filePath.lastIndexOf('/');
+            const dir = idx <= 0 ? '/' : filePath.slice(0, idx);
+            const name = filePath.slice(idx + 1);
+            if (!name) return { ok: false, status: 400, reason: 'bad-request' };
+
+            try {
+                const res = await fetch(`${this.origin}/api/fs/remove`, {
+                    method: 'POST',
+                    headers: this.getHeaders(),
+                    body: JSON.stringify({ dir, names: [name] })
+                });
+                if (!res.ok) {
+                    const reason = res.status === 401 || res.status === 403 ? 'forbidden' : 'server-error';
+                    return { ok: false, status: res.status, reason };
+                }
+                const json = await res.json();
+                if (json.code === 200) return { ok: true, status: 200 };
+                // 403 / 401 业务码：无删除权限
+                const reason = json.code === 401 || json.code === 403 ? 'forbidden' : 'server-error';
+                return { ok: false, status: json.code, reason, message: json.message || '' };
+            } catch (e) {
+                return { ok: false, status: 0, reason: 'network', message: e.message || '' };
+            }
+        }
+
+        /**
+         * 读取当前账号权限，判断能否删除。
+         * OpenList 的 permission 是位掩码，第 7 位（128）为 PermRemove。
+         * 访客模式（无 token）一律不可删除。
+         */
+        async fetchCanRemove() {
+            const token = this.token || (typeof localStorage !== 'undefined' && localStorage.getItem('openlist_token')) || '';
+            if (!token) return false;
+            if (!this.origin) this.initFromStorage();
+            try {
+                const res = await fetch(`${this.origin}/api/me`, { headers: this.getHeaders() });
+                if (!res.ok) return false;
+                const json = await res.json();
+                if (json.code !== 200 || !json.data) return false;
+                return ((Number(json.data.permission) || 0) & 128) !== 0;
+            } catch (e) {
+                return false;
+            }
+        }
+
         async getPlayUrl(item) {
             if (!item) return '';
             if (item._rawUrl) return item._rawUrl;

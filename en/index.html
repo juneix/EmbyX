@@ -37,6 +37,7 @@
     <script src="js/player.js"></script>
     <script src="js/donate.js"></script>
     <script src="js/cast.js"></script>
+    <script src="js/native-media.js"></script>
     <script src="js/stage.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
@@ -326,7 +327,8 @@
             </div>
         </div>
 
-        <!-- 右上角Cast按钮（Fullscreen按钮左侧，统一磨砂风格） -->
+
+        <!-- Cast button (left of fullscreen, frosted style) -->
         <div class="absolute top-4 right-[4.5rem] z-30 transition-opacity duration-300"
             id="castBtn">
             <div
@@ -1068,6 +1070,7 @@
                     onDoubleTapSkip: (dir, x, y) => this.handleDoubleTapSkip(dir, x, y)
                 });
                 this.castManager = new CastManager(this);
+                this.mediaSession = new NativeMediaSession(this);
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
@@ -1110,6 +1113,9 @@
                 playBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
 
                 lucide.createIcons();
+
+                // 启动原生媒体会话（仅 APK 内 window.EmbyXNativeMedia 存在时生效）
+                this.mediaSession.start();
 
                 // 检查配置并启动
                 if (this.config.server && this.config.token) {
@@ -2269,26 +2275,32 @@
                 lucide.createIcons();
             }
 
+            // Delete failure reason -> user-facing message, instead of lumping everything into "failed (500)"
+            describeDeleteFailure(reason, status) {
+                switch (reason) {
+                    case 'forbidden': return '❌ No permission. Use an account allowed to delete';
+                    case 'not-found': return '❌ File not found or already deleted';
+                    case 'server-error': return `❌ Server failed to delete (${status}); check media library file permissions`;
+                    case 'unsupported': return '❌ This storage backend does not support deletion';
+                    case 'network': return '❌ Delete failed: network error';
+                    default: return `❌ Delete failed (${status})`;
+                }
+            }
+
             async executeDelete() {
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
                 try {
-                    const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
+                    const { ok, status, reason } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
                     if (!ok) {
-                        // 403：账号无管理权限；404：视频已不存在（也从列表移除）
-                        if (status === 403) {
-                            this.showToast('❌ No permission. Use an admin account');
+                        // 404: already gone elsewhere, drop it from the list; otherwise report honestly
+                        if (reason !== 'not-found') {
+                            this.showToast(this.describeDeleteFailure(reason, status));
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        if (status !== 404) {
-                            this.showToast(`❌ Delete failed (${status})`);
-                            this.toggleModal('deleteConfirmModal', false);
-                            return;
-                        }
-                        // 404 视为已删除，继续从列表移除
                     }
 
                     this.showToast('✅ Deleted');

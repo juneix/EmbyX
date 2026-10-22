@@ -39,6 +39,9 @@
             app.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
             app.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
             app.config.serverId = localStorage.getItem('emby_server_id') || '';
+            // Account-level delete permission (persisted at login from Policy / /api/me)
+            app.config.canDelete = localStorage.getItem('emby_can_delete') === 'true';
+            app.config.openlistCanRemove = localStorage.getItem('openlist_can_remove') === 'true';
 
             // 生成或读取设备唯一 ID
             if (!localStorage.getItem('emby_device_id')) {
@@ -88,7 +91,7 @@
             if (typeof app.loadPageConfig === 'function') app.loadPageConfig();
 
             // 基于配置同步 UI
-            if (app.dom.deleteBtn) app.dom.deleteBtn.style.display = app.config.deleteMode ? 'flex' : 'none';
+            this.syncDeleteBtnVisibility();
             if (app.dom.playModeBtn) {
                 app.dom.playModeBtn.innerHTML = `<i data-lucide="${app.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                 if (window.lucide) lucide.createIcons();
@@ -289,15 +292,21 @@
                 localStorage.setItem('emby_user', user);
                 localStorage.setItem('emby_token', data.AccessToken);
                 localStorage.setItem('emby_uid', userId);
+
+                // Account delete permission: Emby/Jellyfin from User.Policy, OpenList from /api/me
+                const canDelete = await this.resolveDeletePermission(serverType, data);
+                localStorage.setItem('emby_can_delete', canDelete ? 'true' : 'false');
+                app.config.canDelete = canDelete;
+
                 this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS });
                 if (typeof app.savePageConfig === 'function') app.savePageConfig();
 
-                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
+                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS, canDelete };
 
                 const pwdLen2 = pwd ? pwd.length : 0;
                 localStorage.setItem('emby_pwd_len', pwdLen2);
                 app.dom.configPwd.value = pwdLen2 > 0 ? '*'.repeat(pwdLen2) : '';
-                if (app.dom.deleteBtn) app.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
+                this.syncDeleteBtnVisibility();
                 if (app.dom.playModeBtn) {
                     app.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                     if (window.lucide) lucide.createIcons();
@@ -335,6 +344,44 @@
         }
 
         // Persist shared prefs; page-private keys are handled by the page's savePageConfig hook
+        /**
+         * Resolve and persist the account's delete permission.
+         * Emby / Jellyfin: User.Policy.IsAdministrator or EnableContentDeletion.
+         * OpenList: bit 7 (128 = PermRemove) of the permission mask from /api/me.
+         */
+        async resolveDeletePermission(serverType, data) {
+            if (serverType === 'openlist') {
+                let canRemove = false;
+                if (window.OpenListManager && typeof window.OpenListManager.fetchCanRemove === 'function') {
+                    canRemove = await window.OpenListManager.fetchCanRemove();
+                }
+                localStorage.setItem('openlist_can_remove', canRemove ? 'true' : 'false');
+                this.app.config.openlistCanRemove = canRemove;
+                return canRemove;
+            }
+
+            const policy = data && data.User && data.User.Policy;
+            const canDelete = !!(policy && (policy.IsAdministrator === true || policy.EnableContentDeletion === true));
+            localStorage.setItem('openlist_can_remove', 'false');
+            this.app.config.openlistCanRemove = false;
+            return canDelete;
+        }
+
+        /**
+         * Delete button visibility: requires BOTH the "allow deletion" preference
+         * and an account that actually has delete permission. Otherwise hide it entirely.
+         */
+        syncDeleteBtnVisibility() {
+            const app = this.app;
+            if (!app || !app.dom.deleteBtn) return;
+            const canDelete = window.EmbyXCommon
+                ? EmbyXCommon.canDeleteMedia(app.config)
+                : false;
+            const visible = app.config.deleteMode && canDelete;
+            app.dom.deleteBtn.style.display = visible ? 'flex' : 'none';
+        }
+
+        // Persist shared preferences; page-private keys are handled by savePageConfig
         savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS }) {
             localStorage.setItem(this.keyPrefix + '_autoplay', autoplay);
             const dom = (this.app && this.app.dom) || {};

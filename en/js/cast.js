@@ -4,6 +4,7 @@
  * - W3C Remote Playback API (Chromecast / Google Cast / Edge Miracast)
  * - Apple WebKit AirPlay API (Safari on iOS & macOS)
  * - Emby & Jellyfin /Sessions DLNA device discovery & remote play
+ * - Native UPnP/DLNA renderer discovery & AVTransport control (APK only)
  * - iOS Control Center style pill device selector modal
  * - Pure black casting console & power disconnect button
  * - Seamless swipe-to-next continuous casting
@@ -19,6 +20,16 @@
             this.heartbeatTimer = null;
             this.isCasting = false;
             this.isPaused = false;
+            // Active channel: 'server' (Emby/Jellyfin /Sessions), 'native' (APK SSDP DLNA), 'system' (AirPlay / RemotePlayback)
+            this.activeChannel = null;
+            this.activeNative = null;
+            this._nativeDevices = [];
+            this._nativeScanning = false;
+            this._remoteAvailable = false;
+            this._preparedNativeUrl = '';
+            this._preparedVideoId = '';
+            this._boundVideos = new Set();
+            this._lastSessions = [];
 
             this.dom = {
                 castBtn: document.getElementById('castBtn'),
@@ -33,6 +44,7 @@
             };
 
             this.init();
+            this.initSystemCastAvailability();
         }
 
         init() {
@@ -82,6 +94,125 @@
             return document.getElementById(`video-p${idx}`);
         }
 
+        // ── System native cast (W3C Remote Playback API + WebKit AirPlay + Chrome Cast bridge) ──
+        initSystemCastAvailability() {
+            if (this.getNativeDlna()) return;
+
+            if (!window.__onGCastApiAvailable) {
+                window.__onGCastApiAvailable = (isAvailable) => {
+                    if (isAvailable && window.cast?.framework) {
+                        try {
+                            const ctx = window.cast.framework.CastContext.getInstance();
+                            ctx.setOptions({
+                                receiverApplicationId: 'CC1AD845',
+                                autoJoinPolicy: 'origin_scoped'
+                            });
+                            ctx.addEventListener(window.cast.framework.CastContextEventType.SESSION_STATE_CHANGED, (e) => {
+                                if (e.sessionState === window.cast.framework.SessionState.SESSION_ENDED) {
+                                    if (this.activeChannel === 'system') {
+                                        this.disconnect(false);
+                                    }
+                                }
+                            });
+                        } catch (e) {}
+                    }
+                };
+            }
+            if (!document.getElementById('embyx-gcast-sdk') && window.chrome && !window.WebKitPlaybackTargetAvailabilityEvent) {
+                const s = document.createElement('script');
+                s.id = 'embyx-gcast-sdk';
+                s.src = 'https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1';
+                s.async = true;
+                document.head.appendChild(s);
+            }
+
+            const checkAndBind = () => {
+                [0, 1, 2].forEach(i => {
+                    const v = document.getElementById(`video-p${i}`);
+                    if (!v || this._boundVideos.has(v)) return;
+                    this._boundVideos.add(v);
+
+                    // 1. W3C Remote Playback API
+                    if (v.remote && typeof v.remote.watchAvailability === 'function') {
+                        try {
+                            v.remote.watchAvailability((available) => {
+                                const changed = this._remoteAvailable !== available;
+                                this._remoteAvailable = available;
+                                if (changed && this.dom.castModal && !this.dom.castModal.classList.contains('hidden')) {
+                                    this.renderDeviceList(this._lastSessions || []);
+                                }
+                            }).catch(() => {
+                                this._remoteAvailable = true;
+                            });
+                        } catch (e) {
+                            this._remoteAvailable = true;
+                        }
+                    }
+
+                    // Remote Playback connection events
+                    if (v.remote && typeof v.remote.addEventListener === 'function') {
+                        v.remote.addEventListener('connecting', () => {
+                            this.app.showToast('Connecting to cast device...');
+                        });
+                        v.remote.addEventListener('connect', () => {
+                            this.activeChannel = 'system';
+                            this.activeSessionName = 'Browser Cast';
+                            this.isCasting = true;
+                            this.renderPowerButton(true);
+                            this.app.showToast('Connected to system cast');
+                        });
+                        v.remote.addEventListener('disconnect', () => {
+                            if (this.activeChannel === 'system') {
+                                this.disconnect(false);
+                            }
+                        });
+                    }
+
+                    // 2. Apple WebKit AirPlay events
+                    v.addEventListener('webkitplaybacktargetavailabilitychanged', (e) => {
+                        const available = (e.availability === 'available');
+                        const changed = this._remoteAvailable !== available;
+                        this._remoteAvailable = available;
+                        if (changed && this.dom.castModal && !this.dom.castModal.classList.contains('hidden')) {
+                            this.renderDeviceList(this._lastSessions || []);
+                        }
+                    });
+
+                    v.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
+                        const isWireless = !!(v.webkitCurrentPlaybackTargetIsWireless);
+                        if (isWireless) {
+                            this.activeChannel = 'system';
+                            this.activeSessionName = 'AirPlay';
+                            this.isCasting = true;
+                            this.renderPowerButton(true);
+                            this.app.showToast('Connected to AirPlay');
+                        } else if (this.activeChannel === 'system') {
+                            this.disconnect(false);
+                        }
+                    });
+                });
+            };
+
+            checkAndBind();
+            setTimeout(checkAndBind, 1000);
+        }
+
+        // Asynchronously pre-fetch direct stream URL to assign synchronously without breaking user gesture
+        async prepareNativeStreamUrl(videoItem) {
+            if (!videoItem) return;
+            if (this._preparedVideoId === videoItem.Id && this._preparedNativeUrl) return;
+            this._preparedVideoId = videoItem.Id;
+            this._preparedNativeUrl = '';
+            try {
+                const url = await this.getNativeStreamUrl(videoItem);
+                if (this._preparedVideoId === videoItem.Id) {
+                    this._preparedNativeUrl = url || '';
+                }
+            } catch (e) {
+                console.warn('[CastManager] Failed to preheat stream url:', e);
+            }
+        }
+
         async fetchControllableSessions() {
             const { server, token, deviceId, userId } = this.app.config;
             if (!server || !token) return [];
@@ -111,30 +242,119 @@
                     return canControl && canVideo;
                 });
             } catch (err) {
-                console.warn('[CastManager] 拉取会话列表失败:', err);
+                console.warn('[CastManager] Failed to fetch sessions:', err);
                 return [];
             }
         }
 
+        // ── Native DLNA bridge (only available when EmbyXCastDlna exists in APK) ──
+        getNativeDlna() {
+            const bridge = window.EmbyXCastDlna;
+            return bridge && typeof bridge.discover === 'function' ? bridge : null;
+        }
+
+        initNativeDlnaBridge() {
+            if (this._nativeDlnaReady) return;
+            this._nativeDlnaReady = true;
+            this._nativeDlnaPending = new Map();
+            window.__embyxDlnaDiscover = (id, json) => {
+                const p = this._nativeDlnaPending.get(id);
+                if (!p) return;
+                this._nativeDlnaPending.delete(id);
+                try { p.resolve(JSON.parse(json || '[]')); } catch (e) { p.resolve([]); }
+            };
+            window.__embyxDlnaResult = (id, ok, payload) => {
+                const p = this._nativeDlnaPending.get(id);
+                if (!p) return;
+                this._nativeDlnaPending.delete(id);
+                p.resolve(ok === true ? (payload || '') : null);
+            };
+        }
+
+        waitNativeDlna(requestId, timeoutMs) {
+            this.initNativeDlnaBridge();
+            return new Promise(resolve => {
+                const timer = setTimeout(() => {
+                    this._nativeDlnaPending.delete(requestId);
+                    resolve(null);
+                }, timeoutMs);
+                this._nativeDlnaPending.set(requestId, {
+                    resolve: (v) => { clearTimeout(timer); resolve(v); }
+                });
+            });
+        }
+
+        extractUdn(deviceId) {
+            const m = String(deviceId || '').match(/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i);
+            return m ? m[1].toLowerCase() : '';
+        }
+
+        async discoverNativeRenderers() {
+            const dlna = this.getNativeDlna();
+            if (!dlna) return [];
+            const requestId = 'discover_' + Date.now().toString(36);
+            const pending = this.waitNativeDlna(requestId, 8000);
+            try {
+                dlna.discover(requestId);
+            } catch (e) {
+                console.warn('[CastManager] Native DLNA discover error:', e);
+                return [];
+            }
+            const list = await pending;
+            if (!Array.isArray(list)) return [];
+            return list.filter(d => d && (d.udn || d.location));
+        }
+
+        async nativeCommand(device, action, arg = '') {
+            const dlna = this.getNativeDlna();
+            if (!dlna || !device || !device.udn) return null;
+            const requestId = 'cmd_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+            const pending = this.waitNativeDlna(requestId, 6000);
+            try {
+                dlna.command(requestId, device.udn, action, arg);
+            } catch (e) {
+                console.warn('[CastManager] Native DLNA command error:', e);
+                return null;
+            }
+            return pending;
+        }
+
         async showPicker() {
             if (this.app.state.viewMode !== 'stream') {
-                this.app.showToast('请在播放模式下使用投屏');
+                this.app.showToast('Please use casting in playback mode');
                 return;
             }
 
             const current = this.app.state.videos[this.app.state.currentIndex];
             if (!current) {
-                this.app.showToast('当前未在播放视频');
+                this.app.showToast('No video currently playing');
                 return;
             }
 
-            // 1. 尝试拉取服务端可控制会话设备
-            const sessions = await this.fetchControllableSessions();
+            this.prepareNativeStreamUrl(current);
 
-            // 2. 无论是否发现服务端设备，统一弹出 EmbyX 规范设备选择卡片
-            // 严禁跳过卡片直接静默调起系统原生投屏
+            // 1. Server sessions (Emby / Jellyfin DLNA)
+            const sessions = await this.fetchControllableSessions();
+            this._lastSessions = sessions || [];
+
+            // 2. Open standard modal card
+            this._nativeDevices = [];
+            this._nativeScanning = !!this.getNativeDlna();
             this.openModal();
             this.renderDeviceList(sessions || []);
+
+            // 3. Native fallback in APK (SSDP)
+            if (!this._nativeScanning) return;
+            const discovered = await this.discoverNativeRenderers();
+            this._nativeScanning = false;
+            const covered = new Set(sessions.map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
+            this._nativeDevices = discovered.filter(d => {
+                const udn = this.extractUdn(d.udn || '');
+                return !udn || !covered.has(udn);
+            });
+            if (this.dom.castModal && !this.dom.castModal.classList.contains('hidden')) {
+                this.renderDeviceList(sessions || []);
+            }
         }
 
         triggerSystemCast() {
@@ -146,34 +366,102 @@
             const videoEl = this.getActiveVideoElement();
             if (!videoEl) return false;
 
-            // 优先检查 Apple WebKit (Safari / iOS AirPlay)
+            // Intelligent direct stream switch: when playing HLS(blob:), switch to direct URL so Chromecast can fetch directly
+            const currentSrc = videoEl.currentSrc || videoEl.src || '';
+            if (currentSrc.startsWith('blob:') && this._preparedNativeUrl) {
+                const savedTime = !isNaN(videoEl.currentTime) ? videoEl.currentTime : 0;
+                if (this.app.player?.activeHls) {
+                    this.app.player.activeHls.destroy();
+                    this.app.player.activeHls = null;
+                }
+                videoEl.src = this._preparedNativeUrl;
+                videoEl.currentTime = savedTime;
+                videoEl.play().catch(() => {});
+            }
+
+            // 1. Apple WebKit (Safari / iOS AirPlay)
             if (window.WebKitPlaybackTargetAvailabilityEvent || 'webkitShowPlaybackTargetPicker' in videoEl) {
                 try {
                     videoEl.webkitShowPlaybackTargetPicker();
                     return true;
                 } catch (e) {
-                    console.warn('[CastManager] webkitShowPlaybackTargetPicker 出错:', e);
+                    console.warn('[CastManager] webkitShowPlaybackTargetPicker error:', e);
                 }
             }
 
-            // 检查 W3C Remote Playback API (Chrome / Edge / Android)
-            if (videoEl.remote && typeof videoEl.remote.prompt === 'function') {
-                videoEl.remote.prompt().then(() => {
-                    this.app.showToast('已调起系统投屏选择器');
-                }).catch(err => {
-                    if (err.name !== 'NotFoundError' && err.name !== 'NotAllowedError') {
-                        console.warn('[CastManager] RemotePlayback prompt:', err);
+            // 2. Chrome / Chromium Cast framework (Media Router dialog)
+            const castCtx = window.cast?.framework?.CastContext?.getInstance?.();
+            if (castCtx && typeof castCtx.requestSession === 'function') {
+                castCtx.requestSession().then(async () => {
+                    const session = castCtx.getCurrentSession();
+                    if (!session) return;
+                    const current = this.app.state.videos[this.app.state.currentIndex];
+                    const url = await this.getNativeStreamUrl(current);
+                    if (!url) return;
+                    const castMedia = window.chrome?.cast?.media;
+                    if (!castMedia) return;
+
+                    const mediaInfo = new castMedia.MediaInfo(url, 'video/mp4');
+                    mediaInfo.metadata = new castMedia.GenericMediaMetadata();
+                    mediaInfo.metadata.title = current.Name || current.FileName || 'EmbyX';
+                    const request = new castMedia.LoadRequest(mediaInfo);
+                    const startSec = videoEl && !isNaN(videoEl.currentTime) ? Math.floor(videoEl.currentTime) : 0;
+                    request.currentTime = startSec;
+                    request.autoplay = true;
+
+                    session.loadMedia(request).then(() => {
+                        videoEl.pause();
+                        videoEl.muted = true;
+                        this.activeChannel = 'system';
+                        this.activeSessionName = session.getCastDevice()?.friendlyName || 'Chromecast';
+                        this.isCasting = true;
+                        this.renderPowerButton(true);
+                        this.app.showToast(`Casted to ${this.activeSessionName}`);
+                    }).catch((e) => {
+                        console.warn('[CastManager] Chromecast loadMedia failed:', e);
+                        this.app.showToast('Chromecast cannot play this video');
+                    });
+                }).catch((err) => {
+                    const code = typeof err === 'string' ? err : (err && (err.code || err.name)) || '';
+                    if (code !== 'cancel') {
+                        console.warn('[CastManager] requestSession failed:', err);
                     }
                 });
                 return true;
             }
 
+            // 3. W3C Remote Playback API fallback (Android Chrome etc.)
+            if (videoEl.remote && typeof videoEl.remote.prompt === 'function') {
+                this.promptRemotePlayback(videoEl);
+                return true;
+            }
+
+            this.app.showToast('Browser does not support system native cast');
             return false;
+        }
+
+        promptRemotePlayback(videoEl) {
+            videoEl.remote.prompt().catch(err => {
+                const name = err && err.name;
+                if (name === 'NotAllowedError') {
+                    return;
+                }
+                if (name === 'NotFoundError') {
+                    this.app.showToast('No cast devices found');
+                    return;
+                }
+                if (name === 'NotSupportedError') {
+                    this.app.showToast('Video stream does not support casting');
+                    return;
+                }
+                console.warn('[CastManager] RemotePlayback prompt failed:', err);
+                this.app.showToast('No cast devices found');
+            });
         }
 
         getDeviceIconName(name = '', client = '') {
             const lower = (name + ' ' + client).toLowerCase();
-            if (lower.includes('speaker') || lower.includes('音箱') || lower.includes('audio') || lower.includes('homepod')) {
+            if (lower.includes('speaker') || lower.includes('audio') || lower.includes('homepod')) {
                 return 'speaker';
             }
             if (lower.includes('mac') || lower.includes('pc') || lower.includes('windows') || lower.includes('linux')) {
@@ -189,57 +477,29 @@
             if (!this.dom.castDeviceList) return;
             this.dom.castDeviceList.innerHTML = '';
 
-            // 依据屏幕视口动态计算约 60% 高度下最匹配的整数条目数，杜绝条目露半截
             const targetCardHeight = (window.innerHeight || 844) * 0.6;
-            const cardHeaderAndPadding = 76; // p-4 (32px) + header 32px + mb-3 (12px)
-            const itemHeight = 58; // 严格固定高度 h-[58px]
-            const itemGap = 8;     // space-y-2
+            const cardHeaderAndPadding = 76;
+            const itemHeight = 58;
+            const itemGap = 8;
             const availableListHeight = Math.max(itemHeight, targetCardHeight - cardHeaderAndPadding);
-            // 计算 60% 高度目标下最贴合的整数条目数量（至少 3 项）
             const maxFitItems = Math.max(3, Math.round((availableListHeight + itemGap) / (itemHeight + itemGap)));
 
-            const totalItems = 1 + (sessions ? sessions.length : 0);
+            const nativeDevices = this._nativeDevices || [];
+            const showSystemCast = !this.getNativeDlna();
+            const isScanning = this._nativeScanning && nativeDevices.length === 0;
+            const realItems = (showSystemCast ? 1 : 0) + (sessions ? sessions.length : 0) + nativeDevices.length;
+            const totalItems = Math.max(1, realItems);
             const visibleCount = Math.min(totalItems, maxFitItems);
             const listMaxHeight = visibleCount * itemHeight + Math.max(0, visibleCount - 1) * itemGap;
             this.dom.castDeviceList.style.maxHeight = `${listMaxHeight}px`;
 
             const isLocked = window.DonateManager && window.DonateManager.isCastLocked();
 
-            // 第一项：系统原生投屏（AirPlay / 浏览器原生 Cast）
-            const systemItem = document.createElement('div');
-            systemItem.className = `flex items-center justify-between h-[58px] min-h-[58px] max-h-[58px] flex-shrink-0 px-3.5 rounded-xl bg-white/10 hover:bg-white/15 active:scale-[0.98] cursor-pointer transition-all border border-white/10 ${isLocked ? 'opacity-50' : ''}`;
-            systemItem.innerHTML = `
-                <div class="flex items-center space-x-3 min-w-0">
-                    <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-white flex-shrink-0">
-                        <i data-lucide="cast" class="w-4 h-4"></i>
-                    </div>
-                    <div class="min-w-0">
-                        <div class="text-white text-sm font-medium truncate">System Cast</div>
-                        <div class="text-white/60 text-xs truncate">AirPlay / Chromecast</div>
-                    </div>
-                </div>
-                <i data-lucide="chevron-right" class="w-4 h-4 ${isLocked ? 'text-white/30' : 'text-white/40'} flex-shrink-0"></i>
-            `;
-            systemItem.onclick = () => {
-                this.closeModal();
-                if (isLocked) {
-                    setTimeout(() => window.DonateManager?.showDonateModal(), 150);
-                    return;
-                }
-                this.triggerSystemCast();
-            };
-            this.dom.castDeviceList.appendChild(systemItem);
-
-            // 后续项：服务端 DLNA / Remote 会话设备（胶囊药丸，无绿色三角）
-            sessions.forEach(s => {
-                const name = s.DeviceName || s.Client || '局域网媒体设备';
-                const client = s.Client || 'DLNA 渲染器';
+            const appendDeviceItem = (name, client, isActive, onSelect, isSystemCast = false) => {
                 const icon = this.getDeviceIconName(name, client);
-                const isActive = this.isCasting && this.activeSessionId === s.Id;
-
                 const devItem = document.createElement('div');
                 devItem.className = `flex items-center justify-between h-[58px] min-h-[58px] max-h-[58px] flex-shrink-0 px-3.5 rounded-xl ${isActive ? 'bg-primary/20 border-primary/40 text-primary' : 'bg-white/10 hover:bg-white/15 border-white/10 text-white'} ${isLocked ? 'opacity-50' : ''} active:scale-[0.98] cursor-pointer transition-all border`;
-                
+
                 const rightHtml = isLocked
                     ? `<i data-lucide="chevron-right" class="w-4 h-4 text-white/30 flex-shrink-0"></i>`
                     : (isActive ? `<i data-lucide="check" class="w-5 h-5 text-primary flex-shrink-0"></i>` : ``);
@@ -257,14 +517,57 @@
                     ${rightHtml}
                 `;
                 devItem.onclick = () => {
-                    this.closeModal();
-                    if (isLocked) {
-                        setTimeout(() => window.DonateManager?.showDonateModal(), 150);
-                        return;
+                    if (isSystemCast) {
+                        this.closeModal(true);
+                        if (isLocked) {
+                            setTimeout(() => window.DonateManager?.showDonateModal(), 150);
+                            return;
+                        }
+                        onSelect();
+                    } else {
+                        this.closeModal();
+                        if (isLocked) {
+                            setTimeout(() => window.DonateManager?.showDonateModal(), 150);
+                            return;
+                        }
+                        onSelect();
                     }
-                    this.castToSession(s);
                 };
                 this.dom.castDeviceList.appendChild(devItem);
+            };
+
+            // First item: System native cast (AirPlay / Browser Cast)
+            if (showSystemCast) {
+                appendDeviceItem(
+                    'System Native Cast',
+                    'AirPlay / Browser Cast',
+                    this.isCasting && this.activeChannel === 'system',
+                    () => this.triggerSystemCast(),
+                    true
+                );
+            }
+
+            if (isScanning) {
+                appendDeviceItem('Scanning local network devices', 'Please wait...', false, () => {});
+            } else if (realItems === 0) {
+                appendDeviceItem('No cast devices found', 'Please ensure device is on the same network', false, () => {});
+            }
+
+            // Server DLNA / Remote sessions
+            sessions.forEach(s => {
+                const name = s.DeviceName || s.Client || 'Local Media Device';
+                const client = s.Client || 'DLNA Renderer';
+                const isActive = this.isCasting && this.activeChannel === 'server' && this.activeSessionId === s.Id;
+                appendDeviceItem(name, client, isActive, () => this.castToSession(s));
+            });
+
+            // Native DLNA discovered renderers (APK only)
+            nativeDevices.forEach(d => {
+                const name = d.name || 'Local Media Device';
+                const client = d.model || d.manufacturer || 'DLNA';
+                const isActive = this.isCasting && this.activeChannel === 'native' &&
+                    this.activeNative && this.activeNative.udn === d.udn;
+                appendDeviceItem(name, client, isActive, () => this.castToNative(d));
             });
 
             if (window.lucide && window.lucide.createIcons) {
@@ -319,7 +622,7 @@
             const mediaSource = current?.MediaSources?.[msIdx] || current?.MediaSources?.[0];
             const targetItemId = mediaSource?.ItemId || (mediaSource?._isPart ? '' : (current?.Id || ''));
 
-            this.app.showToast(`正在推送至 ${session.DeviceName || session.Client}...`);
+            this.app.showToast(`Casting to ${session.DeviceName || session.Client}...`);
 
             try {
                 const params = [
@@ -337,11 +640,12 @@
 
                 if (res.ok) {
                     this.activeSessionId = session.Id;
-                    this.activeSessionName = session.DeviceName || session.Client || '电视';
+                    this.activeSessionName = session.DeviceName || session.Client || 'TV';
+                    this.activeChannel = 'server';
+                    this.activeNative = null;
                     this.isCasting = true;
                     this.isPaused = false;
 
-                    // 1. 本地三槽视频制动并切换为高斯模糊海报展台
                     this.applyCastingStageTheme();
                     if (this.app.player) {
                         if (this.app.player.activeHls) {
@@ -354,27 +658,144 @@
                         }
                     }
 
-                    // 2. Render casting overlay
                     this.renderCastingOverlay(this.activeSessionName);
-
-                    // 3. 右上角投屏按钮变为红色 power 断开图标
                     this.renderPowerButton(true);
-
-                    // 4. 启动轻量心跳监测
                     this.startHeartbeat(current.Id);
-                    this.app.showToast(`已投屏至 ${this.activeSessionName}`);
+                    this.app.showToast(`Casted to ${this.activeSessionName}`);
                 } else {
-                    this.app.showToast('投屏请求被服务端拒绝');
+                    this.app.showToast('Cast request rejected by server');
                 }
             } catch (err) {
-                console.error('[CastManager] 投屏失败:', err);
-                this.app.showToast('投屏连接异常');
+                console.error('[CastManager] Cast failed:', err);
+                this.app.showToast('Cast connection error');
             }
+        }
+
+        async castToNative(device) {
+            if (window.DonateManager && window.DonateManager.isCastLocked()) {
+                window.DonateManager.showDonateModal();
+                return;
+            }
+            const dlna = this.getNativeDlna();
+            if (!dlna || !device) return;
+
+            const current = this.app.state.videos[this.app.state.currentIndex];
+            if (!current) return;
+
+            const videoEl = this.getActiveVideoElement();
+            const startSeconds = videoEl && !isNaN(videoEl.currentTime) ? Math.floor(videoEl.currentTime) : 0;
+            const url = await this.getNativeStreamUrl(current);
+            if (!url) {
+                this.app.showToast('Cast connection error');
+                return;
+            }
+
+            const name = device.name || 'TV';
+            const title = current.Name || current.FileName || 'EmbyX';
+            this.app.showToast(`Casting to ${name}...`);
+            const ok = await this.nativeCommand(device, 'play', JSON.stringify({ url, start: startSeconds, title }));
+            if (ok === null) {
+                this.app.showToast('Cast connection error');
+                return;
+            }
+
+            this.activeChannel = 'native';
+            this.activeNative = device;
+            this.activeSessionId = null;
+            this.activeSessionName = name;
+            this.isCasting = true;
+            this.isPaused = false;
+
+            this.applyCastingStageTheme();
+            if (this.app.player) {
+                if (this.app.player.activeHls) {
+                    this.app.player.activeHls.destroy();
+                    this.app.player.activeHls = null;
+                }
+                if (this.app.player.activeMpegts) {
+                    this.app.player.activeMpegts.destroy();
+                    this.app.player.activeMpegts = null;
+                }
+            }
+
+            this.renderCastingOverlay(name);
+            this.renderPowerButton(true);
+            this.startNativeHeartbeat();
+            this.app.showToast(`Casted to ${name}`);
+        }
+
+        async getNativeStreamUrl(item) {
+            if (!item) return '';
+            if (item._rawUrl) return item._rawUrl;
+
+            const isOpenList = item._isOpenList ||
+                (window.EmbyXCommon && EmbyXCommon.getServerType() === 'openlist');
+            if (isOpenList) {
+                if (window.OpenListManager && typeof window.OpenListManager.getPlayUrl === 'function') {
+                    try { return await window.OpenListManager.getPlayUrl(item); } catch (e) {}
+                }
+                return item._signedUrl || '';
+            }
+
+            const { server, token, deviceId } = this.app.config;
+            if (!server || !token) return '';
+
+            const msIdx = item._selectedMediaSourceIndex || 0;
+            const mediaSource = item?.MediaSources?.[msIdx] || item?.MediaSources?.[0];
+            const targetVideoId = mediaSource?.ItemId || (mediaSource?._isPart ? '' : (item?.Id || ''));
+            if (!targetVideoId) return '';
+            const msId = mediaSource?._isPart ? '' : (mediaSource?.Id || '');
+            const params = [
+                `api_key=${encodeURIComponent(token)}`,
+                `Static=true`,
+                msId ? `MediaSourceId=${msId}` : '',
+                `DeviceId=${encodeURIComponent(deviceId || 'EmbyX-Device')}`,
+                `PlaySessionId=cast_${encodeURIComponent(targetVideoId)}_${Date.now().toString(16)}`
+            ].filter(Boolean).join('&');
+            const fixUrl = window.EmbyXCommon?.fixUrlForJellyfin || ((u) => u);
+            return fixUrl(`${server}/emby/Videos/${targetVideoId}/stream?${params}`);
+        }
+
+        startNativeHeartbeat() {
+            this.stopHeartbeat();
+            let missCount = 0;
+            this.heartbeatTimer = setInterval(async () => {
+                if (!this.isCasting || this.activeChannel !== 'native' || !this.activeNative) {
+                    this.stopHeartbeat();
+                    return;
+                }
+                const state = await this.nativeCommand(this.activeNative, 'state', '');
+                if (state === null) {
+                    if (++missCount < 3) return;
+                    this.disconnect(false);
+                    this.app.showToast('TV playback ended');
+                    return;
+                }
+                missCount = 0;
+                let info;
+                try { info = JSON.parse(state); } catch (e) { return; }
+                if (!info) return;
+                if (info.paused !== undefined && info.paused !== this.isPaused) {
+                    this.updatePlayPauseButton(!!info.paused);
+                }
+                const duration = Number(info.duration) || 0;
+                const position = Number(info.position) || 0;
+                if (duration > 0 && this.app.dom.progressLine) {
+                    const pct = Math.min(100, Math.max(0, (position / duration) * 100));
+                    this.app.dom.progressLine.style.width = `${pct}%`;
+                    if (this.app.dom.currentTime && this.app.player?.formatTime) {
+                        this.app.dom.currentTime.textContent = this.app.player.formatTime(position);
+                    }
+                    if (this.app.dom.totalTime && this.app.player?.formatTime) {
+                        this.app.dom.totalTime.textContent = this.app.player.formatTime(duration);
+                    }
+                }
+            }, 4500);
         }
 
         renderCastingOverlay(name) {
             if (this.dom.castScreenDeviceName) {
-                this.dom.castScreenDeviceName.textContent = name || '电视';
+                this.dom.castScreenDeviceName.textContent = name || 'TV';
             }
             this.updatePlayPauseButton(false);
             if (this.dom.castScreenOverlay) {
@@ -401,13 +822,13 @@
             if (!this.dom.castBtn) return;
             if (isCastActive) {
                 this.dom.castBtn.innerHTML = `
-                    <div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="断开投屏">
+                    <div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="Disconnect">
                         <i data-lucide="power" class="stroke-red-400 text-red-400 w-5 h-5 drop-shadow-md"></i>
                     </div>
                 `;
             } else {
                 this.dom.castBtn.innerHTML = `
-                    <div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="投屏">
+                    <div class="w-12 h-12 flex items-center justify-center cursor-pointer active:scale-90 transition-transform bg-black/25 backdrop-blur-xl border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25),0_8px_24px_rgba(0,0,0,0.3)] rounded-full" title="Cast">
                         <i data-lucide="cast" class="stroke-white w-5 h-5 drop-shadow-md"></i>
                     </div>
                 `;
@@ -418,9 +839,22 @@
         }
 
         toggleRemotePlayPause() {
-            if (!this.isCasting || !this.activeSessionId) return;
+            if (!this.isCasting || (!this.activeSessionId && !this.activeNative && this.activeChannel !== 'system')) return;
 
-            // 确保本地三槽视频强行暂停，杜绝音画冲突
+            if (this.activeChannel === 'system') {
+                const videoEl = this.getActiveVideoElement();
+                if (videoEl) {
+                    if (videoEl.paused) {
+                        videoEl.play().catch(() => {});
+                        this.updatePlayPauseButton(false);
+                    } else {
+                        videoEl.pause();
+                        this.updatePlayPauseButton(true);
+                    }
+                }
+                return;
+            }
+
             [0, 1, 2].forEach(i => {
                 const vi = document.getElementById(`video-p${i}`);
                 if (vi) {
@@ -432,8 +866,13 @@
             const willPause = !this.isPaused;
             this.updatePlayPauseButton(willPause);
 
+            if (this.activeChannel === 'native') {
+                this.nativeCommand(this.activeNative, willPause ? 'pause' : 'resume', '');
+                return;
+            }
+
             const { server, token } = this.app.config;
-            if (server && token) {
+            if (server && token && this.activeSessionId) {
                 const url = `${server}/emby/Sessions/${encodeURIComponent(this.activeSessionId)}/Playing/PlayPause?api_key=${encodeURIComponent(token)}`;
                 fetch(url, {
                     method: 'POST',
@@ -443,6 +882,18 @@
         }
 
         async seekTo(seconds) {
+            if (this.activeChannel === 'system') {
+                const videoEl = this.getActiveVideoElement();
+                if (videoEl && !isNaN(seconds)) {
+                    videoEl.currentTime = Math.max(0, Number(seconds) || 0);
+                }
+                return;
+            }
+            if (this.activeChannel === 'native') {
+                if (!this.isCasting || !this.activeNative) return;
+                this.nativeCommand(this.activeNative, 'seek', String(Math.floor(seconds)));
+                return;
+            }
             if (!this.isCasting || !this.activeSessionId) return;
             const targetTicks = Math.floor(seconds * 10000000);
             const { server, token } = this.app.config;
@@ -454,23 +905,40 @@
                         headers: this.app.getAuthHeaders ? this.app.getAuthHeaders(token) : {}
                     }).catch(() => {});
                 } catch (e) {
-                    console.warn('[CastManager] Seek 失败:', e);
+                    console.warn('[CastManager] Seek failed:', e);
                 }
             }
         }
 
-        // 上下滑动连续投屏：手机保持高斯模糊展台与会话，直接向电视推送新视频
         async handleSlideChange() {
-            if (!this.isCasting || !this.activeSessionId) return;
+            if (!this.isCasting || (!this.activeSessionId && !this.activeNative && this.activeChannel !== 'system')) return;
 
             const current = this.app.state.videos[this.app.state.currentIndex];
             if (!current) return;
 
-            // 保持本地三槽视频制动并维持高斯模糊展台
-            this.applyCastingStageTheme();
+            if (this.activeChannel === 'system') {
+                this.prepareNativeStreamUrl(current);
+                const videoEl = this.getActiveVideoElement();
+                if (videoEl && this.app.player) {
+                    const playSrc = this._preparedNativeUrl || this.app.player.getVideoSrc(current.Id, current, false);
+                    this.app.player.setVideoSource(videoEl, playSrc, this.app.state.currentIndex, current, { autoplay: true });
+                }
+                return;
+            }
 
-            // 更新播放按钮为播放态
+            this.applyCastingStageTheme();
             this.updatePlayPauseButton(false);
+
+            if (this.activeChannel === 'native') {
+                const url = await this.getNativeStreamUrl(current);
+                if (url && this.activeNative) {
+                    const title = current.Name || current.FileName || 'EmbyX';
+                    this.nativeCommand(this.activeNative, 'play', JSON.stringify({ url, start: 0, title })).then(() => {
+                        this.app.showToast(`Casted next episode to ${this.activeSessionName}`);
+                    });
+                }
+                return;
+            }
 
             const msIdx = current?._selectedMediaSourceIndex || 0;
             const mediaSource = current?.MediaSources?.[msIdx] || current?.MediaSources?.[0];
@@ -493,9 +961,9 @@
                     }).catch(() => {});
 
                     this.startHeartbeat(current.Id);
-                    this.app.showToast(`已向 ${this.activeSessionName} 投屏下一集`);
+                    this.app.showToast(`Casted next episode to ${this.activeSessionName}`);
                 } catch (e) {
-                    console.warn('[CastManager] 连滑投屏请求失败:', e);
+                    console.warn('[CastManager] Failed to cast next episode:', e);
                 }
             }
         }
@@ -506,7 +974,14 @@
             const sid = this.activeSessionId;
             const { server, token } = this.app.config;
 
-            if (sendStop && sid && server && token) {
+            if (this.activeChannel === 'system') {
+                const castCtx = window.cast?.framework?.CastContext?.getInstance?.();
+                if (castCtx) {
+                    try { castCtx.endCurrentSession(true); } catch (e) {}
+                }
+            } else if (sendStop && this.activeChannel === 'native' && this.activeNative) {
+                this.nativeCommand(this.activeNative, 'stop', '');
+            } else if (sendStop && sid && server && token) {
                 try {
                     const url = `${server}/emby/Sessions/${encodeURIComponent(sid)}/Playing/Stop?api_key=${encodeURIComponent(token)}`;
                     fetch(url, {
@@ -518,20 +993,19 @@
 
             this.activeSessionId = null;
             this.activeSessionName = '';
+            this.activeChannel = null;
+            this.activeNative = null;
             this.isCasting = false;
             this.isPaused = false;
 
-            // 隐藏投屏控制台
             if (this.dom.castScreenOverlay) {
                 this.dom.castScreenOverlay.classList.remove('flex');
                 this.dom.castScreenOverlay.classList.add('hidden');
             }
 
-            // 恢复右上角投屏图标
             this.renderPowerButton(false);
-
-            // 恢复本地舞台海报状态与视频播放
             this.restoreStageTheme();
+
             const videoEl = this.getActiveVideoElement();
             if (videoEl) {
                 videoEl.style.opacity = '1';
@@ -546,7 +1020,7 @@
             }
 
             if (sendStop) {
-                this.app.showToast('已断开投屏');
+                this.app.showToast('Cast disconnected');
             }
         }
 
@@ -563,7 +1037,6 @@
                     const sessions = await this.fetchControllableSessions();
                     const s = sessions.find(x => x.Id === this.activeSessionId);
                     
-                    // 容错检查：电视端加载或启动初期 NowPlayingItem 可能尚未就绪，宽容连续 3 次未匹配后才认定已退出
                     const isSameVideo = s && s.NowPlayingItem && (
                         String(s.NowPlayingItem.Id) === String(currentVideoId) ||
                         String(s.NowPlayingItem.SeriesId) === String(currentVideoId)
@@ -573,13 +1046,12 @@
                         heartbeatMissCount++;
                         if (heartbeatMissCount >= 3) {
                             this.disconnect(false);
-                            this.app.showToast('电视端已结束播放');
+                            this.app.showToast('TV playback ended');
                         }
                         return;
                     }
                     heartbeatMissCount = 0;
 
-                    // 同步完整版 DLNA / Emby Web 设备的播放进度与播放/暂停状态
                     if (s.PlayState) {
                         if (s.PlayState.IsPaused !== undefined && s.PlayState.IsPaused !== this.isPaused) {
                             this.updatePlayPauseButton(!!s.PlayState.IsPaused);
@@ -636,10 +1108,13 @@
             }
         }
 
-        closeModal() {
-            if (this.app?.input && this.app.input.hasHistoryLayer('modal', 'castModal') && !this.app.input._isHandlingPop) {
+        closeModal(skipHistory = false) {
+            if (!skipHistory && this.app?.input && this.app.input.hasHistoryLayer('modal', 'castModal') && !this.app.input._isHandlingPop) {
                 window.history.back();
                 return;
+            }
+            if (this.app?.input && typeof this.app.input.removeHistoryLayer === 'function') {
+                this.app.input.removeHistoryLayer('modal', 'castModal');
             }
             if (this.dom.castModal) {
                 this.dom.castModal.classList.add('hidden');

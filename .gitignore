@@ -5,6 +5,7 @@ android/
 strm_out/
 strm_test/
 .vscode/
+.claude/
 .mimocode/
 .zcode/
 key/

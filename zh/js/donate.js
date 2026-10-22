@@ -1,5 +1,16 @@
 /**
  * EmbyX Donate & Player One Passcode Engine (DonateManager)
+ *
+ * ────────────────────────────────────────────────────────────────────────────
+ * 开源项目，¥9.9 的赞赏只是「喜欢就支持」，不是防线。
+ * 想改、想 fork、想做个同类产品，都没问题。
+ *
+ * 如果你正琢磨怎么绕过它——可以，但没必要。
+ * 直接让 AI 给你定制一个专属播放器，
+ * 更贴合你的需求，也更省 token。
+ *
+ * 这道锁挡不住有心人，它只是问一句：愿意支持吗？
+ * ────────────────────────────────────────────────────────────────────────────
  */
 
 (function () {
@@ -25,11 +36,7 @@
 
         _setEggProof(targetId, token) {
             if (!targetId) return;
-            const validToken = String(token || 'verified_p1');
-            _eggMemoryMap.set(targetId, validToken);
-            try {
-                localStorage.setItem(`_p1_token_${targetId}`, validToken);
-            } catch (e) {}
+            _eggMemoryMap.set(targetId, String(token || 'verified_p1'));
         }
 
         _clearEggProof(targetId) {
@@ -56,14 +63,7 @@
         hasEggAccess() {
             const targetId = this.getCurrentTargetId();
             if (!targetId) return false;
-            if (_eggMemoryMap.has(targetId)) return true;
-
-            const token = localStorage.getItem(`_p1_token_${targetId}`);
-            if (token && typeof token === 'string' && token.length > 0) {
-                _eggMemoryMap.set(targetId, token);
-                return true;
-            }
-            return false;
+            return _eggMemoryMap.has(targetId);
         }
 
         isPlayerOne() {
@@ -87,7 +87,7 @@
             const boundCode = this.getBoundCode(targetId);
 
             if (isP1) {
-                input.value = boundCode || '8K3M-9P2X';
+                input.value = boundCode || '已激活';
                 input.readOnly = true;
                 input.classList.remove('border-gray-700', 'focus:border-amber-400');
                 input.classList.add('border-amber-500/40', 'bg-amber-500/10', 'text-amber-300', 'font-bold', 'text-center');

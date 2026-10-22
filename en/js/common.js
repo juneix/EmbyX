@@ -439,14 +439,46 @@
     }
 
     // 8. Delete media item
+    // Jellyfin 12 moved deletion to the root path /Items/{id}; the /emby/* compat layer
+    // has no DELETE route (returns 404), so Jellyfin must use the root path explicitly.
+    // Returns { ok, status, reason } to distinguish permission / server / not-found failures.
     async function deleteMediaItem({ server, token, itemId, deviceName, deviceId, appVersion }) {
-        if (!server || !token || !itemId) return { ok: false, status: 400 };
+        if (!server || !token || !itemId) return { ok: false, status: 400, reason: 'bad-request' };
+
+        const type = getServerType();
+        if (type === 'openlist') {
+            if (!window.OpenListManager || typeof window.OpenListManager.remove !== 'function') {
+                return { ok: false, status: 0, reason: 'unsupported' };
+            }
+            return window.OpenListManager.remove(itemId);
+        }
+
         const headers = getAuthHeaders({ deviceName, deviceId, appVersion, token });
-        const res = await fetch(`${server}/emby/Items/${itemId}?api_key=${token}`, {
+        const basePath = type === 'jellyfin' ? '' : '/emby';
+        const res = await fetch(`${server}${basePath}/Items/${encodeURIComponent(itemId)}?api_key=${token}`, {
             method: 'DELETE',
             headers
         });
-        return { ok: res.ok, status: res.status };
+
+        if (res.ok) return { ok: true, status: res.status };
+
+        let reason = 'error';
+        if (res.status === 401 || res.status === 403) reason = 'forbidden';
+        else if (res.status === 404) reason = 'not-found';
+        else if (res.status >= 500) reason = 'server-error';
+        return { ok: false, status: res.status, reason };
+    }
+
+    // 8.1 Whether the current account may delete media
+    // Emby / Jellyfin: User.Policy from the login response (IsAdministrator or EnableContentDeletion)
+    // OpenList: bit 7 (128 = PermRemove) of the permission mask from /api/me
+    function canDeleteMedia(config = {}) {
+        const type = config.serverType || getServerType();
+        if (type === 'openlist') {
+            return !!(config.openlistCanRemove);
+        }
+        if (type === 'fnos') return false;
+        return !!config.canDelete;
     }
 
     // 9. Poster and avatar URL builder
@@ -541,6 +573,7 @@
         fetchFavorites,
         syncFavoriteStatus,
         deleteMediaItem,
+        canDeleteMedia,
         getItemImageUrl,
         getPersonImageUrl,
         checkGitHubUpdate

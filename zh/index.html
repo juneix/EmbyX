@@ -37,6 +37,7 @@
     <script src="js/player.js"></script>
     <script src="js/donate.js"></script>
     <script src="js/cast.js"></script>
+    <script src="js/native-media.js"></script>
     <script src="js/stage.js"></script>
     <script data-cfasync="false">
         tailwind.config = {
@@ -325,6 +326,7 @@
                 <i data-lucide="trash-2" class="stroke-red-400 text-red-400 w-5 h-5 drop-shadow-md"></i>
             </div>
         </div>
+
 
         <!-- 右上角投屏按钮（全屏按钮左侧，统一磨砂风格） -->
         <div class="absolute top-4 right-[4.5rem] z-30 transition-opacity duration-300"
@@ -621,7 +623,7 @@
                                     </button>
                                 </div>
                                 <div class="relative">
-                                    <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / 飞牛影视 / OpenList"
+                                    <input type="text" id="configServer" placeholder="支持 Emby / Jellyfin / fnOS / OpenList"
                                         class="w-full h-11 bg-black/40 text-white text-sm rounded-lg pl-3 pr-11 outline-none border border-white/10 focus:border-primary transition-colors focusable-item">
                                     <img id="serverTypeIcon" alt="" src="img/emby.webp"
                                         class="hidden absolute right-3 top-1/2 -translate-y-1/2 w-5 h-5 object-contain pointer-events-none">
@@ -644,7 +646,7 @@
                                     <ul class="space-y-1.5 text-xs">
                                         <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
                                             <span class="text-white font-medium">10.1.1.3</span>
-                                            <span class="text-[11px] text-gray-200 font-sans ml-2">（默认8096/8090端口）</span>
+                                            <span class="text-[11px] text-gray-200 font-sans ml-2">（默认8096/8090/5244端口）</span>
                                         </li>
                                         <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>10.1.1.3:8096</span>
@@ -1083,6 +1085,7 @@
                     onDoubleTapSkip: (dir, x, y) => this.handleDoubleTapSkip(dir, x, y)
                 });
                 this.castManager = new CastManager(this);
+                this.mediaSession = new NativeMediaSession(this);
                 this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
@@ -1125,6 +1128,9 @@
                 playBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
 
                 lucide.createIcons();
+
+                // 启动原生媒体会话（仅 APK 内 window.EmbyXNativeMedia 存在时生效）
+                this.mediaSession.start();
 
                 // 检查配置并启动
                 if (this.config.server && this.config.token) {
@@ -2284,26 +2290,32 @@
                 lucide.createIcons();
             }
 
+            // 删除失败原因 → 用户可读提示，避免所有错误都糊成「删除失败 (500)」
+            describeDeleteFailure(reason, status) {
+                switch (reason) {
+                    case 'forbidden': return '❌ 权限不足，请使用有删除权限的账号';
+                    case 'not-found': return '❌ 文件不存在或已被删除';
+                    case 'server-error': return `❌ 服务端删除失败 (${status})，请检查媒体库文件权限`;
+                    case 'unsupported': return '❌ 当前存储源不支持删除';
+                    case 'network': return '❌ 删除失败：网络错误';
+                    default: return `❌ 删除失败 (${status})`;
+                }
+            }
+
             async executeDelete() {
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
                 try {
-                    const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
+                    const { ok, status, reason } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
                     if (!ok) {
-                        // 403：账号无管理权限；404：视频已不存在（也从列表移除）
-                        if (status === 403) {
-                            this.showToast('❌ 权限不足，请使用管理员账号');
+                        // 404：项目已不存在（别的终端删掉了），继续从列表移除；其余一律如实报错
+                        if (reason !== 'not-found') {
+                            this.showToast(this.describeDeleteFailure(reason, status));
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        if (status !== 404) {
-                            this.showToast(`❌ 删除失败 (${status})`);
-                            this.toggleModal('deleteConfirmModal', false);
-                            return;
-                        }
-                        // 404 视为已删除，继续从列表移除
                     }
 
                     this.showToast('✅ 已删除');

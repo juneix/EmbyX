@@ -2318,33 +2318,32 @@
                 lucide.createIcons();
             }
 
+            // Delete failure reason -> user-facing message, instead of lumping everything into "failed (500)"
+            describeDeleteFailure(reason, status) {
+                switch (reason) {
+                    case 'forbidden': return '❌ No permission. Use an account allowed to delete';
+                    case 'not-found': return '❌ File not found or already deleted';
+                    case 'server-error': return `❌ Server failed to delete (${status}); check media library file permissions`;
+                    case 'unsupported': return '❌ This storage backend does not support deletion';
+                    case 'network': return '❌ Delete failed: network error';
+                    default: return `❌ Delete failed (${status})`;
+                }
+            }
+
             async executeDelete() {
                 const item = this.state.videos[this.state.currentIndex];
                 if (!item) return;
 
-                if (item._isOpenList || EmbyXCommon.getServerType() === 'openlist') {
-                    // The OpenList adapter exposes no delete API; avoid an invalid /emby/ request
-                    this.showToast('❌ Deleting is not supported on OpenList');
-                    this.toggleModal('deleteConfirmModal', false);
-                    return;
-                }
-
                 try {
-                    const { ok, status } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
+                    const { ok, status, reason } = await EmbyXCommon.deleteMediaItem({ ...this.config, itemId: item.Id });
 
                     if (!ok) {
-                        // 403：账号无管理权限；404：照片已不存在（也从列表移除）
-                        if (status === 403) {
-                            this.showToast('❌ No permission. Use an admin account');
+                        // 404: already gone elsewhere, drop it from the list; otherwise report honestly
+                        if (reason !== 'not-found') {
+                            this.showToast(this.describeDeleteFailure(reason, status));
                             this.toggleModal('deleteConfirmModal', false);
                             return;
                         }
-                        if (status !== 404) {
-                            this.showToast(`❌ Delete failed (${status})`);
-                            this.toggleModal('deleteConfirmModal', false);
-                            return;
-                        }
-                        // 404 视为已删除，继续从列表移除
                     }
 
                     this.showToast('✅ Deleted');

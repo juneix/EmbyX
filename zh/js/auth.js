@@ -39,6 +39,9 @@
             app.config.deleteMode = localStorage.getItem('emby_delete_mode') === 'true';
             app.config.fnOS = localStorage.getItem('emby_fnOS') === 'true';
             app.config.serverId = localStorage.getItem('emby_server_id') || '';
+            // 账号级删除权限（登录时由服务端 Policy / /api/me 解析落库）
+            app.config.canDelete = localStorage.getItem('emby_can_delete') === 'true';
+            app.config.openlistCanRemove = localStorage.getItem('openlist_can_remove') === 'true';
 
             // 生成或读取设备唯一 ID
             if (!localStorage.getItem('emby_device_id')) {
@@ -88,7 +91,7 @@
             if (typeof app.loadPageConfig === 'function') app.loadPageConfig();
 
             // 基于配置同步 UI
-            if (app.dom.deleteBtn) app.dom.deleteBtn.style.display = app.config.deleteMode ? 'flex' : 'none';
+            this.syncDeleteBtnVisibility();
             if (app.dom.playModeBtn) {
                 app.dom.playModeBtn.innerHTML = `<i data-lucide="${app.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                 if (window.lucide) lucide.createIcons();
@@ -289,15 +292,21 @@
                 localStorage.setItem('emby_user', user);
                 localStorage.setItem('emby_token', data.AccessToken);
                 localStorage.setItem('emby_uid', userId);
+
+                // 账号删除权限：Emby/Jellyfin 取登录响应的 User.Policy，OpenList 反查 /api/me
+                const canDelete = await this.resolveDeletePermission(serverType, data);
+                localStorage.setItem('emby_can_delete', canDelete ? 'true' : 'false');
+                app.config.canDelete = canDelete;
+
                 this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS });
                 if (typeof app.savePageConfig === 'function') app.savePageConfig();
 
-                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS };
+                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS, canDelete };
 
                 const pwdLen2 = pwd ? pwd.length : 0;
                 localStorage.setItem('emby_pwd_len', pwdLen2);
                 app.dom.configPwd.value = pwdLen2 > 0 ? '*'.repeat(pwdLen2) : '';
-                if (app.dom.deleteBtn) app.dom.deleteBtn.style.display = deleteMode ? 'flex' : 'none';
+                this.syncDeleteBtnVisibility();
                 if (app.dom.playModeBtn) {
                     app.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                     if (window.lucide) lucide.createIcons();
@@ -332,6 +341,43 @@
             } finally {
                 app.toggleLoading(false);
             }
+        }
+
+        /**
+         * 解析账号删除权限并落库。
+         * Emby / Jellyfin：User.Policy.IsAdministrator 或 EnableContentDeletion 为真即可删。
+         * OpenList：/api/me 的 permission 第 7 位（128 = PermRemove）。
+         */
+        async resolveDeletePermission(serverType, data) {
+            if (serverType === 'openlist') {
+                let canRemove = false;
+                if (window.OpenListManager && typeof window.OpenListManager.fetchCanRemove === 'function') {
+                    canRemove = await window.OpenListManager.fetchCanRemove();
+                }
+                localStorage.setItem('openlist_can_remove', canRemove ? 'true' : 'false');
+                this.app.config.openlistCanRemove = canRemove;
+                return canRemove;
+            }
+
+            const policy = data && data.User && data.User.Policy;
+            const canDelete = !!(policy && (policy.IsAdministrator === true || policy.EnableContentDeletion === true));
+            localStorage.setItem('openlist_can_remove', 'false');
+            this.app.config.openlistCanRemove = false;
+            return canDelete;
+        }
+
+        /**
+         * 删除按钮显隐：必须同时满足「用户开启了允许删除媒体」与「账号本身有删除权限」。
+         * 没有权限时按钮彻底不出现，避免用户误以为可以删。
+         */
+        syncDeleteBtnVisibility() {
+            const app = this.app;
+            if (!app || !app.dom.deleteBtn) return;
+            const canDelete = window.EmbyXCommon
+                ? EmbyXCommon.canDeleteMedia(app.config)
+                : false;
+            const visible = app.config.deleteMode && canDelete;
+            app.dom.deleteBtn.style.display = visible ? 'flex' : 'none';
         }
 
         // 统一落盘公共偏好；页面私有键（pic 的轮播/杂志模式）由页面钩子 savePageConfig 自行处理
