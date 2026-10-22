@@ -81,7 +81,7 @@ shortcut_meta = """
 if 'android:supportsPictureInPicture="true"' not in manifest:
     manifest = manifest.replace(
         'android:name=".MainActivity"',
-        'android:name=".MainActivity"\n            android:supportsPictureInPicture="true"\n            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"'
+        'android:name=".MainActivity"\n            android:supportsPictureInPicture="true"'
     )
 if 'android.app.shortcuts' not in manifest:
     manifest = manifest.replace(
