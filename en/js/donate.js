@@ -70,6 +70,10 @@
             return this.hasEggAccess();
         }
 
+        isActivated() {
+            return this.hasEggAccess();
+        }
+
         isCastLocked() {
             return !this.hasEggAccess();
         }
@@ -393,10 +397,11 @@
             const easterEggBtn = document.getElementById('castModalEasterEggBtn');
             if (easterEggBtn) {
                 if (isP1) {
-                    easterEggBtn.classList.add('hidden');
+                    easterEggBtn.innerHTML = `<i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-primary"></i><span>Refresh</span>`;
                 } else {
-                    easterEggBtn.classList.remove('hidden');
+                    easterEggBtn.innerHTML = `<i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i><span>Lab</span>`;
                 }
+                easterEggBtn.classList.remove('hidden');
             }
 
             if (window.lucide && window.lucide.createIcons) {

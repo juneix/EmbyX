@@ -538,6 +538,7 @@
                     app.state.isFilteredByTag = true;
                     app.state.currentPerson = null;
                     app.state.viewMode = 'grid';
+                    if (app.mediaSession) app.mediaSession.sync(true);
                     app.input?.pushLayer('filter', { type: 'tag', name: tagName });
 
                     const vBtn = app.dom.viewModeBtn;

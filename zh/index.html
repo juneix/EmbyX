@@ -119,6 +119,19 @@
                 @apply opacity-0 pointer-events-none transition-opacity duration-300;
             }
 
+            /* 原生画中画 (PiP) 模式：清空所有叠加层，只留纯净视频画面 */
+            body.pip-active .bottom-info,
+            body.pip-active .bottom-nav,
+            body.pip-active .right-toolbar,
+            body.pip-active #fullscreenBtn,
+            body.pip-active #castBtn,
+            body.pip-active #deleteBtn,
+            body.pip-active .play-pause-btn,
+            body.pip-active #toast,
+            body.pip-active header {
+                display: none !important;
+            }
+
             /* 仅在 iOS PWA (主屏幕应用状态栏常驻) 下向下避让状态栏 */
             .ios-pwa #deleteBtn,
             .ios-pwa #castBtn,
@@ -360,7 +373,7 @@
                     <img src="img/icon.png" alt="EmbyX" class="w-7 h-7 rounded-lg shadow-sm flex-shrink-0">
                     <h3 class="text-white text-base font-bold flex-1 truncate">请选择播放设备</h3>
                     <button id="castModalEasterEggBtn" onclick="window.app?.castManager ? window.app.castManager.handleEasterEggClick() : window.DonateManager?.showDonateModal()"
-                        class="px-3.5 py-1.5 rounded-full bg-black/25 hover:bg-black/40 active:scale-95 border border-white/10 shadow-[inset_0_1px_1px_rgba(255,255,255,0.25)] text-xs text-primary backdrop-blur-xl transition-all flex items-center space-x-1.5 flex-shrink-0 focusable-item">
+                        class="px-3.5 py-1.5 rounded-full bg-primary/10 hover:bg-primary/20 active:scale-95 border border-primary/30 text-primary shadow-[inset_0_1px_1px_rgba(255,255,255,0.2)] text-xs backdrop-blur-xl transition-all flex items-center space-x-1.5 flex-shrink-0 focusable-item">
                         <i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i>
                         <span>彩蛋空间</span>
                     </button>
@@ -382,9 +395,9 @@
                 <div class="w-12 h-12 bg-amber-500/10 rounded-full flex items-center justify-center mx-auto mb-3 border border-amber-500/20">
                     <i data-lucide="flask-conical" class="stroke-amber-400 w-6 h-6"></i>
                 </div>
-                <h3 id="donateModalTitle" class="text-lg font-bold text-white mb-1">EmbyX Lab</h3>
+                <h3 id="donateModalTitle" class="text-lg font-bold text-white mb-1">EmbyX Lab 彩蛋空间</h3>
                 <p id="donateModalDesc" class="text-xs text-gray-300 mb-4 leading-relaxed">
-                    头号玩家预览体验：短剧模式、投屏、转码等探索性功能<br>
+                    预览体验版：短剧模式、电视投屏、转码等探索性功能<br>
                     <span class="text-amber-300 font-medium">🧋 赞助一杯奶茶 (¥9.9)，成为头号玩家！</span>
                 </p>
                 
@@ -412,7 +425,7 @@
                     <p id="donateCodeError" class="text-[11px] text-red-400 mt-1.5 hidden text-left px-1"></p>
                 </div>
 
-                <p class="text-[11px] text-gray-400 mb-4">感谢每一位支持独立研发和开源探索的头号玩家🩷</p>
+                <p class="text-[11px] text-gray-400 mb-4">感谢每一位支持独立研发和开源探索的头号玩家❤️</p>
 
                 <button onclick="window.DonateManager?.hideDonateModal()"
                     class="w-full bg-white/10 border border-white/10 text-gray-200 py-2.5 rounded-xl text-sm hover:bg-white/20 font-medium active:scale-95 transition-all focusable-item">关闭</button>
@@ -586,27 +599,27 @@
 
                             <!-- 飞牛用户须知 Tooltip 弹窗 -->
                             <div id="fnosHelpTooltip"
-                                class="hidden absolute top-12 left-5 right-5 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_20px_40px_rgba(0,0,0,0.8)] space-y-2.5">
+                                class="hidden absolute top-12 left-5 right-5 z-40 bg-gray-800 border border-white/10 rounded-xl p-3.5 shadow-2xl space-y-2.5">
                                 <div class="flex items-center justify-between pb-2 border-b border-white/10">
                                     <div class="flex items-center space-x-1.5 text-yellow-400 text-xs font-bold">
                                         <span>⚠️ 飞牛用户须知</span>
                                     </div>
                                     <button type="button" id="closeFnosHelpBtn"
-                                        class="text-gray-300 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                        class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
                                         title="关闭">
                                         <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                     </button>
                                 </div>
-                                <p class="text-xs text-gray-100 leading-relaxed font-normal">
+                                <p class="text-xs text-gray-200 leading-relaxed font-normal">
                                     飞牛 APP 内置浏览器 Webview 环境有 bug，会出现操作卡顿、无法上下滑动切换视频等情况。
                                 </p>
                                 <div class="space-y-1.5 pt-1 text-xs">
-                                    <div class="bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                    <div class="bg-gray-700/60 p-2.5 rounded-lg border border-white/10">
                                         <div class="font-bold text-primary mb-0.5">PWA 应用</div>
                                         <div class="text-[11px] text-gray-300">安卓、苹果、鸿蒙、Win、Mac、Linux 全平台</div>
                                         <div class="text-[11px] text-white font-mono mt-0.5 select-all">浏览器打开 NAS-IP:8090，添加到主屏幕</div>
                                     </div>
-                                    <div class="bg-black/40 p-2.5 rounded-lg border border-white/10">
+                                    <div class="bg-gray-700/60 p-2.5 rounded-lg border border-white/10">
                                         <div class="font-bold text-primary mb-0.5">独立客户端</div>
                                         <div class="text-[11px] text-white">安卓可下载安装 EmbyX.apk</div>
                                     </div>
@@ -631,37 +644,37 @@
 
                                 <!-- 服务器地址填写格式参考 Tooltip 弹窗 -->
                                 <div id="serverHelpTooltip"
-                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_20px_40px_rgba(0,0,0,0.8)] space-y-2">
+                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-gray-800 border border-white/10 rounded-xl p-3.5 shadow-2xl space-y-2">
                                     <div class="flex items-center justify-between pb-2 border-b border-white/10">
                                         <div class="flex items-center space-x-1.5 text-primary text-xs font-bold">
                                             <i data-lucide="info" class="w-3.5 h-3.5"></i>
                                             <span>填写格式参考</span>
                                         </div>
                                         <button type="button" id="closeServerHelpBtn"
-                                            class="text-gray-300 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                            class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
                                             title="关闭">
                                             <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                         </button>
                                     </div>
                                     <ul class="space-y-1.5 text-xs">
-                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                        <li class="flex items-center justify-between font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
                                             <span class="text-white font-medium">10.1.1.3</span>
-                                            <span class="text-[11px] text-gray-200 font-sans ml-2">（默认8096/8090/5244端口）</span>
+                                            <span class="text-[11px] text-gray-300 font-sans ml-2">（默认8096/8090/5244端口）</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>10.1.1.3:8096</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>http://10.1.1.3:8096</span>
                                         </li>
-                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                        <li class="flex items-center justify-between font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
                                             <span class="text-white font-medium">5nav.eu.org</span>
-                                            <span class="text-[11px] text-gray-200 font-sans ml-2">（默认443端口）</span>
+                                            <span class="text-[11px] text-gray-300 font-sans ml-2">（默认443端口）</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>https://5nav.eu.org</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>https://5nav.eu.org:8099</span>
                                         </li>
                                     </ul>
@@ -744,8 +757,9 @@
                             class="bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
                                 <div id="profileAppIconBox"
+                                     class="cursor-pointer active:scale-95 transition-transform"
                                      style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
-                                    <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover;">
+                                    <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover; pointer-events: none;">
                                 </div>
                                 <div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -2468,6 +2482,7 @@
                     app.classList.add('grid-active');
                 }
                 this.dom.videoContainer.style.touchAction = 'auto';
+                if (this.mediaSession) this.mediaSession.sync(true);
 
                 const curLibId = this.state.currentLibraryId;
                 const libArg = curLibId === 'favorites' ? null : curLibId;
@@ -2524,6 +2539,7 @@
                         if (this.csTimer) clearTimeout(this.csTimer);
                     }
                     this.dom.videoContainer.style.touchAction = 'auto';
+                    if (this.mediaSession) this.mediaSession.sync(true);
                     this.renderGridView();
                 } else {
                     this.input?.pushLayer('stream');
@@ -2873,6 +2889,18 @@
                     if (this._fnosOAuthUrl) this.openFnosOAuth(this._fnosOAuthUrl);
                 };
                 document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
+
+                const profileAppIconBox = document.getElementById('profileAppIconBox');
+                if (profileAppIconBox) {
+                    let lastClick = 0;
+                    profileAppIconBox.onclick = () => {
+                        const now = Date.now();
+                        if (now - lastClick < 350) {
+                            window.location.href = 'pic.html' + (window.location.search || '') + (window.location.hash || '');
+                        }
+                        lastClick = now;
+                    };
+                }
 
                 const serverHelpBtn = document.getElementById('serverHelpBtn');
                 const serverHelpTooltip = document.getElementById('serverHelpTooltip');

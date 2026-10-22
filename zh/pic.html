@@ -405,37 +405,37 @@
 
                                 <!-- 服务器地址填写格式参考 Tooltip 弹窗 -->
                                 <div id="serverHelpTooltip"
-                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-slate-900/95 backdrop-blur-xl border border-white/20 rounded-xl p-3.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_20px_40px_rgba(0,0,0,0.8)] space-y-2">
+                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-gray-800 border border-white/10 rounded-xl p-3.5 shadow-2xl space-y-2">
                                     <div class="flex items-center justify-between pb-2 border-b border-white/10">
                                         <div class="flex items-center space-x-1.5 text-primary text-xs font-bold">
                                             <i data-lucide="info" class="w-3.5 h-3.5"></i>
                                             <span>填写格式参考</span>
                                         </div>
                                         <button type="button" id="closeServerHelpBtn"
-                                            class="text-gray-300 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
+                                            class="text-gray-400 hover:text-white p-0.5 rounded transition-colors focus:outline-none"
                                             title="关闭">
                                             <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                         </button>
                                     </div>
                                     <ul class="space-y-1.5 text-xs">
-                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                        <li class="flex items-center justify-between font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
                                             <span class="text-white font-medium">10.1.1.3</span>
-                                            <span class="text-[11px] text-gray-200 font-sans ml-2">（默认8096/8090/5244端口）</span>
+                                            <span class="text-[11px] text-gray-300 font-sans ml-2">（默认8096/8090/5244端口）</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>10.1.1.3:8096</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>http://10.1.1.3:8096</span>
                                         </li>
-                                        <li class="flex items-center justify-between font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
+                                        <li class="flex items-center justify-between font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
                                             <span class="text-white font-medium">5nav.eu.org</span>
-                                            <span class="text-[11px] text-gray-200 font-sans ml-2">（默认443端口）</span>
+                                            <span class="text-[11px] text-gray-300 font-sans ml-2">（默认443端口）</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>https://5nav.eu.org</span>
                                         </li>
-                                        <li class="font-mono bg-black/40 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
+                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
                                             <span>https://5nav.eu.org:8099</span>
                                         </li>
                                     </ul>
@@ -506,8 +506,10 @@
                         <div
                             class="bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md space-y-5 text-sm text-gray-300 leading-relaxed">
                             <div style="display: flex; align-items: center; gap: 12px;">
-                                <div style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
-                                    <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover;">
+                                <div id="profileAppIconBox"
+                                     class="cursor-pointer active:scale-95 transition-transform"
+                                     style="display: flex; height: 64px; width: 64px; align-items: center; justify-content: center; border-radius: 16px; border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.2); overflow: hidden; flex-shrink: 0;">
+                                    <img src="img/icon.png" style="height: 80%; width: 80%; object-fit: cover; pointer-events: none;">
                                 </div>
                                 <div>
                                     <div style="display: flex; align-items: center; gap: 8px;">
@@ -2906,6 +2908,18 @@
                 document.getElementById('closeProfileBtn').onclick = () => this.toggleModal('profilePage', false);
                 document.getElementById('saveConfigBtn').onclick = () => this.saveConfig();
                 document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
+
+                const profileAppIconBox = document.getElementById('profileAppIconBox');
+                if (profileAppIconBox) {
+                    let lastClick = 0;
+                    profileAppIconBox.onclick = () => {
+                        const now = Date.now();
+                        if (now - lastClick < 350) {
+                            window.location.href = 'index.html' + (window.location.search || '') + (window.location.hash || '');
+                        }
+                        lastClick = now;
+                    };
+                }
 
                 const serverHelpBtn = document.getElementById('serverHelpBtn');
                 const serverHelpTooltip = document.getElementById('serverHelpTooltip');

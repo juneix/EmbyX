@@ -65,7 +65,8 @@ extra_perms = [
     '    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />',
     '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />',
     '    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />',
-    '    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />'
+    '    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />',
+    '    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />'
 ]
 for perm in extra_perms:
     perm_name = perm.split('"')[1]
@@ -156,8 +157,42 @@ import java.io.File;
 
 public class MainActivity extends BridgeActivity {
 
+    public static volatile boolean isStreaming = false;
+    public static volatile int currentAspectNum = 9;
+    public static volatile int currentAspectDen = 16;
+    public static MainActivity instance = null;
+
+    public static void updateStreamingState(final boolean streaming, final int width, final int height) {
+        isStreaming = streaming;
+        if (width > 0 && height > 0) {
+            currentAspectNum = width;
+            currentAspectDen = height;
+        }
+        if (instance != null && android.os.Build.VERSION.SDK_INT >= 31) {
+            instance.runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        if (instance != null && !instance.isFinishing()) {
+                            android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
+                            int num = currentAspectNum;
+                            int den = currentAspectDen;
+                            double r = (double) num / (double) den;
+                            if (r < 0.4184) { num = 1000; den = 2390; }
+                            else if (r > 2.39) { num = 2390; den = 1000; }
+                            builder.setAspectRatio(new android.util.Rational(num, den));
+                            builder.setAutoEnterEnabled(streaming);
+                            instance.setPictureInPictureParams(builder.build());
+                        }
+                    } catch (Exception ignored) {}
+                }
+            });
+        }
+    }
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        instance = this;
         SplashScreen.installSplashScreen(this);
         super.onCreate(savedInstanceState);
 
@@ -165,6 +200,10 @@ public class MainActivity extends BridgeActivity {
         getWindow().setBackgroundDrawable(new ColorDrawable(Color.BLACK));
         if (this.bridge != null && this.bridge.getWebView() != null) {
             this.bridge.getWebView().setBackgroundColor(Color.BLACK);
+            android.webkit.WebSettings s = this.bridge.getWebView().getSettings();
+            if (s != null) {
+                s.setMediaPlaybackRequiresUserGesture(false);
+            }
         }
 
         // 1. 保持屏幕常亮
@@ -258,11 +297,31 @@ public class MainActivity extends BridgeActivity {
 
     @Override
     public void onDestroy() {
+        if (instance == this) {
+            instance = null;
+        }
         if (dlnaBridge != null) {
             dlnaBridge.shutdown();
             dlnaBridge = null;
         }
         super.onDestroy();
+    }
+
+    @Override
+    public void onPause() {
+        super.onPause();
+        // 关键保活：退到后台或进入小窗时，防止 Chromium WebView 强制暂停音视频与 JS 调度
+        if (isStreaming && this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().onResume();
+        }
+    }
+
+    @Override
+    public void onStop() {
+        super.onStop();
+        if (isStreaming && this.bridge != null && this.bridge.getWebView() != null) {
+            this.bridge.getWebView().onResume();
+        }
     }
 
     @Override
@@ -330,35 +389,24 @@ public class MainActivity extends BridgeActivity {
         fileOrDir.delete();
     }
 
-    // 7. Android 原生画中画 (Picture-in-Picture) 支持
+    // 7. Android 原生画中画 (Picture-in-Picture) 同步无缝进入
     @Override
     protected void onUserLeaveHint() {
         super.onUserLeaveHint();
-        enterPipModeIfPlaying();
-    }
-
-    public void enterPipModeIfPlaying() {
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-            if (this.bridge != null && this.bridge.getWebView() != null) {
-                this.bridge.getWebView().evaluateJavascript(
-                    "(function() { return (window.app && window.app.state && window.app.state.viewMode === 'stream'); })()",
-                    new ValueCallback<String>() {
-                        @Override
-                        public void onReceiveValue(String isStream) {
-                            if ("true".equalsIgnoreCase(isStream)) {
-                                try {
-                                    android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
-                                    builder.setAspectRatio(new android.util.Rational(9, 16));
-                                    if (android.os.Build.VERSION.SDK_INT >= 31) {
-                                        builder.setAutoEnterEnabled(true);
-                                    }
-                                    enterPictureInPictureMode(builder.build());
-                                } catch (Exception ignored) {}
-                            }
-                        }
-                    }
-                );
-            }
+        if (isStreaming && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            try {
+                android.app.PictureInPictureParams.Builder builder = new android.app.PictureInPictureParams.Builder();
+                int num = currentAspectNum;
+                int den = currentAspectDen;
+                double r = (double) num / (double) den;
+                if (r < 0.4184) { num = 1000; den = 2390; }
+                else if (r > 2.39) { num = 2390; den = 1000; }
+                builder.setAspectRatio(new android.util.Rational(num, den));
+                if (android.os.Build.VERSION.SDK_INT >= 31) {
+                    builder.setAutoEnterEnabled(true);
+                }
+                enterPictureInPictureMode(builder.build());
+            } catch (Exception ignored) {}
         }
     }
 
@@ -1221,6 +1269,15 @@ public class EmbyXNativeMediaBridge {
     @JavascriptInterface
     public void update(final String json) {
         if (json == null) return;
+        try {
+            org.json.JSONObject obj = new org.json.JSONObject(json);
+            boolean playing = obj.optBoolean("playing", false);
+            boolean inStreamView = obj.optBoolean("inStreamView", false);
+            int w = obj.optInt("width", 9);
+            int h = obj.optInt("height", 16);
+            MainActivity.updateStreamingState(playing || inStreamView, w, h);
+        } catch (Exception ignored) {}
+
         // 通知与 MediaSession 状态统一在主线程刷新
         new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
             @Override
@@ -1236,6 +1293,7 @@ public class EmbyXNativeMediaBridge {
 
     @JavascriptInterface
     public void clear() {
+        MainActivity.updateStreamingState(false, 9, 16);
         new android.os.Handler(android.os.Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {

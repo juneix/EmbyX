@@ -24,6 +24,9 @@
             this.activeChannel = null;
             this.activeNative = null;
             this._nativeDevices = [];
+            this._cachedNativeDevices = null;
+            this._isPreScanning = false;
+            this._isRefreshing = false;
             this._nativeScanning = false;
             this._remoteAvailable = false;
             this._preparedNativeUrl = '';
@@ -80,13 +83,77 @@
                     }
                 };
             }
+
+            // 静默预扫描 APK 原生 DLNA 渲染器，后续点击投屏秒出设备列表
+            setTimeout(() => this.startPreScan(), 1500);
+        }
+
+        startPreScan() {
+            if (!this.getNativeDlna()) return;
+            if (this._isPreScanning || (this._cachedNativeDevices && this._cachedNativeDevices.length > 0)) return;
+            this._isPreScanning = true;
+            this.discoverNativeRenderers().then(list => {
+                this._cachedNativeDevices = list || [];
+                this._isPreScanning = false;
+            }).catch(() => {
+                this._isPreScanning = false;
+            });
         }
 
         handleEasterEggClick() {
+            const dm = window.DonateManager;
+            const isActivated = dm ? (
+                typeof dm.isPlayerOne === 'function' ? dm.isPlayerOne() :
+                typeof dm.isActivated === 'function' ? dm.isActivated() :
+                typeof dm.hasEggAccess === 'function' ? dm.hasEggAccess() :
+                false
+            ) : false;
+            if (isActivated) {
+                this.refreshDevices();
+                return;
+            }
             this.closeModal();
             setTimeout(() => {
                 window.DonateManager?.showDonateModal();
             }, 150);
+        }
+
+        async refreshDevices() {
+            if (this._isRefreshing) return;
+            this._isRefreshing = true;
+            const btn = document.getElementById('castModalEasterEggBtn');
+            const icon = btn?.querySelector('[data-lucide], svg');
+            if (icon) icon.classList.add('animate-spin');
+
+            try {
+                const sessions = await this.fetchControllableSessions();
+                this._lastSessions = sessions || [];
+
+                const isOpenList = !!(this.app.config?.isOpenList || this.app.openList);
+                const hasNativeDlna = !!this.getNativeDlna();
+                const skipNativeScan = !hasNativeDlna || (!isOpenList && sessions && sessions.length > 0);
+
+                if (skipNativeScan) {
+                    this._nativeDevices = [];
+                    this._nativeScanning = false;
+                    this.renderDeviceList(sessions || []);
+                } else {
+                    this._nativeScanning = true;
+                    this.renderDeviceList(sessions || []);
+                    const discovered = await this.discoverNativeRenderers();
+                    this._cachedNativeDevices = discovered || [];
+                    this._nativeScanning = false;
+                    const covered = new Set((sessions || []).map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
+                    this._nativeDevices = (discovered || []).filter(d => {
+                        const udn = this.extractUdn(d.udn || '');
+                        return !udn || !covered.has(udn);
+                    });
+                    this.renderDeviceList(sessions || []);
+                }
+            } finally {
+                this._isRefreshing = false;
+                if (icon) icon.classList.remove('animate-spin');
+            }
         }
 
         getActiveVideoElement() {
@@ -96,8 +163,6 @@
 
         // ── 系统原生投屏（W3C Remote Playback API + WebKit AirPlay + Chrome Cast 极简桥接） ──
         initSystemCastAvailability() {
-            if (this.getNativeDlna()) return;
-
             // 仅在 Chromium 环境注册极简 Cast Framework 钩子，不阻塞主流程
             if (!window.__onGCastApiAvailable) {
                 window.__onGCastApiAvailable = (isAvailable) => {
@@ -339,21 +404,47 @@
             const sessions = await this.fetchControllableSessions();
             this._lastSessions = sessions || [];
 
-            // 2. 无论是否发现设备，统一弹出 EmbyX 规范设备选择卡片
-            this._nativeDevices = [];
-            this._nativeScanning = !!this.getNativeDlna();
-            this.openModal();
-            this.renderDeviceList(sessions || []);
+            const isOpenList = !!(this.app.config?.isOpenList || this.app.openList);
+            const hasNativeDlna = !!this.getNativeDlna();
 
-            // 3. 原生兜底：APK 内手机自身 SSDP 发现，异步补齐列表，不阻塞卡片首帧
-            if (!this._nativeScanning) return;
-            const discovered = await this.discoverNativeRenderers();
-            this._nativeScanning = false;
-            const covered = new Set(sessions.map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
-            this._nativeDevices = discovered.filter(d => {
+            // 若服务器端已经返回了可控会话（Emby/Jellyfin 局域网自带 DLNA），
+            // 完全跳过 APK 原生扫描，彻底避免冲突、重复与等待感
+            const skipNativeScan = !hasNativeDlna || (!isOpenList && sessions && sessions.length > 0);
+
+            if (skipNativeScan) {
+                this._nativeDevices = [];
+                this._nativeScanning = false;
+                this.openModal();
+                this.renderDeviceList(sessions || []);
+                return;
+            }
+
+            // 2. OpenList 或 Emby 无会话时的原生兜底：优先使用静默预扫描缓存
+            const covered = new Set((sessions || []).map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
+            const filterUncovered = (list) => (list || []).filter(d => {
                 const udn = this.extractUdn(d.udn || '');
                 return !udn || !covered.has(udn);
             });
+
+            if (this._cachedNativeDevices && this._cachedNativeDevices.length > 0) {
+                this._nativeDevices = filterUncovered(this._cachedNativeDevices);
+                this._nativeScanning = false;
+                this.openModal();
+                this.renderDeviceList(sessions || []);
+                return;
+            }
+
+            // 若无缓存，先弹出弹窗展示扫描中，异步完成后补齐
+            this._nativeDevices = [];
+            this._nativeScanning = true;
+            this.openModal();
+            this.renderDeviceList(sessions || []);
+
+            const discovered = await this.discoverNativeRenderers();
+            this._cachedNativeDevices = discovered || [];
+            this._nativeScanning = false;
+            this._nativeDevices = filterUncovered(discovered);
+
             if (this.dom.castModal && !this.dom.castModal.classList.contains('hidden')) {
                 this.renderDeviceList(sessions || []);
             }
@@ -489,8 +580,8 @@
             const maxFitItems = Math.max(3, Math.round((availableListHeight + itemGap) / (itemHeight + itemGap)));
 
             const nativeDevices = this._nativeDevices || [];
-            // APK 内 WebView 不暴露 remote / webkitShowPlaybackTargetPicker，直接不渲染该条目
-            const showSystemCast = !this.getNativeDlna();
+            // 系统原生投屏全平台常驻（Web 浏览器与 APK 保持一致）
+            const showSystemCast = true;
             const isScanning = this._nativeScanning && nativeDevices.length === 0;
             const realItems = (showSystemCast ? 1 : 0) + (sessions ? sessions.length : 0) + nativeDevices.length;
             const totalItems = Math.max(1, realItems);
@@ -1096,6 +1187,32 @@
             }
         }
 
+        updateEasterEggBtn() {
+            try {
+                const btn = document.getElementById('castModalEasterEggBtn');
+                if (!btn) return;
+                const dm = window.DonateManager;
+                const isActivated = dm ? (
+                    typeof dm.isPlayerOne === 'function' ? dm.isPlayerOne() :
+                    typeof dm.isActivated === 'function' ? dm.isActivated() :
+                    typeof dm.hasEggAccess === 'function' ? dm.hasEggAccess() :
+                    false
+                ) : false;
+                const isZh = !document.documentElement.lang || document.documentElement.lang.startsWith('zh');
+                if (isActivated) {
+                    btn.innerHTML = `<i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-primary"></i><span>${isZh ? '刷新' : 'Refresh'}</span>`;
+                } else {
+                    btn.innerHTML = `<i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i><span>${isZh ? '彩蛋空间' : 'Lab'}</span>`;
+                }
+                btn.classList.remove('hidden');
+                if (window.lucide && window.lucide.createIcons) {
+                    window.lucide.createIcons({ root: btn });
+                }
+            } catch (e) {
+                console.warn('[CastManager] updateEasterEggBtn 出错:', e);
+            }
+        }
+
         openModal() {
             if (this.app?.closeAllModals) {
                 this.app.closeAllModals('castModal');
@@ -1103,6 +1220,7 @@
             if (window.DonateManager) {
                 window.DonateManager.updateUI();
             }
+            this.updateEasterEggBtn();
             if (this.dom.castModal) {
                 this.dom.castModal.classList.remove('hidden');
                 if (this.app?.nav) {

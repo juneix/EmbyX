@@ -106,10 +106,13 @@
                 subtitle: item.SeriesName || item.ProductionYear || '',
                 poster: this.posterUrl(item),
                 playing: el ? !el.paused && !el.ended : false,
+                inStreamView: this.app.state.viewMode === 'stream',
                 position: el && isFinite(el.currentTime) ? Math.floor(el.currentTime * 1000) : 0,
                 duration: el && isFinite(el.duration) ? Math.floor(el.duration * 1000) : 0,
                 canPrev: this.app.state.currentIndex > 0,
-                canNext: this.app.state.currentIndex < this.app.state.videos.length - 1
+                canNext: this.app.state.currentIndex < this.app.state.videos.length - 1,
+                width: el && el.videoWidth ? el.videoWidth : 9,
+                height: el && el.videoHeight ? el.videoHeight : 16
             };
 
             try {

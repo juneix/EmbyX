@@ -24,6 +24,9 @@
             this.activeChannel = null;
             this.activeNative = null;
             this._nativeDevices = [];
+            this._cachedNativeDevices = null;
+            this._isPreScanning = false;
+            this._isRefreshing = false;
             this._nativeScanning = false;
             this._remoteAvailable = false;
             this._preparedNativeUrl = '';
@@ -80,13 +83,77 @@
                     }
                 };
             }
+
+            // Silent pre-scan APK native DLNA renderers for instant list pop-up
+            setTimeout(() => this.startPreScan(), 1500);
+        }
+
+        startPreScan() {
+            if (!this.getNativeDlna()) return;
+            if (this._isPreScanning || (this._cachedNativeDevices && this._cachedNativeDevices.length > 0)) return;
+            this._isPreScanning = true;
+            this.discoverNativeRenderers().then(list => {
+                this._cachedNativeDevices = list || [];
+                this._isPreScanning = false;
+            }).catch(() => {
+                this._isPreScanning = false;
+            });
         }
 
         handleEasterEggClick() {
+            const dm = window.DonateManager;
+            const isActivated = dm ? (
+                typeof dm.isPlayerOne === 'function' ? dm.isPlayerOne() :
+                typeof dm.isActivated === 'function' ? dm.isActivated() :
+                typeof dm.hasEggAccess === 'function' ? dm.hasEggAccess() :
+                false
+            ) : false;
+            if (isActivated) {
+                this.refreshDevices();
+                return;
+            }
             this.closeModal();
             setTimeout(() => {
                 window.DonateManager?.showDonateModal();
             }, 150);
+        }
+
+        async refreshDevices() {
+            if (this._isRefreshing) return;
+            this._isRefreshing = true;
+            const btn = document.getElementById('castModalEasterEggBtn');
+            const icon = btn?.querySelector('[data-lucide], svg');
+            if (icon) icon.classList.add('animate-spin');
+
+            try {
+                const sessions = await this.fetchControllableSessions();
+                this._lastSessions = sessions || [];
+
+                const isOpenList = !!(this.app.config?.isOpenList || this.app.openList);
+                const hasNativeDlna = !!this.getNativeDlna();
+                const skipNativeScan = !hasNativeDlna || (!isOpenList && sessions && sessions.length > 0);
+
+                if (skipNativeScan) {
+                    this._nativeDevices = [];
+                    this._nativeScanning = false;
+                    this.renderDeviceList(sessions || []);
+                } else {
+                    this._nativeScanning = true;
+                    this.renderDeviceList(sessions || []);
+                    const discovered = await this.discoverNativeRenderers();
+                    this._cachedNativeDevices = discovered || [];
+                    this._nativeScanning = false;
+                    const covered = new Set((sessions || []).map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
+                    this._nativeDevices = (discovered || []).filter(d => {
+                        const udn = this.extractUdn(d.udn || '');
+                        return !udn || !covered.has(udn);
+                    });
+                    this.renderDeviceList(sessions || []);
+                }
+            } finally {
+                this._isRefreshing = false;
+                if (icon) icon.classList.remove('animate-spin');
+            }
         }
 
         getActiveVideoElement() {
@@ -96,8 +163,6 @@
 
         // ── System native cast (W3C Remote Playback API + WebKit AirPlay + Chrome Cast bridge) ──
         initSystemCastAvailability() {
-            if (this.getNativeDlna()) return;
-
             if (!window.__onGCastApiAvailable) {
                 window.__onGCastApiAvailable = (isAvailable) => {
                     if (isAvailable && window.cast?.framework) {
@@ -337,21 +402,46 @@
             const sessions = await this.fetchControllableSessions();
             this._lastSessions = sessions || [];
 
-            // 2. Open standard modal card
-            this._nativeDevices = [];
-            this._nativeScanning = !!this.getNativeDlna();
-            this.openModal();
-            this.renderDeviceList(sessions || []);
+            const isOpenList = !!(this.app.config?.isOpenList || this.app.openList);
+            const hasNativeDlna = !!this.getNativeDlna();
 
-            // 3. Native fallback in APK (SSDP)
-            if (!this._nativeScanning) return;
-            const discovered = await this.discoverNativeRenderers();
-            this._nativeScanning = false;
-            const covered = new Set(sessions.map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
-            this._nativeDevices = discovered.filter(d => {
+            // If server returned controllable sessions, skip native SSDP scanning completely
+            const skipNativeScan = !hasNativeDlna || (!isOpenList && sessions && sessions.length > 0);
+
+            if (skipNativeScan) {
+                this._nativeDevices = [];
+                this._nativeScanning = false;
+                this.openModal();
+                this.renderDeviceList(sessions || []);
+                return;
+            }
+
+            // 2. OpenList or fallback: use pre-scanned cache
+            const covered = new Set((sessions || []).map(s => this.extractUdn(s.DeviceId)).filter(Boolean));
+            const filterUncovered = (list) => (list || []).filter(d => {
                 const udn = this.extractUdn(d.udn || '');
                 return !udn || !covered.has(udn);
             });
+
+            if (this._cachedNativeDevices && this._cachedNativeDevices.length > 0) {
+                this._nativeDevices = filterUncovered(this._cachedNativeDevices);
+                this._nativeScanning = false;
+                this.openModal();
+                this.renderDeviceList(sessions || []);
+                return;
+            }
+
+            // If not cached yet, show scanning indicator then fill in
+            this._nativeDevices = [];
+            this._nativeScanning = true;
+            this.openModal();
+            this.renderDeviceList(sessions || []);
+
+            const discovered = await this.discoverNativeRenderers();
+            this._cachedNativeDevices = discovered || [];
+            this._nativeScanning = false;
+            this._nativeDevices = filterUncovered(discovered);
+
             if (this.dom.castModal && !this.dom.castModal.classList.contains('hidden')) {
                 this.renderDeviceList(sessions || []);
             }
@@ -485,7 +575,7 @@
             const maxFitItems = Math.max(3, Math.round((availableListHeight + itemGap) / (itemHeight + itemGap)));
 
             const nativeDevices = this._nativeDevices || [];
-            const showSystemCast = !this.getNativeDlna();
+            const showSystemCast = true;
             const isScanning = this._nativeScanning && nativeDevices.length === 0;
             const realItems = (showSystemCast ? 1 : 0) + (sessions ? sessions.length : 0) + nativeDevices.length;
             const totalItems = Math.max(1, realItems);
@@ -1087,6 +1177,32 @@
             }
         }
 
+        updateEasterEggBtn() {
+            try {
+                const btn = document.getElementById('castModalEasterEggBtn');
+                if (!btn) return;
+                const dm = window.DonateManager;
+                const isActivated = dm ? (
+                    typeof dm.isPlayerOne === 'function' ? dm.isPlayerOne() :
+                    typeof dm.isActivated === 'function' ? dm.isActivated() :
+                    typeof dm.hasEggAccess === 'function' ? dm.hasEggAccess() :
+                    false
+                ) : false;
+                const isZh = !document.documentElement.lang || document.documentElement.lang.startsWith('zh');
+                if (isActivated) {
+                    btn.innerHTML = `<i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-primary"></i><span>${isZh ? '刷新' : 'Refresh'}</span>`;
+                } else {
+                    btn.innerHTML = `<i data-lucide="flask-conical" class="w-3.5 h-3.5 text-primary"></i><span>${isZh ? '彩蛋空间' : 'Lab'}</span>`;
+                }
+                btn.classList.remove('hidden');
+                if (window.lucide && window.lucide.createIcons) {
+                    window.lucide.createIcons({ root: btn });
+                }
+            } catch (e) {
+                console.warn('[CastManager] updateEasterEggBtn error:', e);
+            }
+        }
+
         openModal() {
             if (this.app?.closeAllModals) {
                 this.app.closeAllModals('castModal');
@@ -1094,6 +1210,7 @@
             if (window.DonateManager) {
                 window.DonateManager.updateUI();
             }
+            this.updateEasterEggBtn();
             if (this.dom.castModal) {
                 this.dom.castModal.classList.remove('hidden');
                 if (this.app?.nav) {
