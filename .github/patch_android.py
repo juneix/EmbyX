@@ -257,7 +257,7 @@ public class MainActivity extends BridgeActivity {
     private EmbyXDlnaBridge dlnaBridge;
 
     @Override
-    protected void onDestroy() {
+    public void onDestroy() {
         if (dlnaBridge != null) {
             dlnaBridge.shutdown();
             dlnaBridge = null;
