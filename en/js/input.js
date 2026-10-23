@@ -150,11 +150,19 @@
         focusModal(containerEl, delayMs = 300) {
             if (!containerEl) return;
             setTimeout(() => {
-                const allItems = Array.from(containerEl.querySelectorAll('.focusable-item'));
-                // Prioritize selected item with primary background
-                const selected = allItems.find(i => i.classList.contains('bg-primary/20'));
+                const allItems = Array.from(containerEl.querySelectorAll('.focusable-item'))
+                    .filter(i => i.offsetParent !== null);
+                const isProfile = containerEl.id === 'profilePage';
+                // Only prioritize selected bg-primary/20 item in picker modals; keep Profile page anchored at top Server Settings without scrolling down
+                const selected = isProfile ? null : allItems.find(i => i.classList.contains('bg-primary/20'));
                 const target = selected || allItems[0];
-                if (target) target.focus();
+                if (target) {
+                    if (isProfile) {
+                        target.focus({ preventScroll: true });
+                    } else {
+                        target.focus();
+                    }
+                }
             }, delayMs);
         }
 

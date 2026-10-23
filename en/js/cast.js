@@ -456,6 +456,17 @@
             const videoEl = this.getActiveVideoElement();
             if (!videoEl) return false;
 
+            // 0. Android APK native system cast bridge (opens Android system Cast / Wireless Display settings)
+            if (window.EmbyXNative && typeof window.EmbyXNative.openSystemCast === 'function') {
+                try {
+                    if (window.EmbyXNative.openSystemCast()) {
+                        return true;
+                    }
+                } catch (e) {
+                    console.warn('[CastManager] EmbyXNative.openSystemCast error:', e);
+                }
+            }
+
             // Intelligent direct stream switch: when playing HLS(blob:), switch to direct URL so Chromecast can fetch directly
             const currentSrc = videoEl.currentSrc || videoEl.src || '';
             if (currentSrc.startsWith('blob:') && this._preparedNativeUrl) {

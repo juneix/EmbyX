@@ -2,7 +2,7 @@
 
 🇨🇳 [中文说明](./README_zh.md)
 
-EmbyX is a TikTok-style web player for Emby / Jellyfin and FygoOS. Experience your private media library in a whole new, immersive way. 🎉
+EmbyX is a TikTok-style web player for Emby / Jellyfin / FygoOS and OpenList. Experience your private media library in a whole new, immersive way. 🎉
 
 [![GitHub Release](https://img.shields.io/github/v/release/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/stargazers)
@@ -43,8 +43,10 @@ Try EmbyX instantly via the official web app:
 
 Prefer full control? You can **self-host** EmbyX on your own server.
 
-> This repo is open source — fork it and hack on it freely. Core features stay free forever.  
-> 💎 "Player One" early access: try experimental features like Short Drama Mode, Casting, and Transcoding.
+> [!NOTE]
+> EmbyX is open-source, and its core features are free forever. Tuning it took real effort and token costs, so early access requires "Player One" sponsorship.   
+>    
+> Forks are welcome for learning and development. If you release a modified version, please credit the source and do not remove the unlock check.
 
 📚 Full Guide: [GitHub Wiki](https://github.com/juneix/EmbyX/wiki)
 

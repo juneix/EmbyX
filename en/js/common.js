@@ -535,6 +535,190 @@
         }
     }
 
+    // 11. PWA install prompt & environment controller (Chromium beforeinstallprompt + iOS/other guide, silent in APK)
+    const PWA_BANNER_DISMISSED_KEY = 'embyx_pwa_banner_dismissed';
+    let _deferredInstallPrompt = null;
+    let _pwaInstalled = false;
+    let _pwaUiUpdater = null;
+
+    function isApkEnv() {
+        try {
+            if (window.EmbyXNative || window.EmbyXNativeMedia || window.EmbyXCastDlna || window.Capacitor) {
+                return true;
+            }
+            if (location.protocol === 'file:' || location.protocol === 'capacitor:') {
+                return true;
+            }
+            const ua = navigator.userAgent || '';
+            if (/Android/i.test(ua) && /; wv\)/i.test(ua)) {
+                return true;
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    function isStandalonePwa() {
+        if (_pwaInstalled) return true;
+        try {
+            if (window.navigator.standalone === true) return true;
+            if (window.matchMedia) {
+                if (window.matchMedia('(display-mode: standalone), (display-mode: window-controls-overlay), (display-mode: minimal-ui)').matches) {
+                    return true;
+                }
+            }
+        } catch (e) {}
+        return false;
+    }
+
+    function isIosDevice() {
+        try {
+            return /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function isMacSafari() {
+        try {
+            const ua = navigator.userAgent || '';
+            return /Macintosh/i.test(ua) && /Safari/i.test(ua) && !/Chrome|Chromium|Edg|OPR/i.test(ua);
+        } catch (e) {
+            return false;
+        }
+    }
+
+    // Attach listener early at script load to avoid missing early beforeinstallprompt events
+    try {
+        if (!isApkEnv()) {
+            window.addEventListener('beforeinstallprompt', (e) => {
+                e.preventDefault();
+                _deferredInstallPrompt = e;
+                if (typeof _pwaUiUpdater === 'function') _pwaUiUpdater();
+            });
+            window.addEventListener('appinstalled', () => {
+                _deferredInstallPrompt = null;
+                _pwaInstalled = true;
+                if (typeof _pwaUiUpdater === 'function') _pwaUiUpdater(true);
+            });
+        }
+    } catch (e) {}
+
+    function initPwaInstallPrompt(app) {
+        const banner = document.getElementById('pwaInstallBanner');
+        const bannerInstallBtn = document.getElementById('pwaBannerInstallBtn');
+        const bannerCloseBtn = document.getElementById('pwaBannerCloseBtn');
+        const cardInstallBtn = document.getElementById('pwaCardInstallBtn');
+        const cardInstalledBadge = document.getElementById('pwaCardInstalledBadge');
+        const accessMethodsSection = document.getElementById('accessMethodsSection');
+
+        // Register Service Worker (skip inside cloud-built APK container)
+        try {
+            if (!isApkEnv() && 'serviceWorker' in navigator) {
+                navigator.serviceWorker.register('./sw.js').catch(() => {});
+            }
+        } catch (e) {}
+
+        const showManualInstallHint = () => {
+            if (!app || typeof app.showToast !== 'function') return;
+            if (isIosDevice()) {
+                app.showToast('📲 Tap the browser "Share" button -> "Add to Home Screen"', 4500);
+            } else if (isMacSafari()) {
+                app.showToast('💻 Click "File" in the menu bar -> "Add to Dock"', 4500);
+            } else {
+                app.showToast('💡 Click the install icon in the address bar or browser menu "Install App"', 4500);
+            }
+        };
+
+        const triggerInstall = async (e) => {
+            if (e) e.stopPropagation();
+            if (isApkEnv() || isStandalonePwa()) return;
+
+            if (_deferredInstallPrompt) {
+                try {
+                    _deferredInstallPrompt.prompt();
+                    const choiceResult = await _deferredInstallPrompt.userChoice;
+                    if (choiceResult && choiceResult.outcome === 'accepted') {
+                        _deferredInstallPrompt = null;
+                    }
+                    syncUi();
+                } catch (err) {
+                    showManualInstallHint();
+                }
+            } else {
+                showManualInstallHint();
+            }
+        };
+
+        const syncUi = (justInstalled = false) => {
+            const apk = isApkEnv();
+            const standalone = isStandalonePwa();
+
+            if (apk) {
+                if (banner) banner.classList.add('hidden');
+                if (accessMethodsSection) accessMethodsSection.classList.add('hidden');
+                if (cardInstallBtn) cardInstallBtn.classList.add('hidden');
+                if (cardInstalledBadge) cardInstalledBadge.classList.add('hidden');
+                return;
+            }
+
+            if (accessMethodsSection) accessMethodsSection.classList.remove('hidden');
+
+            if (standalone) {
+                if (banner) banner.classList.add('hidden');
+                if (cardInstallBtn) cardInstallBtn.classList.add('hidden');
+                if (cardInstalledBadge) cardInstalledBadge.classList.remove('hidden');
+                if (justInstalled && app && typeof app.showToast === 'function') {
+                    app.showToast('✅ PWA app installed');
+                }
+                return;
+            }
+
+            if (cardInstalledBadge) cardInstalledBadge.classList.add('hidden');
+            if (cardInstallBtn) cardInstallBtn.classList.remove('hidden');
+
+            const dismissed = typeof localStorage !== 'undefined' && localStorage.getItem(PWA_BANNER_DISMISSED_KEY) === 'true';
+            const canShowBanner = !dismissed && (Boolean(_deferredInstallPrompt) || isIosDevice() || isMacSafari());
+            if (banner) {
+                if (canShowBanner) {
+                    banner.classList.remove('hidden');
+                    if (window.lucide) window.lucide.createIcons();
+                } else {
+                    banner.classList.add('hidden');
+                }
+            }
+        };
+
+        _pwaUiUpdater = syncUi;
+
+        if (bannerInstallBtn) {
+            bannerInstallBtn.onclick = triggerInstall;
+        }
+        if (cardInstallBtn) {
+            cardInstallBtn.onclick = triggerInstall;
+        }
+        if (bannerCloseBtn) {
+            bannerCloseBtn.onclick = (e) => {
+                e.stopPropagation();
+                try {
+                    localStorage.setItem(PWA_BANNER_DISMISSED_KEY, 'true');
+                } catch (err) {}
+                if (banner) banner.classList.add('hidden');
+            };
+        }
+
+        try {
+            if (window.matchMedia) {
+                const mq = window.matchMedia('(display-mode: standalone)');
+                if (typeof mq.addEventListener === 'function') {
+                    mq.addEventListener('change', () => syncUi());
+                }
+            }
+        } catch (e) {}
+
+        syncUi();
+    }
+
     // Enable fetch proxy on startup if server type is Jellyfin
     try {
         if (getServerType() === 'jellyfin') {
@@ -545,11 +729,7 @@
     // 检测 iOS PWA (主屏幕应用) 并为 <html> 注入 .ios-pwa 标记
     // 用于精确区分 iOS 状态栏强制避让与其他设备（常规浏览器、Android APK）的自然间距
     try {
-        const isIOS = /iPad|iPhone|iPod/i.test(navigator.userAgent) ||
-            (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1 && /Mobile/i.test(navigator.userAgent));
-        const isStandalone = window.navigator.standalone === true ||
-            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        if (isIOS && isStandalone && document.documentElement) {
+        if (isIosDevice() && isStandalonePwa() && document.documentElement) {
             document.documentElement.classList.add('ios-pwa');
         }
     } catch (e) {}
@@ -576,7 +756,10 @@
         canDeleteMedia,
         getItemImageUrl,
         getPersonImageUrl,
-        checkGitHubUpdate
+        checkGitHubUpdate,
+        isApkEnv,
+        isStandalonePwa,
+        initPwaInstallPrompt
     };
 
     // Direct exports for compatibility

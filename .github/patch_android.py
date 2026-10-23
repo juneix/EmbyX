@@ -254,7 +254,7 @@ public class MainActivity extends BridgeActivity {
             }
         });
 
-        // 3. 注入 EmbyXNative 桥接对象：重置配置时彻底清理私有目录海报图片磁盘缓存
+        // 3. 注入 EmbyXNative 桥接对象：重置配置时彻底清理私有目录海报图片磁盘缓存 + 调起安卓系统级无线投屏面板
         if (this.bridge != null && this.bridge.getWebView() != null) {
             this.bridge.getWebView().addJavascriptInterface(new Object() {
                 @JavascriptInterface
@@ -273,6 +273,25 @@ public class MainActivity extends BridgeActivity {
                             } catch (Exception e) {}
                         }
                     });
+                }
+
+                @JavascriptInterface
+                public boolean openSystemCast() {
+                    final String[] actions = new String[] {
+                        android.provider.Settings.ACTION_CAST_SETTINGS,
+                        "android.settings.WIFI_DISPLAY_SETTINGS",
+                        "android.settings.WIRELESS_SETTINGS",
+                        android.provider.Settings.ACTION_SETTINGS
+                    };
+                    for (int i = 0; i < actions.length; i++) {
+                        try {
+                            Intent intent = new Intent(actions[i]);
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                            MainActivity.this.startActivity(intent);
+                            return true;
+                        } catch (Exception ignored) {}
+                    }
+                    return false;
                 }
             }, "EmbyXNative");
         }
@@ -348,7 +367,21 @@ public class MainActivity extends BridgeActivity {
     private void handleIntent(Intent intent) {
         if (intent == null) return;
         String action = intent.getAction();
-        if ("juneix.embyx.ACTION_CLEAR_CACHE".equals(action)) {
+        if ("juneix.embyx.ACTION_NAV_VID".equals(action)) {
+            if (this.bridge != null && this.bridge.getWebView() != null) {
+                this.bridge.getWebView().evaluateJavascript(
+                    "(function() { if (!location.pathname.endsWith('index.html')) window.location.replace('index.html'); })()",
+                    null
+                );
+            }
+        } else if ("juneix.embyx.ACTION_NAV_PIC".equals(action)) {
+            if (this.bridge != null && this.bridge.getWebView() != null) {
+                this.bridge.getWebView().evaluateJavascript(
+                    "(function() { if (!location.pathname.endsWith('pic.html')) window.location.replace('pic.html'); })()",
+                    null
+                );
+            }
+        } else if ("juneix.embyx.ACTION_CLEAR_CACHE".equals(action)) {
             new Thread(new Runnable() {
                 @Override
                 public void run() {
@@ -1383,14 +1416,48 @@ with open("android/app/src/main/res/xml/dream_info.xml", "w", encoding="utf-8") 
     f.write(xml_code)
 print("  Created dream_info.xml")
 
+# 复制 Shortcuts 专用 Lucide 图标到 drawable
+shortcut_icons = [
+    (f"{LANG}/img/shortcut-vid.png", "android/app/src/main/res/drawable/shortcut_vid.png"),
+    (f"{LANG}/img/shortcut-pic.png", "android/app/src/main/res/drawable/shortcut_pic.png"),
+    (f"{LANG}/img/shortcut-clean.png", "android/app/src/main/res/drawable/shortcut_clear_cache.png")
+]
+for src, dst in shortcut_icons:
+    if os.path.exists(src):
+        shutil.copy(src, dst)
+        print(f"  Copied {src} → {dst}")
+    else:
+        print(f"  WARNING: {src} not found, shortcut icon may fallback")
+
 # 桌面长按快捷方式定义 (App Shortcuts)
-shortcut_label = "清除缓存" if LANG == "zh" else "Clear Cache"
 shortcuts_xml = f"""<?xml version="1.0" encoding="utf-8"?>
 <shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
     <shortcut
+        android:shortcutId="shortcut_vid"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_vid"
+        android:shortcutShortLabel="@string/shortcut_vid_short"
+        android:shortcutLongLabel="@string/shortcut_vid_long">
+        <intent
+            android:action="juneix.embyx.ACTION_NAV_VID"
+            android:targetPackage="{PKG_NAME}"
+            android:targetClass="{PKG_NAME}.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="shortcut_pic"
+        android:enabled="true"
+        android:icon="@drawable/shortcut_pic"
+        android:shortcutShortLabel="@string/shortcut_pic_short"
+        android:shortcutLongLabel="@string/shortcut_pic_long">
+        <intent
+            android:action="juneix.embyx.ACTION_NAV_PIC"
+            android:targetPackage="{PKG_NAME}"
+            android:targetClass="{PKG_NAME}.MainActivity" />
+    </shortcut>
+    <shortcut
         android:shortcutId="clear_cache"
         android:enabled="true"
-        android:icon="@drawable/icon"
+        android:icon="@drawable/shortcut_clear_cache"
         android:shortcutShortLabel="@string/shortcut_clear_cache_short"
         android:shortcutLongLabel="@string/shortcut_clear_cache_long">
         <intent
@@ -1402,24 +1469,34 @@ shortcuts_xml = f"""<?xml version="1.0" encoding="utf-8"?>
 """
 with open("android/app/src/main/res/xml/shortcuts.xml", "w", encoding="utf-8") as f:
     f.write(shortcuts_xml)
-print("  Created shortcuts.xml")
+print("  Created shortcuts.xml (vid, pic, clear_cache)")
 
 # 注入快捷方式多语言文案到 strings.xml
 strings_path = "android/app/src/main/res/values/strings.xml"
 if os.path.exists(strings_path):
     with open(strings_path, "r", encoding="utf-8") as f:
         strings_content = f.read()
-    short_lbl = "清除缓存" if LANG == "zh" else "Clear Cache"
-    long_lbl = "清除 EmbyX 应用缓存" if LANG == "zh" else "Clear EmbyX Cache"
-    if "shortcut_clear_cache_short" in strings_content:
-        strings_content = re.sub(r'<string name="shortcut_clear_cache_short">.*?</string>', f'<string name="shortcut_clear_cache_short">{short_lbl}</string>', strings_content)
-        strings_content = re.sub(r'<string name="shortcut_clear_cache_long">.*?</string>', f'<string name="shortcut_clear_cache_long">{long_lbl}</string>', strings_content)
-    else:
-        extra_strings = f'    <string name="shortcut_clear_cache_short">{short_lbl}</string>\n    <string name="shortcut_clear_cache_long">{long_lbl}</string>\n</resources>'
-        strings_content = strings_content.replace("</resources>", extra_strings)
+
+    labels = {
+        "shortcut_vid_short": "短视频" if LANG == "zh" else "Videos",
+        "shortcut_vid_long": "短视频模式" if LANG == "zh" else "Videos Mode",
+        "shortcut_pic_short": "写真集" if LANG == "zh" else "Gallery",
+        "shortcut_pic_long": "写真集模式" if LANG == "zh" else "Gallery Mode",
+        "shortcut_clear_cache_short": "清除缓存" if LANG == "zh" else "Clear Cache",
+        "shortcut_clear_cache_long": "清除 EmbyX 应用缓存" if LANG == "zh" else "Clear EmbyX Cache"
+    }
+
+    for key, val in labels.items():
+        pattern = rf'<string name="{key}">.*?</string>'
+        tag = f'<string name="{key}">{val}</string>'
+        if re.search(pattern, strings_content):
+            strings_content = re.sub(pattern, tag, strings_content)
+        else:
+            strings_content = strings_content.replace("</resources>", f"    {tag}\n</resources>")
+
     with open(strings_path, "w", encoding="utf-8") as f:
         f.write(strings_content)
-    print("  Patched strings.xml with shortcut labels")
+    print("  Patched strings.xml with shortcuts labels")
 
 # ── 6. 注入 APK 版本号到 build.gradle ───────────────────────────────────────
 gradle_path = "android/app/build.gradle"

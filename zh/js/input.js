@@ -150,11 +150,19 @@
         focusModal(containerEl, delayMs = 300) {
             if (!containerEl) return;
             setTimeout(() => {
-                const allItems = Array.from(containerEl.querySelectorAll('.focusable-item'));
-                // Prioritize selected item with primary background
-                const selected = allItems.find(i => i.classList.contains('bg-primary/20'));
+                const allItems = Array.from(containerEl.querySelectorAll('.focusable-item'))
+                    .filter(i => i.offsetParent !== null);
+                const isProfile = containerEl.id === 'profilePage';
+                // 仅在媒体库/播放列表等选择弹窗中优先聚焦带 bg-primary/20 的已选中项；个人中心始终保持在顶部服务器配置区，禁止跳滚到底部关于卡片
+                const selected = isProfile ? null : allItems.find(i => i.classList.contains('bg-primary/20'));
                 const target = selected || allItems[0];
-                if (target) target.focus();
+                if (target) {
+                    if (isProfile) {
+                        target.focus({ preventScroll: true });
+                    } else {
+                        target.focus();
+                    }
+                }
             }, delayMs);
         }
 

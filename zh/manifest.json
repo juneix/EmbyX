@@ -1,21 +1,72 @@
 {
+  "id": "./index.html",
   "name": "EmbyX",
   "short_name": "EmbyX",
+  "version": "1.0",
+  "description": "专为 Emby / Jellyfin 打造的沉浸式短视频与画廊 Web 原生应用",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "description": "Emby Short Video Player",
+  "prefer_related_applications": false,
+  "categories": ["entertainment", "photo", "video"],
   "icons": [
     {
       "src": "icon.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icon.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "img/pwa-wide.webp",
+      "sizes": "1920x1440",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "EmbyX 桌面端沉浸式流媒体与画廊预览"
+    },
+    {
+      "src": "img/pwa-narrow.webp",
+      "sizes": "1080x1920",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "EmbyX 移动端沉浸式短视频播放预览"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "短视频",
+      "short_name": "短视频",
+      "url": "./index.html",
+      "icons": [
+        {
+          "src": "img/shortcut-vid.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "写真集",
+      "short_name": "写真集",
+      "url": "./pic.html",
+      "icons": [
+        {
+          "src": "img/shortcut-pic.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

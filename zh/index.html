@@ -578,6 +578,28 @@
             <div class="absolute inset-0 overflow-y-auto overflow-x-hidden z-0">
                 <div class="pt-[calc(3.5rem+env(safe-area-inset-top))] p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
                     <div class="mb-5 mt-5">
+                        <!-- PWA 快捷安装提示横幅（仅未安装且非 APK 环境下展示，可关闭） -->
+                        <div id="pwaInstallBanner" class="relative z-30 hidden mb-5 p-4 rounded-2xl border border-primary/30 bg-primary/10 backdrop-blur-md transition-all shadow-lg">
+                            <div class="flex items-center justify-between gap-3">
+                                <div class="flex items-center space-x-3 min-w-0">
+                                    <img src="img/icon.png" alt="EmbyX" class="w-10 h-10 rounded-xl border border-white/10 bg-black/30 p-1 flex-shrink-0 object-contain">
+                                    <div class="min-w-0">
+                                        <div class="text-sm font-bold text-white truncate">安装 EmbyX 应用</div>
+                                        <div class="text-xs text-gray-300 truncate mt-0.5">独立全屏启动，沉浸顺滑体验</div>
+                                    </div>
+                                </div>
+                                <div class="flex items-center space-x-1.5 flex-shrink-0">
+                                    <button id="pwaBannerInstallBtn" type="button"
+                                        class="px-3.5 h-8 flex items-center justify-center bg-primary hover:bg-primary/90 text-white text-xs rounded-lg font-bold active:scale-95 shadow-md shadow-primary/20 transition-all focusable-item">
+                                        安装
+                                    </button>
+                                    <button id="pwaBannerCloseBtn" type="button" title="不再提示"
+                                        class="text-gray-400 hover:text-white w-7 h-8 flex items-center justify-center rounded-lg transition-colors focusable-item">
+                                        <i data-lucide="x" class="w-4 h-4"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
 
                         <h2 class="text-primary font-bold text-sm mb-5 flex items-center">
                             <i data-lucide="server" class="w-4 h-4 mr-2"></i>服务器配置
@@ -613,17 +635,9 @@
                                 <p class="text-xs text-gray-200 leading-relaxed font-normal">
                                     飞牛 APP 内置浏览器 Webview 环境有 bug，会出现操作卡顿、无法上下滑动切换视频等情况。
                                 </p>
-                                <div class="space-y-1.5 pt-1 text-xs">
-                                    <div class="bg-gray-700/60 p-2.5 rounded-lg border border-white/10">
-                                        <div class="font-bold text-primary mb-0.5">PWA 应用</div>
-                                        <div class="text-[11px] text-gray-300">安卓、苹果、鸿蒙、Win、Mac、Linux 全平台</div>
-                                        <div class="text-[11px] text-white font-mono mt-0.5 select-all">浏览器打开 NAS-IP:8090，添加到主屏幕</div>
-                                    </div>
-                                    <div class="bg-gray-700/60 p-2.5 rounded-lg border border-white/10">
-                                        <div class="font-bold text-primary mb-0.5">独立客户端</div>
-                                        <div class="text-[11px] text-white">安卓可下载安装 EmbyX.apk</div>
-                                    </div>
-                                </div>
+                                <p class="text-xs text-primary leading-relaxed font-normal">
+                                    建议改用 PWA 应用或下载独立客户端，详见「IP 或域名」填写格式参考。
+                                </p>
                             </div>
                         </div>
                         <div class="space-y-4 bg-gray-800/40 p-5 rounded-2xl border border-white/10 shadow-xl backdrop-blur-md">
@@ -644,7 +658,7 @@
 
                                 <!-- 服务器地址填写格式参考 Tooltip 弹窗 -->
                                 <div id="serverHelpTooltip"
-                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-gray-800 border border-white/10 rounded-xl p-3.5 shadow-2xl space-y-2">
+                                    class="hidden absolute top-full left-0 right-0 mt-2 z-40 bg-gray-800 border border-white/10 rounded-xl p-3.5 shadow-2xl space-y-2.5">
                                     <div class="flex items-center justify-between pb-2 border-b border-white/10">
                                         <div class="flex items-center space-x-1.5 text-primary text-xs font-bold">
                                             <i data-lucide="info" class="w-3.5 h-3.5"></i>
@@ -656,28 +670,33 @@
                                             <i data-lucide="x" class="w-3.5 h-3.5"></i>
                                         </button>
                                     </div>
-                                    <ul class="space-y-1.5 text-xs">
-                                        <li class="flex items-center justify-between font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
-                                            <span class="text-white font-medium">10.1.1.3</span>
-                                            <span class="text-[11px] text-gray-300 font-sans ml-2">（默认8096/8090/5244端口）</span>
-                                        </li>
-                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
-                                            <span>10.1.1.3:8096</span>
-                                        </li>
-                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
-                                            <span>http://10.1.1.3:8096</span>
-                                        </li>
-                                        <li class="flex items-center justify-between font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-gray-200 select-all">
-                                            <span class="text-white font-medium">5nav.eu.org</span>
-                                            <span class="text-[11px] text-gray-300 font-sans ml-2">（默认443端口）</span>
-                                        </li>
-                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
-                                            <span>https://5nav.eu.org</span>
-                                        </li>
-                                        <li class="font-mono bg-gray-700/60 px-2.5 py-1.5 rounded-lg border border-white/10 text-white font-medium select-all">
-                                            <span>https://5nav.eu.org:8099</span>
-                                        </li>
-                                    </ul>
+                                    <div class="space-y-2 text-xs">
+                                        <div class="bg-gray-700/60 p-2.5 rounded-lg border border-white/10">
+                                            <div class="flex items-center justify-between mb-1.5">
+                                                <span class="font-bold text-primary">内网直连</span>
+                                                <span class="text-[11px] text-gray-300 font-sans">默认 8096 / 8090 / 5244 端口</span>
+                                            </div>
+                                            <div class="space-y-1 font-mono">
+                                                <div class="text-white font-medium select-all">10.1.1.3</div>
+                                                <div class="text-white font-medium select-all">10.1.1.3:8096</div>
+                                                <div class="text-white font-medium select-all">http://10.1.1.3:8096</div>
+                                            </div>
+                                        </div>
+                                        <div class="bg-gray-700/60 p-2.5 rounded-lg border border-white/10">
+                                            <div class="flex items-center justify-between mb-1.5">
+                                                <span class="font-bold text-primary">域名访问</span>
+                                                <span class="text-[11px] text-gray-300 font-sans">默认 443 端口</span>
+                                            </div>
+                                            <div class="space-y-1 font-mono">
+                                                <div class="text-white font-medium select-all">5nav.eu.org</div>
+                                                <div class="text-white font-medium select-all">5nav.eu.org:8920</div>
+                                                <div class="text-white font-medium select-all">https://5nav.eu.org:8920</div>
+                                            </div>
+                                        </div>
+                                        <p class="text-[11px] text-yellow-200/90 leading-relaxed font-normal">
+                                            官方演示站需使用 HTTPS 加密访问服务端，HTTP 用户建议使用 Lucky 反代、下载 APK、自部署等方案。
+                                        </p>
+                                    </div>
                                 </div>
                             </div>
                             <div class="grid grid-cols-2 gap-2">
@@ -785,6 +804,36 @@
                                 class="text-yellow-500/90 text-xs bg-yellow-500/10 p-3 rounded-lg border border-yellow-500/20">
                                 <i data-lucide="shield-check" class="w-3 h-3 mr-1 inline"></i>
                                 所有数据保留在本地，核心功能免费。
+                            </div>
+
+                            <div id="accessMethodsSection" class="space-y-2">
+                                <h4 class="text-gray-300">🌐 访问方式</h4>
+                                <div class="space-y-2 text-xs">
+                                    <div class="relative bg-black/25 p-3 rounded-lg border border-white/5">
+                                        <div class="font-bold text-white mb-0.5 flex items-center justify-between">
+                                            <span>PWA 应用</span>
+                                            <button type="button" id="pwaCardInstallBtn"
+                                                class="hidden px-2.5 py-0.5 bg-primary/20 hover:bg-primary/30 text-primary text-[11px] font-bold rounded-full border border-primary/30 transition-all active:scale-95 focusable-item">
+                                                安装
+                                            </button>
+                                            <span id="pwaCardInstalledBadge"
+                                                class="hidden px-2 py-0.5 bg-white/10 text-gray-300 text-[11px] font-medium rounded-full border border-white/10">
+                                                已安装
+                                            </span>
+                                        </div>
+                                        <div class="text-gray-400">安卓、苹果、鸿蒙、Win、Mac、Linux 全平台可用</div>
+                                    </div>
+                                    <div class="bg-black/25 p-3 rounded-lg border border-white/5">
+                                        <div class="font-bold text-white mb-0.5 flex items-center justify-between">
+                                            <span>独立客户端</span>
+                                            <a href="https://github.com/juneix/EmbyX/releases" target="_blank"
+                                                class="px-2.5 py-0.5 bg-primary/20 hover:bg-primary/30 text-primary text-[11px] font-bold rounded-full border border-primary/30 transition-all active:scale-95 focusable-item inline-flex items-center">
+                                                下载
+                                            </a>
+                                        </div>
+                                        <div class="text-gray-400">安卓可下载 EmbyX.apk，优化部分原生接口特性</div>
+                                    </div>
+                                </div>
                             </div>
 
                             <div>
@@ -3105,11 +3154,7 @@
         window.onload = () => {
             lucide.createIcons();
             window.app = new EmbyApp();
-
-            // 注册 Service Worker 以满足安卓 PWA 安装要求
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker.register('./sw.js').catch(() => { });
-            }
+            EmbyXCommon.initPwaInstallPrompt(window.app);
         };
     </script>
 </body>

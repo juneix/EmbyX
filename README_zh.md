@@ -1,6 +1,11 @@
+<p align="center">
+  <img src="./pic/icon.png" width="128" alt="EmbyX Logo">
+</p>
+
 # 📱 EmbyX
 
-EmbyX 是一款专为 Emby / Jellyfin （兼容飞牛影视🔥）打造的 Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉
+
+EmbyX 是一款专为 Emby / Jellyfin / 飞牛影视🔥/ OpenList 打造的 Web 原生应用，完美复刻抖音·短视频沉浸式交互，让你的私人媒体库焕发全新的刷片体验。🎉
 
 [![GitHub Release](https://img.shields.io/github/v/release/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/releases)
 [![GitHub Stars](https://img.shields.io/github/stars/juneix/embyx?style=flat-square&logo=github&color=52B54B)](https://github.com/juneix/embyx/stargazers)
@@ -38,8 +43,10 @@ EmbyX 是一款专为 Emby / Jellyfin （兼容飞牛影视🔥）打造的 Web 
 
 喜欢完全控制？你也可以自托管 EmbyX 应用。
 
-> 本仓库开源，你可以自行 Fork 和修改代码，核心功能永久免费。  
-> 💎「头号玩家」可加入预览体验：`短剧模式`、`电视投屏`、`转码`等探索性功能。
+> [!NOTE]
+> EmbyX 的代码开源，核心功能永久免费。开发调试耗费了不少心思与 Token 成本，预览体验功能需「头号玩家」赞助解锁。    
+>  
+> 欢迎各位大佬 Fork 用于个人学习、二次开发；衍生版本对外发布请保留原项目出处，请勿直接发布移除/绕过解锁功能的版本。  
 
 📚 完整使用教程: [谢週五の藏经阁](https://5nav.eu.org)
 

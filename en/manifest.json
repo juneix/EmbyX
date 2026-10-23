@@ -1,21 +1,72 @@
 {
+  "id": "./index.html",
   "name": "EmbyX",
   "short_name": "EmbyX",
+  "version": "1.0",
+  "description": "Immersive short-video & gallery web native client for Emby / Jellyfin",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
+  "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
+  "orientation": "any",
   "background_color": "#000000",
   "theme_color": "#000000",
-  "description": "Emby Short Video Player",
+  "prefer_related_applications": false,
+  "categories": ["entertainment", "photo", "video"],
   "icons": [
     {
       "src": "icon.png",
-      "sizes": "192x192",
-      "type": "image/png"
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
     },
     {
       "src": "icon.png",
-      "sizes": "512x512",
-      "type": "image/png"
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "img/pwa-wide.webp",
+      "sizes": "1920x1440",
+      "type": "image/webp",
+      "form_factor": "wide",
+      "label": "EmbyX Desktop Immersive Streaming & Gallery Preview"
+    },
+    {
+      "src": "img/pwa-narrow.webp",
+      "sizes": "1080x1920",
+      "type": "image/webp",
+      "form_factor": "narrow",
+      "label": "EmbyX Mobile Short-Video Player Preview"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Videos",
+      "short_name": "Videos",
+      "url": "./index.html",
+      "icons": [
+        {
+          "src": "img/shortcut-vid.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Gallery",
+      "short_name": "Gallery",
+      "url": "./pic.html",
+      "icons": [
+        {
+          "src": "img/shortcut-pic.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
     }
   ]
 }

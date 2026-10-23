@@ -459,6 +459,17 @@
             const videoEl = this.getActiveVideoElement();
             if (!videoEl) return false;
 
+            // 0. Android APK 原生系统投屏桥接（调起安卓系统级无线投屏 / 多屏互动面板）
+            if (window.EmbyXNative && typeof window.EmbyXNative.openSystemCast === 'function') {
+                try {
+                    if (window.EmbyXNative.openSystemCast()) {
+                        return true;
+                    }
+                } catch (e) {
+                    console.warn('[CastManager] EmbyXNative.openSystemCast 出错:', e);
+                }
+            }
+
             // 智能直链切换：若当前本地正以 HLS(Blob) 播放，切换为直链以便 Chromecast 等硬件自主拉流
             const currentSrc = videoEl.currentSrc || videoEl.src || '';
             if (currentSrc.startsWith('blob:') && this._preparedNativeUrl) {
