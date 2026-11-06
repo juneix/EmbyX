@@ -2,9 +2,24 @@
   "_meta": {
     "source": "zh/index.html",
     "target": "en/index.html",
-    "updated": "2026-10-23"
+    "updated": "2026-10-30"
   },
   "strings": {
+    "✅ 设置已保存": "✅ Settings saved",
+    "无法恢复上次播放，请在当前媒体库重新选片": "Unable to resume. Please select a video in the current library",
+    "恢复短剧播放失败:": "Short drama resume failed:",
+    "视频不属于当前媒体库": "Video does not belong to the current library",
+    "视频读取失败:": "Failed to read video:",
+    "上次记录不是可播放视频": "The last record is not a playable video",
+    "视频已不在收藏夹": "Video is no longer in favorites",
+    "收藏夹读取失败:": "Failed to read favorites:",
+    "播放列表读取失败:": "Failed to read playlist:",
+    "目录读取失败:": "Failed to read directory:",
+    "媒体库读取失败": "Failed to read library",
+    "上次播放的季已不可用": "The previously played season is unavailable",
+    "文件夹读取失败:": "Failed to read folder:",
+    "上次视频已不在当前目录": "The last video is no longer in the current directory",
+    "尚未获取服务器识别码，请先完成媒体库登录": "Server ID is unavailable. Please sign in to your media server first",
     "请先配置服务器": "Please config server first",
     "没有更多视频了": "No more videos",
     "没有找到视频": "No videos found",

@@ -1124,7 +1124,7 @@
             }
 
             // ═══ 初始化 ═══
-            init() {
+            async init() {
                 this.cacheDOM();
                 this.stage = new StageEngine({
                     app: this,
@@ -1134,7 +1134,7 @@
                 });
                 this.castManager = new CastManager(this);
                 this.mediaSession = new NativeMediaSession(this);
-                this.loadConfig();
+                const accessReady = this.loadConfig();
 
                 // 动态读取版本号：从 HTML 标签中提取（如 v1.1 -> 1.1）
                 const vEl = document.getElementById('appVersionBadge');
@@ -1142,14 +1142,15 @@
 
                 this.loadFavorites();
                 this.initGlobalPlaylistIndex();
-                this.bindEvents();
 
-                // Short Drama Mode初始视图设为宫格选剧大厅
+                // 短剧先建立目录底层，确权后再恢复播放层
                 if (this.config.shortDrama) {
                     this.state.viewMode = 'grid';
                     const appEl = document.getElementById('app');
                     if (appEl) appEl.classList.add('grid-active');
+                    window.history.replaceState({ embyx: true, layer: 'grid' }, '');
                 }
+                this.bindEvents();
 
                 // 根据持久化状态Sync UI 图标
                 if (this.dom.muteBtn) {
@@ -1182,7 +1183,25 @@
 
                 // 检查配置并启动
                 if (this.config.server && this.config.token) {
-                    this.fetchVideos(this.state.currentLibraryId, null, false, this.state.playMode === 'random');
+                    await accessReady;
+                    this.config.useStatic = !DonateManager.hasEggAccess() || this.config.playQuality === 'direct';
+                    if (this.drama.isDramaMode()) {
+                        const restored = await this.drama.restorePlayback();
+                        if (!restored) {
+                            this._isFirstLoad = false;
+                            await this.fetchVideos(this.state.currentLibraryId);
+                        }
+                    } else {
+                        this.state.playMode = this.config.shortDrama ? 'sequence' : (localStorage.getItem('emby_play_mode') || 'sequence');
+                        if (this.config.shortDrama) {
+                            this.setViewMode('stream');
+                            this.input.pushLayer('stream');
+                        }
+                        const playIcon = this.state.playMode === 'random' ? 'shuffle' : (this.config.autoplay ? 'repeat' : 'repeat-1');
+                        this.dom.playModeBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
+                        lucide.createIcons();
+                        await this.fetchVideos(this.state.currentLibraryId, null, false, this.state.playMode === 'random');
+                    }
                 } else {
                     setTimeout(() => this.toggleModal('profilePage', true), 500);
                 }
@@ -1237,10 +1256,56 @@
             }
 
             // ═══ 配置与认证（委托至 AuthManager） ═══
-            loadConfig() { this.auth.loadConfig(); }
+            loadConfig() { return this.auth.loadConfig(); }
             initFnosOAuth() { this.auth.initFnosOAuth(); }
             openFnosOAuth(url) { return this.auth.openFnosOAuth(url); }
-            saveConfig() { return this.auth.saveConfig(); }
+            async saveConfig() {
+                const previous = { ...this.config };
+                const previousDramaMode = this.drama.isDramaMode();
+                const previousAccess = DonateManager.hasEggAccess();
+                this.player.savePlaybackProgress(null, true);
+                const requestedServer = EmbyXCommon.normalizeServerUrl(this.dom.configServer.value).server;
+                if (this.dom.configShortDrama.checked !== previous.shortDrama || requestedServer !== previous.server || this.dom.configUser.value.trim() !== previous.user) {
+                    this.stopCurrentPlayback();
+                }
+                const saved = await this.auth.saveConfig();
+                if (!saved) return;
+                await this.loadConfig();
+                this.config.useStatic = !DonateManager.hasEggAccess() || this.config.playQuality === 'direct';
+                const dramaMode = this.drama.isDramaMode();
+                const accessChanged = previousAccess !== DonateManager.hasEggAccess();
+                this.state.playMode = (dramaMode || this.config.shortDrama) ? 'sequence' : (localStorage.getItem('emby_play_mode') || 'sequence');
+                const modeChanged = previous.shortDrama !== this.config.shortDrama || previousDramaMode !== dramaMode;
+                const playIcon = this.state.playMode === 'random' ? 'shuffle' : (this.config.autoplay ? 'repeat' : 'repeat-1');
+                this.dom.playModeBtn.innerHTML = `<i data-lucide="${playIcon}" class="stroke-current w-5 h-5"></i>`;
+                lucide.createIcons();
+                this.toggleModal('profilePage', false);
+                this.showToast('✅ Settings saved');
+                if (saved.sourceChanged || modeChanged) {
+                    clearTimeout(this._syncTimer);
+                    this.stopCurrentPlayback(previousDramaMode && !saved.sourceChanged);
+                    this.drama.reset();
+                    this.state.currentPerson = null;
+                    this.state.currentTag = null;
+                    this.state.searchTerm = '';
+                    this.state.isFilteredByPerson = false;
+                    this.state.isFilteredByTag = false;
+                    this.state.originalVideos = [];
+                    this.state.currentIndex = 0;
+                    this._isFirstLoad = false;
+                    if (dramaMode) this.state.viewMode = 'grid';
+                    else if (this.config.shortDrama) this.state.viewMode = 'stream';
+                    if (saved.sourceChanged) {
+                        await this.loadFavorites();
+                        this.initGlobalPlaylistIndex();
+                    }
+                    this.setViewMode(this.state.viewMode);
+                    await this.fetchVideos(this.state.currentLibraryId, null, false, this.state.playMode === 'random');
+                } else if ((previous.playQuality !== this.config.playQuality || accessChanged) && this.state.viewMode === 'stream') {
+                    await this.loadVideo(this.state.currentIndex);
+                    this.playVideo(this.state.currentIndex);
+                }
+            }
             resetConfig() { this.auth.resetConfig(); }
 
             // ═══ 数据管理 ═══
@@ -1319,11 +1384,13 @@
                     }
 
                     let data;
+                    const isDramaMode = this.drama && this.drama.isDramaMode();
+                    if (isDramaMode) isRandom = false;
                     const isFolderView = this.drama && this.drama.isFolderModeActive();
                     const isOpenList = EmbyXCommon.getServerType() === 'openlist';
                     if (isOpenList && window.OpenListManager) {
                         const targetOpenlistPath = (this.drama && this.drama.currentFolderId) ? this.drama.currentFolderId : ((libraryId && libraryId !== 'favorites') ? libraryId : (localStorage.getItem('openlist_base_path') || '/'));
-                        const isFolderMode = !!(this.config.shortDrama && this.state.viewMode === 'grid');
+                        const isFolderMode = !!(isFolderView && this.state.viewMode === 'grid');
                         data = await window.OpenListManager.fetchItems({
                             path: targetOpenlistPath,
                             startIndex: fetchStartIndex,
@@ -1334,7 +1401,7 @@
                     } else {
                         let url;
                         if (isFolderView) {
-                            if (this.state.viewMode !== 'grid') {
+                            if (!isAppend && this.state.viewMode !== 'grid') {
                                 this.state.viewMode = 'grid';
                                 if (this.dom.viewModeBtn) {
                                     this.dom.viewModeBtn.innerHTML = '<i data-lucide="layout-grid" class="stroke-current w-5 h-5"></i>';
@@ -1352,10 +1419,10 @@
                             url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Limit=${PAGE_SIZE}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber`;
 
                             if (searchTerm) {
-                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                const sortStr = isDramaMode ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                                 url += `&SearchTerm=${encodeURIComponent(searchTerm)}&${sortStr}`;
                             } else if (this.state.currentTag) {
-                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                const sortStr = isDramaMode ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                                 url += `&Tags=${encodeURIComponent(this.state.currentTag)}&${sortStr}`;
                             } else if (this.state.currentPerson) {
                                 url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
@@ -1369,10 +1436,10 @@
                             } else if (libraryId === 'favorites') {
                                 url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
                             } else if (libraryId) {
-                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                const sortStr = isDramaMode ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                                 url += `&${sortStr}&ParentId=${libraryId}`;
                             } else {
-                                const sortStr = this.config.shortDrama ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
+                                const sortStr = isDramaMode ? 'SortBy=SeriesName,ParentIndexNumber,IndexNumber&SortOrder=Ascending' : 'SortBy=DateCreated&SortOrder=Descending';
                                 url += `&${sortStr}`;
                             }
                         }
@@ -1429,8 +1496,8 @@
                     }
 
                     // Short Drama Mode：尝试从本地恢复进度
-                    if (this.config.shortDrama && items.length > 0 && this.state.currentLibraryId) {
-                        const lastId = localStorage.getItem(`emby_last_id_${this.state.currentLibraryId}`);
+                    if (isDramaMode && items.length > 0 && this.state.currentLibraryId) {
+                        const lastId = this.drama.lastFocusedEpisodeId || this.drama.getPlaybackRecord()?.itemId;
                         if (lastId) {
                             const savedIndex = this.state.videos.findIndex(v => v.Id === lastId);
                             if (savedIndex !== -1) {
@@ -1451,16 +1518,18 @@
                         if (items.length > 0) {
                             this.renderSlides();
                             this.loadVideo(this.state.currentIndex);
-                            if (this.config.shortDrama) {
+                            if (isDramaMode) {
                                 setTimeout(() => this.checkCloudSync(), 1500);
                             }
                         } else {
                             this.renderGridView(); // 瀑布流播放模式下无搜索结果时，退回网格视图展示 0 统计
                         }
                     }
+                    return true;
                 } catch (e) {
                     console.error('Failed to fetch videos:', e);
                     this.showToast('Cannot connect to server: ' + (e.message || '未知错误'));
+                    return false;
                 } finally {
                     this.toggleLoading(false);
                 }
@@ -1531,33 +1600,9 @@
 
                 if (!videoEl || !videoData) return;
 
-                // Short Drama Mode：记录单剧观看进度与当前本地播放进度标识
-                if (this.config.shortDrama) {
-                    if (this.drama) {
-                        const dramaId = this.drama.activePlayingFolderId || this.drama.currentFolderId || videoData.SeriesId;
-                        if (dramaId) {
-                            this.drama.saveDramaProgress(dramaId, videoData.Id, videoData.IndexNumber || (index + 1));
-                        }
-                    }
-                    if (this.state.currentLibraryId) {
-                        const now = new Date().toISOString();
-                        localStorage.setItem(`emby_last_id_${this.state.currentLibraryId}`, videoData.Id);
-
-                        // 非首次加载时Sync上报，防止启动污染时间戳
-                        if (!this._isFirstLoad) {
-                            localStorage.setItem(`emby_last_date_${this.state.currentLibraryId}`, now);
-                            clearTimeout(this._syncTimer);
-                            this._syncTimer = setTimeout(() => {
-                                this.saveCloudSync(videoData.Id, this.state.currentLibraryId, this.state.currentLibraryType, now);
-                            }, 1000);
-                        } else {
-                            this._isFirstLoad = false;
-                        }
-                    }
-                }
-
+                const resumeTime = this.drama.isDramaMode() ? this.drama.getResumePosition(videoData.Id) : 0;
                 const src = this.getVideoSrc(videoData.Id, videoData, true);
-                this.setVideoSource(videoEl, src, index, videoData, { autoplay: true });
+                this.setVideoSource(videoEl, src, index, videoData, { autoplay: true, resumeTime });
 
                 // Sync全局静音状态（精准更新 SVG）
                 videoEl.muted = this.state.isMuted;
@@ -1662,6 +1707,7 @@
             // ═══ 续播与云Sync ═══
 
             async saveCloudSync(itemId, libId, libType, date) {
+                if (!this.drama.isDramaMode() || this.config.fnOS || EmbyXCommon.getServerType() === 'openlist') return;
                 try {
                     const { server, token, userId } = this.config;
                     const url = `${server}/emby/DisplayPreferences/EmbyX-Resume-Drama?userId=${userId}&api_key=${token}`;
@@ -1686,7 +1732,7 @@
             }
 
             async checkCloudSync() {
-                if (!this.config.shortDrama) return;
+                if (!this.drama.isDramaMode() || this.config.fnOS || EmbyXCommon.getServerType() === 'openlist') return;
 
                 try {
                     const { server, token, userId } = this.config;
@@ -1734,35 +1780,18 @@
                 this.toggleModal('syncConfirmModal', false);
                 this.showToast('Syncing progress...');
 
-                // 更新本地缓存，确保后续逻辑一致
+                this.stopCurrentPlayback();
+                clearTimeout(this._syncTimer);
+                this.state.currentLibraryId = cloud.libId;
+                this.state.currentLibraryType = cloud.libType || 'library';
+                localStorage.setItem('emby_lib_id', cloud.libId);
+                localStorage.setItem('emby_lib_type', this.state.currentLibraryType);
                 localStorage.setItem(`emby_last_id_${cloud.libId}`, cloud.lastId);
                 localStorage.setItem(`emby_last_date_${cloud.libId}`, cloud.date);
-
-                if (cloud.libId !== this.state.currentLibraryId) {
-                    // 跨库跳转
-                    this.state.currentLibraryId = cloud.libId;
-                    this.state.currentLibraryType = cloud.libType;
-                    localStorage.setItem('emby_lib_id', cloud.libId);
-                    localStorage.setItem('emby_lib_type', cloud.libType);
-
-                    // 重新加载新库
-                    this.state.startIndex = 0;
-                    await this.fetchVideos(0, false);
-                    this.showToast('✅ Synced across libraries');
-                } else {
-                    // 同库跳转
-                    const index = this.state.videos.findIndex(v => v.Id === cloud.lastId);
-                    if (index !== -1) {
-                        this.state.currentIndex = index;
-                        this.renderSlides();
-                        this.loadVideo(index);
-                        this.showToast('✅ Progress synced');
-                    } else {
-                        // 如果当前分页没找到，重刷该库
-                        this.state.startIndex = 0;
-                        await this.fetchVideos(0, false);
-                    }
-                }
+                this.state._pendingSyncItem = null;
+                const restored = await this.drama.restorePlayback({ itemId: String(cloud.lastId), position: null, date: cloud.date, path: [], startIndex: 0 });
+                if (restored) this.showToast('✅ Progress synced');
+                else await this.fetchVideos(this.state.currentLibraryId);
             }
 
             reportCapabilities() {
@@ -1798,6 +1827,7 @@
                 favDiv.className = `focusable-item col-span-1 p-2.5 rounded-xl cursor-pointer text-sm flex items-center gap-2 ${isFavSelected ? 'bg-primary/20 text-primary font-bold border border-primary/40' : 'bg-white/10 text-gray-200 hover:bg-white/15 border border-white/5'}`;
                 favDiv.innerHTML = `<i data-lucide="${isFavSelected ? 'check-circle' : 'folder-heart'}" class="w-4 h-4 flex-shrink-0"></i><span class="flex-1 truncate">Favorites</span>`;
                 favDiv.onclick = () => {
+                    this.stopCurrentPlayback();
                     this.state.currentPerson = null;
                     this.state.isFilteredByPerson = false;
                     this.state.currentLibraryId = 'favorites';
@@ -1831,6 +1861,7 @@
                         // pl.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = pl.Name;
                         div.onclick = () => {
+                            this.stopCurrentPlayback();
                             this.state.currentPerson = null;
                             this.state.isFilteredByPerson = false;
                             this.state.currentLibraryId = pl.Id;
@@ -1883,6 +1914,7 @@
                         // lib.Name 用 textContent 写入，防止服务器数据含 HTML 特殊字符时注入
                         div.querySelector('span').textContent = lib.Name;
                         div.onclick = () => {
+                            this.stopCurrentPlayback();
                             this.state.currentPerson = null;
                             this.state.isFilteredByPerson = false;
                             this.state.currentLibraryId = lib.Id;
@@ -2439,7 +2471,7 @@
             }
 
             togglePlayMode() {
-                if (this.config.shortDrama) {
+                if (this.drama.isDramaMode()) {
                     this.showToast('ℹ️ Sequence play locked in Short Drama mode');
                     return;
                 }
@@ -2523,8 +2555,34 @@
                 this.fetchVideos(libArg, null, false, false);
             }
 
+            stopCurrentPlayback(saveProgress = true) {
+                const current = document.getElementById(`video-p${(this.state.currentIndex % 3 + 3) % 3}`);
+                if (current) {
+                    if (saveProgress) this.player.savePlaybackProgress(current, true);
+                    current.pause();
+                    if (current.dataset.playbackStarted === String(this.state.videos[this.state.currentIndex]?.Id)) {
+                        this.reportPlayback('stopped', current);
+                    }
+                    delete current.dataset.playbackStarted;
+                }
+                clearTimeout(this.player._waitingTimer);
+                this.state.isPlaying = false;
+            }
+
+            setViewMode(mode) {
+                if (mode === 'grid' && this.state.viewMode === 'stream') this.stopCurrentPlayback();
+                this.state.viewMode = mode;
+                const appEl = document.getElementById('app');
+                appEl?.classList.toggle('grid-active', mode === 'grid');
+                if (mode === 'grid') appEl?.classList.remove('interface-hidden');
+                this.dom.videoContainer.style.touchAction = mode === 'grid' ? 'auto' : 'pan-y';
+                this.dom.viewModeBtn.innerHTML = `<i data-lucide="${mode === 'grid' ? 'layout-grid' : 'gallery-vertical'}" class="stroke-current w-5 h-5"></i>`;
+                lucide.createIcons();
+            }
+
             toggleViewMode() {
                 const isStream = this.state.viewMode === 'stream';
+                if (isStream) this.player.savePlaybackProgress(null, true);
 
                 if (isStream && (this.state.isFilteredByPerson || this.state.isFilteredByTag)) {
                     this.resetFilters();
@@ -2540,12 +2598,7 @@
                     return;
                 }
 
-                this.state.viewMode = isStream ? 'grid' : 'stream';
-
-                const btn = this.dom.viewModeBtn;
-                btn.innerHTML = `<i data-lucide="${this.state.viewMode === 'stream' ? 'gallery-vertical' : 'layout-grid'}" class="stroke-current w-5 h-5"></i>`;
-
-                lucide.createIcons();
+                this.setViewMode(isStream ? 'grid' : 'stream');
 
                 if (this.state.viewMode === 'grid') {
                     // 如果在Short Drama Mode且在根目录，但当前 videos 是分集列表，恢复大厅根级剧目
@@ -3018,6 +3071,7 @@
 
                 // 网页卸载时上报 Stopped，清除 Session 残留并终止后台转码
                 const handleUnload = () => {
+                    this.player.savePlaybackProgress(null, true);
                     const slideIdx = (this.state.currentIndex % 3 + 3) % 3;
                     const curV = document.getElementById(`video-p${slideIdx}`);
                     if (this.config.server && this.config.token) {
@@ -3027,6 +3081,9 @@
                 };
                 window.addEventListener('pagehide', handleUnload);
                 window.addEventListener('beforeunload', handleUnload);
+                document.addEventListener('visibilitychange', () => {
+                    if (document.hidden) this.player.savePlaybackProgress(null, true);
+                });
             }
 
             // ═══ 输入处理（委托至 InputManager） ═══

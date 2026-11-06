@@ -8,6 +8,7 @@ strm_test/
 .claude/
 .mimocode/
 .zcode/
+.codeartsdoer/
 key/
 docs/
 AGENTS.md

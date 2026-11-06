@@ -222,7 +222,7 @@
                         });
                         v.remote.addEventListener('connect', () => {
                             this.activeChannel = 'system';
-                            this.activeSessionName = '浏览器投屏';
+                            this.activeSessionName = 'Chromecast';
                             this.isCasting = true;
                             this.renderPowerButton(true);
                             this.app.showToast('已连接系统投屏');
@@ -648,7 +648,7 @@
             if (showSystemCast) {
                 appendDeviceItem(
                     '系统原生投屏',
-                    'AirPlay / 浏览器投屏',
+                    'AirPlay / Chromecast',
                     this.isCasting && this.activeChannel === 'system',
                     () => this.triggerSystemCast(),
                     true

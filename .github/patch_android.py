@@ -1479,9 +1479,9 @@ if os.path.exists(strings_path):
 
     labels = {
         "shortcut_vid_short": "短视频" if LANG == "zh" else "Videos",
-        "shortcut_vid_long": "短视频模式" if LANG == "zh" else "Videos Mode",
+        "shortcut_vid_long": "短视频" if LANG == "zh" else "Videos Mode",
         "shortcut_pic_short": "写真集" if LANG == "zh" else "Gallery",
-        "shortcut_pic_long": "写真集模式" if LANG == "zh" else "Gallery Mode",
+        "shortcut_pic_long": "写真集" if LANG == "zh" else "Gallery Mode",
         "shortcut_clear_cache_short": "清除缓存" if LANG == "zh" else "Clear Cache",
         "shortcut_clear_cache_long": "清除 EmbyX 应用缓存" if LANG == "zh" else "Clear EmbyX Cache"
     }

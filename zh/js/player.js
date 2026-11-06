@@ -217,7 +217,20 @@
             if (sidMatch) {
                 videoEl.dataset.playSessionId = decodeURIComponent(sidMatch[1]);
             }
-            const { preloadOnly = false, autoplay = false, forceHls = false, live = false } = options;
+            const { preloadOnly = false, autoplay = false, forceHls = false, live = false, resumeTime: requestedResumeTime } = options;
+            const resumeTime = Number.isFinite(requestedResumeTime) ? requestedResumeTime : (!preloadOnly && this.app.drama?.isDramaMode() ? (Number(videoEl.dataset.resumeTarget) || videoEl.currentTime || this.app.drama.getResumePosition(item.Id, false) || 0) : 0);
+            if (resumeTime > 0 && !preloadOnly) {
+                videoEl.dataset.resumeTime = String(resumeTime);
+                videoEl.dataset.resumeTarget = String(resumeTime);
+                videoEl.dataset.resumeItemId = String(item.Id);
+            } else if (Number.isFinite(resumeTime) || preloadOnly || videoEl.dataset.resumeItemId !== String(item.Id)) {
+                delete videoEl.dataset.resumeTime;
+                delete videoEl.dataset.resumeTarget;
+                delete videoEl.dataset.resumeItemId;
+            }
+            videoEl.autoplay = autoplay && !videoEl.dataset.resumeTime;
+            if (autoplay) videoEl.dataset.pendingPlay = 'true';
+            else delete videoEl.dataset.pendingPlay;
             const isHls = forceHls || /\.m3u8(?:$|[?#])/i.test(src);
             const nativeHls = !!videoEl.canPlayType('application/vnd.apple.mpegurl');
 
@@ -230,6 +243,7 @@
                     }
                     videoEl.onerror = null;
                     videoEl.pause();
+                    delete videoEl.dataset.playbackStarted;
                     videoEl.removeAttribute('src');
                     videoEl.load();
                     videoEl.dataset.requestedSrc = src;
@@ -249,6 +263,7 @@
                 }
                 videoEl.onerror = null;
                 videoEl.pause();
+                delete videoEl.dataset.playbackStarted;
                 videoEl.removeAttribute('src');
                 videoEl.load();
                 videoEl.dataset.requestedSrc = src;
@@ -260,7 +275,8 @@
                     liveSyncDurationCount: 3
                 } : {
                     maxBufferLength: 30,
-                    backBufferLength: 15
+                    backBufferLength: 15,
+                    startPosition: Number(videoEl.dataset.resumeTime) || -1
                 });
                 this.activeHls = hls;
                 window.activeHls = hls;
@@ -298,6 +314,7 @@
                 window.activeHls = null;
             }
             videoEl.pause();
+            delete videoEl.dataset.playbackStarted;
             videoEl.dataset.requestedSrc = src;
             videoEl.dataset.hlsLoading = 'false';
             videoEl.onerror = () => {
@@ -309,6 +326,35 @@
             };
             videoEl.src = src;
             videoEl.load();
+        }
+
+        restorePosition(videoEl, videoId) {
+            if (!videoEl.dataset.resumeTime) return true;
+            if (videoEl.dataset.resumeItemId !== String(videoId) || videoEl.readyState < 1) return false;
+            const position = Number(videoEl.dataset.resumeTime);
+            const duration = videoEl.duration;
+            if (!Number.isFinite(position) || position < 0 || duration === 0) return false;
+            const target = Number.isFinite(duration) ? Math.min(position, Math.max(0, duration - 0.25)) : position;
+            try {
+                videoEl.currentTime = target;
+                videoEl.dataset.resumeTarget = String(target);
+                delete videoEl.dataset.resumeTime;
+                delete videoEl.dataset.resumeItemId;
+                return true;
+            } catch (e) {
+                return false;
+            }
+        }
+
+        savePlaybackProgress(videoEl = null, force = false) {
+            const item = this.app.state.videos[this.app.state.currentIndex];
+            const slideIdx = (this.app.state.currentIndex % 3 + 3) % 3;
+            const current = document.getElementById(`video-p${slideIdx}`);
+            videoEl = videoEl || current;
+            if (!item || !videoEl || videoEl !== current || videoEl.dataset.resumeTime || videoEl.dataset.resumeTarget || videoEl.seeking) return;
+            if (videoEl.dataset.playbackStarted !== String(item.Id) || videoEl.readyState < 1) return;
+            if (!this.isCurrentPlayback(videoEl, item.Id, videoEl.dataset.requestedSrc)) return;
+            this.app.drama?.savePlaybackProgress(item, videoEl, force);
         }
 
         playVideo(index) {
@@ -335,6 +381,11 @@
                     return;
                 }
                 const videoId = this.app.state.videos[this.app.state.currentIndex]?.Id;
+                if (!this.restorePosition(v, videoId)) {
+                    v.dataset.pendingPlay = 'true';
+                    return;
+                }
+                delete v.dataset.pendingPlay;
                 const requestedSrc = v.dataset.requestedSrc || v.currentSrc || v.src;
                 const playAttempt = String((parseInt(v.dataset.playAttempt || '0') + 1));
                 v.dataset.playAttempt = playAttempt;
@@ -494,17 +545,47 @@
         }
 
         bindVideoEvents(videoEl, index, videoData) {
+            const { server, userId } = this.app.config;
+            const libraryId = this.app.state.currentLibraryId;
+            const isCurrent = () => this.app.config.server === server && this.app.config.userId === userId && this.app.state.currentLibraryId === libraryId && this.isCurrentPlayback(videoEl, videoData.Id, videoEl.dataset.requestedSrc);
+            const resumeReady = () => {
+                if (!isCurrent() || !this.restorePosition(videoEl, videoData.Id)) return;
+                if (videoEl.dataset.pendingPlay === 'true' && videoEl.dataset.hlsLoading !== 'true') {
+                    this.playVideo(index);
+                }
+            };
+            videoEl.onloadedmetadata = resumeReady;
+            videoEl.ondurationchange = resumeReady;
+            videoEl.onseeked = () => {
+                if (!isCurrent()) return;
+                resumeReady();
+                this.savePlaybackProgress(videoEl, true);
+            };
             videoEl.onwaiting = () => {
+                if (!isCurrent()) return;
                 clearTimeout(this._waitingTimer);
-                this._waitingTimer = setTimeout(() => this.app.toggleLoading(true), 300);
+                this._waitingTimer = setTimeout(() => { if (isCurrent()) this.app.toggleLoading(true); }, 300);
             };
 
             videoEl.onplay = () => {
+                if (!isCurrent()) return;
                 if (typeof this.app.setPlayState === 'function') this.app.setPlayState(true);
             };
 
             // Seamless cross-fade when first frame renders
             videoEl.onplaying = () => {
+                if (!isCurrent()) return;
+                const target = Number(videoEl.dataset.resumeTarget);
+                if (target > 0 && videoEl.currentTime < target - 0.5) {
+                    videoEl.dataset.resumeTime = String(target);
+                    videoEl.dataset.resumeItemId = String(videoData.Id);
+                    this.restorePosition(videoEl, videoData.Id);
+                    return;
+                }
+                if (videoEl.dataset.resumeTime) return;
+                delete videoEl.dataset.resumeTarget;
+                videoEl.dataset.playbackStarted = String(videoData.Id);
+                this.savePlaybackProgress(videoEl, true);
                 clearTimeout(this._waitingTimer);
                 this.app.toggleLoading(false);
                 videoEl.style.opacity = '1';
@@ -513,19 +594,22 @@
             };
 
             videoEl.oncanplay = () => {
+                resumeReady();
                 clearTimeout(this._waitingTimer);
                 this.app.toggleLoading(false);
                 videoEl.style.opacity = '1';
             };
 
             if (videoEl.readyState >= 3) {
+                resumeReady();
                 clearTimeout(this._waitingTimer);
                 this.app.toggleLoading(false);
                 videoEl.style.opacity = '1';
             }
 
             videoEl.ontimeupdate = () => {
-                if (!videoEl.duration) return;
+                if (!isCurrent() || !videoEl.duration) return;
+                this.savePlaybackProgress(videoEl);
                 if (this.app?.state?.isDragging) return;
                 const nowMs = Date.now();
                 if (nowMs - (this._lastDomUpdate || 0) >= 250) {
@@ -537,11 +621,15 @@
             };
 
             videoEl.onpause = () => {
+                if (!isCurrent() || videoEl.dataset.playbackStarted !== String(videoData.Id)) return;
+                this.savePlaybackProgress(videoEl, true);
                 if (typeof this.app.setPlayState === 'function') this.app.setPlayState(false);
-                this.reportPlayback('progress', videoEl);
+                this.reportPlayback('progress', videoEl, false, true);
             };
 
             videoEl.onended = () => {
+                if (!isCurrent() || videoEl.dataset.playbackStarted !== String(videoData.Id)) return;
+                this.savePlaybackProgress(videoEl, true);
                 this.reportPlayback('stopped', videoEl);
                 this.onEnded();
             };
@@ -562,18 +650,18 @@
             };
         }
 
-        reportPlayback(event, videoEl, isKeepAlive = false) {
+        reportPlayback(event, videoEl, isKeepAlive = false, force = false) {
             if (!this.app.config.server || !this.app.config.token || this.app.state.videos.length === 0) return;
             const videoData = this.app.state.videos[this.app.state.currentIndex];
             if (!videoData || !videoEl) return;
             if (videoData._isOpenList || window.EmbyXCommon?.getServerType() === 'openlist') return;
 
             const now = Date.now();
-            if (event === 'progress' && now - (this.app.state.lastReportTime || 0) < 5000) return;
+            if (event === 'progress' && !force && now - (this.app.state.lastReportTime || 0) < 5000) return;
             if (event === 'progress') this.app.state.lastReportTime = now;
 
             const eventMap = { 'playing': 'TimeUpdate', 'progress': 'TimeUpdate', 'stopped': 'Stopped' };
-            const eventName = videoEl.paused ? 'Pause' : (eventMap[event] || 'TimeUpdate');
+            const eventName = event === 'stopped' ? 'Stopped' : (videoEl.paused ? 'Pause' : (eventMap[event] || 'TimeUpdate'));
             const msIdx = videoData?._selectedMediaSourceIndex || 0;
             const mediaSourceId = videoData.MediaSources?.[msIdx]?.Id || videoData.MediaSources?.[0]?.Id || '';
 

@@ -19,9 +19,12 @@
             this.currentFolderType = ''; // 'Folder' | 'Series' | 'Season'
             this.activePlayingFolderId = null; // Currently playing drama/folder ID
             this.rootSiblings = []; // Siblings in root library, used for seamless cross-drama relay
-            this.lastFocusedEpisodeId = null; // Used to auto-highlight last watched episode
-            this.seriesCountCache = {};
+            this.lastFocusedEpisodeId = null; // 用于下钻后高亮定位Last观看集数
+            this.seriesCountCache = {}; // 电视剧剧集真实总数缓存 { [seriesId]: count }
             this._fetchingSeriesCounts = new Set();
+            this.pendingResume = null;
+            this._lastPlaybackSave = 0;
+            this._lastPlaybackItem = null;
         }
 
         /**
@@ -46,10 +49,11 @@
         /**
          * Get fetch URL for short drama mode (non-recursive mixed top items)
          */
-        getFetchUrl(config, libraryId, fetchStartIndex, pageSize) {
+        getFetchUrl(config, libraryId, fetchStartIndex, pageSize = 150) {
             const { server, token, userId } = config;
             const targetFolderId = this.currentFolderId || libraryId;
-            let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=false&IncludeItemTypes=Folder,Series,Season,Movie,Episode,Video&Limit=${pageSize}&StartIndex=${fetchStartIndex}&Fields=Overview,Path,RunTimeTicks,MediaSources,ChildCount,RecursiveItemCount,SeriesName,ParentIndexNumber,IndexNumber`;
+            const paging = pageSize > 0 ? `&Limit=${pageSize}&StartIndex=${fetchStartIndex}` : '';
+            let url = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=false&IncludeItemTypes=Folder,Series,Season,Movie,Episode,Video,MusicVideo${paging}&Fields=Overview,Path,ParentId,RunTimeTicks,MediaSources,ChildCount,RecursiveItemCount,SeriesName,ParentIndexNumber,IndexNumber`;
             if (targetFolderId && targetFolderId !== 'favorites') {
                 url += `&ParentId=${targetFolderId}`;
             }
@@ -318,7 +322,9 @@
                     name: this.currentFolderName || 'Root',
                     type: this.currentFolderType || 'Library',
                     videos: [...app.state.videos],
-                    totalCount: app.state.totalCount
+                    totalCount: app.state.totalCount,
+                    startIndex: app.state.startIndex || 0,
+                    currentIndex: app.state.currentIndex
                 });
                 app.input?.pushLayer('folder', { id: seriesItem.Id });
 
@@ -426,7 +432,9 @@
                     type: this.currentFolderType,
                     seriesId: seasonItem.SeriesId,
                     videos: [...app.state.videos],
-                    totalCount: app.state.totalCount
+                    totalCount: app.state.totalCount,
+                    startIndex: app.state.startIndex || 0,
+                    currentIndex: app.state.currentIndex
                 });
                 app.input?.pushLayer('folder', { id: seasonItem.Id });
 
@@ -487,7 +495,7 @@
         /**
          * Drill down into folder
          */
-        pushFolder(folderId, folderName, type = 'Folder') {
+        async pushFolder(folderId, folderName, type = 'Folder', startIndex = 0) {
             if (!this.app) return;
             const parentId = this.currentFolderId || this.app.state.currentLibraryId;
             const parentName = this.currentFolderName || 'Root';
@@ -497,16 +505,19 @@
                 name: parentName,
                 type: this.currentFolderType || 'Library',
                 videos: [...this.app.state.videos],
-                totalCount: this.app.state.totalCount
+                totalCount: this.app.state.totalCount,
+                startIndex: this.app.state.startIndex || 0,
+                currentIndex: this.app.state.currentIndex
             });
             this.app?.input?.pushLayer('folder', { id: folderId });
 
             this.currentFolderId = folderId;
             this.currentFolderName = folderName;
             this.currentFolderType = type;
+            this.activePlayingFolderId = folderId;
 
-            this.app.state.startIndex = 0;
-            this.app.fetchVideos();
+            this.app.state.startIndex = startIndex;
+            return this.app.fetchVideos(null, null, startIndex > 0);
         }
 
         /**
@@ -529,6 +540,9 @@
                 this.currentFolderType = prev.type || '';
                 this.app.state.videos = prev.videos;
                 this.app.state.totalCount = prev.totalCount || prev.videos.length;
+                this.app.state.startIndex = prev.startIndex || 0;
+                this.app.state.currentIndex = prev.currentIndex || 0;
+                this.activePlayingFolderId = this.currentFolderId;
                 if (this.app.state.viewMode === 'grid') {
                     this.app.renderGridView();
                 } else {
@@ -564,6 +578,220 @@
             this.activePlayingFolderId = null;
             this.rootSiblings = [];
             this.lastFocusedEpisodeId = null;
+            this.pendingResume = null;
+            this._lastPlaybackSave = 0;
+            this._lastPlaybackItem = null;
+        }
+
+        getPlaybackKey(seriesOrFolderId = null) {
+            const { server, serverId, userId, user } = this.app.config;
+            const scope = [serverId || server, userId || user, this.app.state.currentLibraryId];
+            if (seriesOrFolderId !== null) scope.push(seriesOrFolderId);
+            return `emby_drama_resume_${JSON.stringify(scope)}`;
+        }
+
+        getPlaybackRecord() {
+            try {
+                const saved = JSON.parse(localStorage.getItem(this.getPlaybackKey()) || 'null');
+                return saved && typeof saved.itemId === 'string' ? saved : null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        getResumePosition(itemId, consume = true) {
+            const record = this.pendingResume || this.getPlaybackRecord();
+            if (consume) this.pendingResume = null;
+            return record && String(record.itemId) === String(itemId) && Number.isFinite(record.position) ? record.position : 0;
+        }
+
+        savePlaybackProgress(videoData, videoEl, force = false) {
+            if (!this.isDramaMode() || !videoData || !videoEl || !this.app.state.currentLibraryId) return;
+            const now = Date.now();
+            if (!force && this._lastPlaybackItem === String(videoData.Id) && now - (this._lastPlaybackSave || 0) < 5000) return;
+            const app = this.app;
+            const path = this.folderStack.map(({ id, name, type, seriesId, startIndex }) => ({ id, name, type, seriesId, startIndex }));
+            if (!path.length) path.push({ id: app.state.currentLibraryId, type: 'Library', startIndex: app.state.startIndex || 0 });
+            if (this.currentFolderId) {
+                path.push({ id: this.currentFolderId, name: this.currentFolderName, type: this.currentFolderType, seriesId: videoData.SeriesId, startIndex: app.state.startIndex || 0 });
+            }
+            const previous = this.getPlaybackRecord();
+            const previousDate = previous?.itemId === String(videoData.Id) ? previous.date : localStorage.getItem(`emby_last_date_${app.state.currentLibraryId}`);
+            const record = {
+                itemId: String(videoData.Id),
+                position: videoEl.ended ? 0 : Math.max(0, videoEl.currentTime || 0),
+                date: (app._isFirstLoad && previousDate) || new Date(now).toISOString(),
+                path,
+                startIndex: app.state.startIndex || 0
+            };
+            try {
+                localStorage.setItem(this.getPlaybackKey(), JSON.stringify(record));
+                this._lastPlaybackSave = now;
+                this._lastPlaybackItem = record.itemId;
+                const dramaId = videoData.SeriesId || this.activePlayingFolderId || this.currentFolderId;
+                if (dramaId) this.saveDramaProgress(dramaId, record.itemId, videoData.IndexNumber || (app.state.currentIndex + 1));
+                localStorage.setItem(`emby_last_id_${app.state.currentLibraryId}`, record.itemId);
+                if (!app._isFirstLoad) {
+                    localStorage.setItem(`emby_last_date_${app.state.currentLibraryId}`, record.date);
+                    clearTimeout(app._syncTimer);
+                    const { server, userId } = app.config;
+                    const libId = app.state.currentLibraryId;
+                    const libType = app.state.currentLibraryType;
+                    app._syncTimer = setTimeout(() => {
+                        if (app.config.server === server && app.config.userId === userId && app.state.currentLibraryId === libId) {
+                            app.saveCloudSync(record.itemId, libId, libType, record.date);
+                        }
+                    }, 1000);
+                }
+                app._isFirstLoad = false;
+            } catch (e) {}
+        }
+
+        async restorePlayback(record = null) {
+            if (!this.app || !this.isDramaMode()) return false;
+            const app = this.app;
+            const { server, token, userId } = app.config;
+            const libraryId = app.state.currentLibraryId;
+            record = record || this.getPlaybackRecord();
+            if (!record) {
+                const itemId = localStorage.getItem(`emby_last_id_${libraryId}`);
+                if (itemId) record = { itemId, position: null, path: [], startIndex: 0 };
+            }
+            if (!record?.itemId) return false;
+
+            app.toggleLoading(true);
+            app.stopCurrentPlayback();
+            this.reset();
+            app.state.currentPerson = null;
+            app.state.currentTag = null;
+            app.state.searchTerm = '';
+            app.state.isFilteredByPerson = false;
+            app.state.isFilteredByTag = false;
+            app.setViewMode('grid');
+            try {
+                const isOpenList = window.EmbyXCommon?.getServerType() === 'openlist';
+                const isPlaylist = app.state.currentLibraryType === 'playlist';
+                let videoData = null;
+                let folders = [];
+                let items = null;
+                let singleFolder = null;
+                const fields = 'Overview,Path,ParentId,RunTimeTicks,MediaSources,IndexNumber,ParentIndexNumber,SeriesName';
+                if (isOpenList) {
+                    const base = libraryId === 'favorites' ? '/' : String(libraryId || '/').replace(/\/$/, '');
+                    if (base && !String(record.itemId).startsWith(base + '/')) throw new Error('Video does not belong to the current library');
+                    const parent = String(record.itemId).slice(0, String(record.itemId).lastIndexOf('/')) || '/';
+                    let path = base || '';
+                    for (const name of parent.slice(path.length).split('/').filter(Boolean)) {
+                        path += '/' + name;
+                        folders.push({ Id: path, Name: name, Type: 'Folder' });
+                    }
+                } else if (app.config.fnOS) {
+                    folders = (record.path || []).filter(folder => folder.type !== 'Library').map(folder => ({ Id: folder.id, Name: folder.name, Type: folder.type, SeriesId: folder.seriesId }));
+                } else {
+                    const itemRes = await fetch(`${server}/emby/Users/${userId}/Items/${encodeURIComponent(record.itemId)}?api_key=${token}`, { headers: app.getAuthHeaders(token) });
+                    if (!itemRes.ok) throw new Error(`Failed to read video: ${itemRes.status}`);
+                    videoData = await itemRes.json();
+                    if (videoData.IsFolder || !['Movie', 'Episode', 'Video', 'MusicVideo'].includes(videoData.Type)) throw new Error('The last record is not a playable video');
+                    if (libraryId === 'favorites') {
+                        if (!videoData.UserData?.IsFavorite) throw new Error('Video is no longer in favorites');
+                        const res = await fetch(`${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&Filters=IsFavorite&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Fields=${fields}`, { headers: app.getAuthHeaders(token) });
+                        if (!res.ok) throw new Error(`Failed to read favorites: ${res.status}`);
+                        items = (await res.json()).Items || [];
+                    } else if (isPlaylist) {
+                        const res = await fetch(`${server}/emby/Playlists/${libraryId}/Items?UserId=${userId}&api_key=${token}&Fields=${fields}`, { headers: app.getAuthHeaders(token) });
+                        if (!res.ok) throw new Error(`Failed to read playlist: ${res.status}`);
+                        items = (await res.json()).Items || [];
+                    } else {
+                        const res = await fetch(`${server}/emby/Items/${encodeURIComponent(record.itemId)}/Ancestors?UserId=${userId}&api_key=${token}`, { headers: app.getAuthHeaders(token) });
+                        if (!res.ok) throw new Error(`Failed to read directory: ${res.status}`);
+                        const ancestors = await res.json();
+                        const libraryIndex = ancestors.findIndex(item => String(item.Id) === String(libraryId));
+                        if (libraryIndex === -1) throw new Error('Video does not belong to the current library');
+                        folders = ancestors.slice(0, libraryIndex).reverse();
+                    }
+                }
+
+                const rootPage = (record.path || []).find(folder => String(folder.id) === String(libraryId));
+                app.state.startIndex = Math.max(0, rootPage?.startIndex || 0);
+                if (items === null && !await app.fetchVideos(libraryId, null, app.state.startIndex > 0)) throw new Error('Failed to read library');
+                for (const folder of folders) {
+                    if (folder.Type === 'Series') {
+                        await this.openSeries(folder);
+                    } else if (folder.Type === 'Season') {
+                        if (app.state.videos.some(item => item.Type === 'Season')) await this.openSeason(folder);
+                    } else {
+                        const entry = app.state.videos.find(item => String(item.Id) === String(folder.Id));
+                        if (folder === folders[folders.length - 1] && this.isSingleVideoFolder(entry || folder)) {
+                            singleFolder = entry || folder;
+                        } else {
+                            const page = (record.path || []).find(entry => String(entry.id) === String(folder.Id));
+                            await this.pushFolder(folder.Id, folder.Name, folder.Type, Math.max(0, page?.startIndex || 0));
+                        }
+                    }
+                }
+                if (videoData?.SeasonId && app.state.videos.some(item => item.Type === 'Season')) {
+                    const season = app.state.videos.find(item => String(item.Id) === String(videoData.SeasonId));
+                    if (!season) throw new Error('The previously played season is unavailable');
+                    await this.openSeason(season);
+                }
+
+                if (isOpenList) {
+                    let startIndex = Math.max(0, record.startIndex || 0);
+                    let data = await window.OpenListManager.fetchItems({ path: this.currentFolderId || libraryId, startIndex, limit: 150, isFolderMode: true });
+                    if (!(data.Items || []).some(item => String(item.Id) === String(record.itemId))) {
+                        startIndex = 0;
+                        do {
+                            data = await window.OpenListManager.fetchItems({ path: this.currentFolderId || libraryId, startIndex, limit: 150, isFolderMode: true });
+                            if ((data.Items || []).some(item => String(item.Id) === String(record.itemId))) break;
+                            startIndex += 150;
+                        } while (startIndex < (data.TotalRecordCount || 0));
+                    }
+                    items = data.Items || [];
+                    app.state.startIndex = startIndex;
+                    app.state.totalCount = data.TotalRecordCount || items.length;
+                } else if (items === null && this.currentFolderType !== 'Series' && this.currentFolderType !== 'Season') {
+                    const res = await fetch(this.getFetchUrl(app.config, libraryId, 0, null), { headers: app.getAuthHeaders(token) });
+                    if (!res.ok) throw new Error(`Failed to read folder: ${res.status}`);
+                    items = (await res.json()).Items || [];
+                }
+                items = this.sortMixedItems((items || app.state.videos).filter(item => item && item.Type !== 'Photo' && item.MediaType !== 'Photo' && item.Type !== 'PhotoAlbum'));
+                if (singleFolder) {
+                    const folderIndex = items.findIndex(item => String(item.Id) === String(singleFolder.Id));
+                    const resolved = await this.resolveFolderVideo(singleFolder);
+                    if (folderIndex !== -1 && resolved) {
+                        items[folderIndex] = resolved;
+                        if (videoData && String(resolved.Id) === String(videoData.Id)) videoData.MediaSources = resolved.MediaSources;
+                    }
+                }
+                const index = items.findIndex(item => String(item.Id) === String(record.itemId));
+                if (index === -1) throw new Error('The last video is no longer in the current directory');
+                if (videoData) items[index] = videoData;
+                videoData = items[index];
+                app.state.videos = items;
+                if (!isOpenList) {
+                    app.state.startIndex = 0;
+                    app.state.totalCount = items.length;
+                }
+                app.state.currentIndex = index;
+                app.state.playMode = 'sequence';
+                this.lastFocusedEpisodeId = String(videoData.Id);
+                this.activePlayingFolderId = videoData.SeriesId || singleFolder?.Id || this.currentFolderId;
+                const position = Number.isFinite(record.position) ? record.position : ((videoData.UserData?.PlaybackPositionTicks || 0) / 10000000);
+                this.pendingResume = { itemId: String(videoData.Id), position: Math.max(0, position) };
+                app._isFirstLoad = true;
+                app.toggleViewMode();
+                return true;
+            } catch (e) {
+                console.warn('Short drama resume failed:', e);
+                this.reset();
+                app.setViewMode('grid');
+                app.state.startIndex = 0;
+                app.state.currentIndex = 0;
+                app.showToast('Unable to resume. Please select a video in the current library');
+                return false;
+            } finally {
+                app.toggleLoading(false);
+            }
         }
 
         /**
@@ -572,10 +800,7 @@
         saveDramaProgress(seriesOrFolderId, videoId, epIndex) {
             if (!seriesOrFolderId || !videoId) return;
             try {
-                localStorage.setItem(`emby_drama_last_id_${seriesOrFolderId}`, String(videoId));
-                if (epIndex != null) {
-                    localStorage.setItem(`emby_drama_last_ep_${seriesOrFolderId}`, String(epIndex));
-                }
+                localStorage.setItem(this.getPlaybackKey(seriesOrFolderId), JSON.stringify({ lastId: String(videoId), lastEp: epIndex == null ? null : String(epIndex) }));
             } catch (e) {}
         }
 
@@ -585,10 +810,7 @@
         getDramaProgress(seriesOrFolderId) {
             if (!seriesOrFolderId) return null;
             try {
-                const lastId = localStorage.getItem(`emby_drama_last_id_${seriesOrFolderId}`);
-                const lastEp = localStorage.getItem(`emby_drama_last_ep_${seriesOrFolderId}`);
-                if (!lastId && !lastEp) return null;
-                return { lastId, lastEp };
+                return JSON.parse(localStorage.getItem(this.getPlaybackKey(seriesOrFolderId)) || 'null');
             } catch (e) {
                 return null;
             }

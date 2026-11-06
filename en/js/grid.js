@@ -140,7 +140,7 @@
                 <span class="text-sm font-bold text-gray-200 truncate max-w-[40%] flex items-center">${libraryName}</span>
                 <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                     ${countStr}
-                    ${!app.config.shortDrama ? `
+                    ${!app.drama?.isDramaMode() ? `
                     <span class="w-1.5"></span>
                     <button id="gridShuffleBtn" title="Shuffle" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20 flex items-center justify-center">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
@@ -325,10 +325,10 @@
                             app.state.isFilteredByPerson = true;
                         }
                         // Record progress and bind activePlayingFolderId
-                        if (app.drama) {
+                        if (app.drama?.isDramaMode()) {
                             const dramaId = app.drama.currentFolderId || item.SeriesId;
+                            app.drama.activePlayingFolderId = dramaId || null;
                             if (dramaId) {
-                                app.drama.activePlayingFolderId = dramaId;
                                 app.drama.saveDramaProgress(dramaId, item.Id, item.IndexNumber || (index + 1));
                             }
                         }
@@ -336,7 +336,7 @@
                         app.toggleViewMode();
                     };
 
-                    const isShortDrama = app.config.shortDrama;
+                    const isShortDrama = !!app.drama?.isDramaMode();
                     const pad = n => String(n).padStart(2, '0');
                     const hasSeason = item.ParentIndexNumber != null;
                     const hasEp = item.IndexNumber != null;

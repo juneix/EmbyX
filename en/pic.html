@@ -986,9 +986,23 @@
             }
 
             async saveConfig() {
-                // Persist page-private settings first; shared config and login go through AuthManager
+                // 页面私有配置先落盘，公共配置与登录由 AuthManager 统一处理
                 this.savePageConfig();
-                return this.auth.saveConfig();
+                const saved = await this.auth.saveConfig();
+                if (!saved) return;
+                this.loadConfig();
+                if (saved.sourceChanged) {
+                    this.state.currentPerson = null;
+                    this.state.currentTag = null;
+                    this.state.searchTerm = '';
+                    this.state.isFilteredByPerson = false;
+                    this.state.isFilteredByTag = false;
+                    this.state.originalVideos = [];
+                    await this.loadFavorites();
+                    this.initGlobalPlaylistIndex();
+                }
+                this.toggleModal('profilePage', false);
+                await this.fetchVideos(this.state.currentLibraryId, null, false, this.state.playMode === 'random');
             }
 
             async resetConfig() {

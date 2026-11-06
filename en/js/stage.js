@@ -151,7 +151,8 @@
                     } else if (!videoData.IsFolder && videoData.Type !== 'Folder') {
                         const preloadSrc = this.app.player.getVideoSrc(videoData.Id, videoData, false);
                         this.app.player.setVideoSource(videoEl, preloadSrc, videoIdx, videoData, {
-                            preloadOnly: offset !== 0
+                            preloadOnly: offset !== 0,
+                            resumeTime: offset === 0 && this.app.drama?.isDramaMode() ? this.app.drama.getResumePosition(videoData.Id, false) : 0
                         });
                     }
 
@@ -183,6 +184,7 @@
             const slideIdx = (this.app.state.currentIndex % 3 + 3) % 3;
             const curV = document.getElementById(`video-p${slideIdx}`);
             if (curV) {
+                this.app.player.savePlaybackProgress(curV, true);
                 curV.pause();
                 if (this.app.player.activeMpegts) {
                     this.app.player.activeMpegts.destroy();

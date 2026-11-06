@@ -14,8 +14,24 @@
  */
 
 (function () {
-    const _eggMemoryMap = new Map();
-    let _cloudChecking = false;
+    const _eggProofs = Object.create(null);
+    const _cloudCheckPromises = new Map();
+    const _cloudFetch = window.fetch.bind(window);
+    const _cloudEncode = encodeURIComponent;
+    const _readResponseJson = Function.call.bind(Response.prototype.json);
+
+    async function _readCloudJson(response) {
+        try {
+            return await _readResponseJson(response);
+        } catch (e) {
+            return {};
+        }
+    }
+
+    function _setEggProof(targetId) {
+        if (!targetId || donateInstance.getCurrentTargetId() !== targetId) return;
+        _eggProofs[targetId] = true;
+    }
 
     class DonateManager {
         constructor() {
@@ -24,8 +40,10 @@
         }
 
         getCurrentTargetId() {
-            return localStorage.getItem('emby_server_id') ||
-                   (window.app && window.app.config && window.app.config.serverId) || '';
+            const storedId = localStorage.getItem('emby_server_id') || '';
+            const configuredId = window.app?.config?.serverId || '';
+            if (storedId && configuredId && storedId !== configuredId) return '';
+            return storedId || configuredId;
         }
 
         getBoundCode(targetId) {
@@ -34,26 +52,22 @@
             return localStorage.getItem(`_p1_code_${tid}`) || '';
         }
 
-        _setEggProof(targetId, token) {
+        _clearEggProof(targetId, clearCode = true) {
             if (!targetId) return;
-            _eggMemoryMap.set(targetId, String(token || 'verified_p1'));
-        }
-
-        _clearEggProof(targetId) {
-            if (!targetId) return;
-            _eggMemoryMap.delete(targetId);
-            try {
-                localStorage.removeItem(`_p1_token_${targetId}`);
-                localStorage.removeItem(`_p1_code_${targetId}`);
-            } catch (e) {}
+            delete _eggProofs[targetId];
+            if (clearCode) {
+                try {
+                    localStorage.removeItem(`_p1_code_${targetId}`);
+                } catch (e) {}
+            }
         }
 
         _clearAllEggProofs() {
-            _eggMemoryMap.clear();
+            Object.keys(_eggProofs).forEach(targetId => delete _eggProofs[targetId]);
             try {
                 const keys = Object.keys(localStorage);
                 keys.forEach(k => {
-                    if (k.startsWith('_p1_token_') || k.startsWith('_p1_code_')) {
+                    if (k.startsWith('_p1_code_')) {
                         localStorage.removeItem(k);
                     }
                 });
@@ -63,7 +77,7 @@
         hasEggAccess() {
             const targetId = this.getCurrentTargetId();
             if (!targetId) return false;
-            return _eggMemoryMap.has(targetId);
+            return _eggProofs[targetId] === true;
         }
 
         isPlayerOne() {
@@ -136,7 +150,12 @@
                 window.app.input.pushLayer('modal', { id: 'donateModal' });
             }
 
-            this.checkCloudEggStatus().then(() => this.renderDonateModalState());
+            const targetId = this.getCurrentTargetId();
+            this.checkCloudEggStatus().then(() => {
+                if (this.getCurrentTargetId() === targetId) {
+                    this.renderDonateModalState();
+                }
+            });
         }
 
         hideDonateModal() {
@@ -178,7 +197,18 @@
             }
 
             const targetId = this.getCurrentTargetId();
-            if (targetId && targetId.startsWith('openlist-unbound-')) {
+            if (!targetId) {
+                if (errEl) {
+                    errEl.textContent = 'Server ID is unavailable. Please sign in to your media server first';
+                    errEl.classList.remove('hidden');
+                }
+                if (btn) {
+                    btn.disabled = false;
+                    btn.textContent = 'Confirm';
+                }
+                return false;
+            }
+            if (targetId.startsWith('openlist-unbound-')) {
                 if (errEl) {
                     errEl.textContent = 'OpenList server ID is not bound. Please login once with an admin account to initialize it.';
                     errEl.classList.remove('hidden');
@@ -191,36 +221,38 @@
             }
 
             try {
-                const resp = await fetch(this.API_VERIFY_URL, {
+                const resp = await _cloudFetch(this.API_VERIFY_URL, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         app: 'embyx',
                         code: cleanCode,
-                        target_id: targetId,
-                        server_id: targetId
+                        target_id: targetId
                     })
                 });
 
-                const data = await resp.json().catch(() => ({}));
+                const data = await _readCloudJson(resp);
 
                 if (resp.ok && data.status === 'ok') {
-                    this._setEggProof(targetId, data.token || 'verified_p1');
+                    _setEggProof(targetId);
                     const formattedCode = data.code || (cleanCode.length === 8 ? `${cleanCode.slice(0, 4)}-${cleanCode.slice(4)}` : cleanCode);
                     try {
                         localStorage.setItem(`_p1_code_${targetId}`, formattedCode);
                     } catch (e) {}
 
-                    this.saveToServerPrefs(true);
-                    this.updateUI();
-                    this.renderDonateModalState();
+                    if (this.getCurrentTargetId() === targetId) {
+                        this.saveToServerPrefs(true);
+                        this.updateUI();
+                        this.renderDonateModalState();
 
-                    if (window.app && window.app.showToast) {
-                        window.app.showToast('🎉 Congratulations! You have unlocked Player One privileges!');
-                    } else {
-                        alert('🎉 Congratulations! You have unlocked Player One privileges!');
+                        if (window.app && window.app.showToast) {
+                            window.app.showToast('🎉 Congratulations! You have unlocked Player One privileges!');
+                        } else {
+                            alert('🎉 Congratulations! You have unlocked Player One privileges!');
+                        }
+                        return true;
                     }
-                    return true;
+                    return false;
                 } else {
                     if (errEl) {
                         errEl.textContent = data.message || 'Activation code is invalid or expired';
@@ -246,25 +278,24 @@
             try {
                 if (window.EmbyXCommon && EmbyXCommon.getServerType() === 'openlist') return;
                 const server = localStorage.getItem('emby_server') || (window.app && window.app.config && window.app.config.server);
-                const token = localStorage.getItem('emby_token') || (window.app && window.app.config && window.app.config.token);
+                const mediaToken = localStorage.getItem('emby_token') || (window.app && window.app.config && window.app.config.token);
                 const userId = localStorage.getItem('emby_uid') || (window.app && window.app.config && window.app.config.userId);
-                if (!server || !token || !userId) return;
+                if (!server || !mediaToken || !userId) return;
 
                 const isJellyfin = window.EmbyXCommon && EmbyXCommon.getServerType() === 'jellyfin';
                 const base = server.replace(/\/+$/, '');
-                const url = `${base}${isJellyfin ? '' : '/emby'}/DisplayPreferences/usersettings?userId=${userId}&client=EmbyX`;
+                const url = `${base}${isJellyfin ? '' : '/emby'}/DisplayPreferences/usersettings?userId=${userId}&Client=EmbyX`;
+                const mediaHeaders = EmbyXCommon.getAuthHeaders({}, mediaToken);
 
-                const getRes = await fetch(url, { headers: { 'X-Emby-Token': token } });
+                const getRes = await fetch(url, { headers: mediaHeaders });
+                if (!getRes.ok) throw new Error(`HTTP ${getRes.status}`);
                 const prefs = await getRes.json().catch(() => ({}));
                 const customPrefs = prefs.CustomPrefs || {};
                 customPrefs.player_one = isPro ? 'true' : 'false';
 
                 await fetch(url, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-Emby-Token': token
-                    },
+                    headers: { ...mediaHeaders, 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         Id: prefs.Id || 'usersettings',
                         Client: 'EmbyX',
@@ -278,69 +309,76 @@
 
         async checkCloudEggStatus() {
             const targetId = this.getCurrentTargetId();
-            if (!targetId || _cloudChecking) return this.hasEggAccess();
+            if (!targetId) return false;
 
-            _cloudChecking = true;
-            try {
-                const checkUrl = `${this.API_CHECK_URL}?app=embyx&target_id=${encodeURIComponent(targetId)}&server_id=${encodeURIComponent(targetId)}`;
-                const res = await fetch(checkUrl, { cache: 'no-store' });
-                const data = await res.json().catch(() => ({}));
+            let checkPromise = _cloudCheckPromises.get(targetId);
+            if (!checkPromise) {
+                const controller = typeof AbortController === 'function' ? new AbortController() : null;
+                let expired = false;
+                let timeoutId;
+                const timeout = new Promise(resolve => {
+                    timeoutId = setTimeout(() => {
+                        expired = true;
+                        controller?.abort();
+                        this._clearEggProof(targetId, false);
+                        if (this.getCurrentTargetId() === targetId) this.updateUI();
+                        resolve(false);
+                    }, 2000);
+                });
+                const request = (async () => {
+                    let verified = false;
+                    try {
+                        const checkUrl = `${this.API_CHECK_URL}?app=embyx&target_id=${_cloudEncode(targetId)}`;
+                        const res = await _cloudFetch(checkUrl, { cache: 'no-store', signal: controller?.signal });
+                        const data = await _readCloudJson(res);
+                        if (expired) return false;
 
-                if (res.ok && data.status === 'ok' && data.player_one === true) {
-                    this._setEggProof(targetId, data.token || 'verified_p1');
-                    if (data.code) {
-                        try {
-                            localStorage.setItem(`_p1_code_${targetId}`, data.code);
-                        } catch (e) {}
+                        verified = res.ok && data.status === 'ok' && data.player_one === true;
+                        if (verified) {
+                            _setEggProof(targetId);
+                            if (data.code) {
+                                try {
+                                    localStorage.setItem(`_p1_code_${targetId}`, data.code);
+                                } catch (e) {}
+                            }
+                        } else {
+                            this._clearEggProof(targetId, res.ok);
+                        }
+                    } catch (e) {
+                        if (expired) return false;
+                        this._clearEggProof(targetId, false);
                     }
-                    this.updateUI();
-                    return true;
-                } else {
-                    this._clearEggProof(targetId);
-                    this.updateUI();
+
+                    if (this.getCurrentTargetId() === targetId) {
+                        this.updateUI();
+                        return verified;
+                    }
                     return false;
-                }
-            } catch (e) {
-                this._clearEggProof(targetId);
-                this.updateUI();
-                return false;
+                })();
+                checkPromise = Promise.race([request, timeout]).finally(() => clearTimeout(timeoutId));
+                _cloudCheckPromises.set(targetId, checkPromise);
+            }
+
+            try {
+                const verified = await checkPromise;
+                return this.getCurrentTargetId() === targetId && verified === true && this.hasEggAccess();
             } finally {
-                _cloudChecking = false;
+                if (_cloudCheckPromises.get(targetId) === checkPromise) {
+                    _cloudCheckPromises.delete(targetId);
+                }
             }
         }
 
         async syncFromServer() {
             try {
-                const server = localStorage.getItem('emby_server') || (window.app && window.app.config && window.app.config.server);
-                const token = localStorage.getItem('emby_token') || (window.app && window.app.config && window.app.config.token);
-                const userId = localStorage.getItem('emby_uid') || (window.app && window.app.config && window.app.config.userId);
                 const targetId = this.getCurrentTargetId();
+                if (!targetId) return false;
 
-                if (!targetId) return;
-
-                const cloudVerified = await this.checkCloudEggStatus();
-                if (cloudVerified) {
-                    return;
-                }
-
-                if (server && token && userId && (!window.EmbyXCommon || EmbyXCommon.getServerType() !== 'openlist')) {
-                    const isJellyfin = window.EmbyXCommon && EmbyXCommon.getServerType() === 'jellyfin';
-                    const base = server.replace(/\/+$/, '');
-                    const url = `${base}${isJellyfin ? '' : '/emby'}/DisplayPreferences/usersettings?userId=${userId}&client=EmbyX`;
-                    const res = await fetch(url, { headers: { 'X-Emby-Token': token } });
-                    const prefs = await res.json().catch(() => ({}));
-                    if (prefs?.CustomPrefs?.player_one === 'true') {
-                        const verified = await this.checkCloudEggStatus();
-                        if (verified) {
-                            return;
-                        }
-                    }
-                }
-
-                this._clearEggProof(targetId);
-                this.updateUI();
+                const verified = await this.checkCloudEggStatus();
+                return this.getCurrentTargetId() === targetId && verified === true;
             } catch (e) {
                 console.warn('Sync from server error (silent):', e);
+                return false;
             }
         }
 
@@ -369,7 +407,6 @@
                     if (qualityLock) qualityLock.classList.add('hidden');
                     if (qualityMask) qualityMask.classList.add('hidden');
                 } else {
-                    qualitySelect.value = 'direct';
                     qualitySelect.setAttribute('disabled', 'disabled');
                     qualitySelect.classList.add('opacity-60', 'cursor-not-allowed');
                     if (qualityLock) qualityLock.classList.remove('hidden');
@@ -387,7 +424,6 @@
                     if (dramaLock) dramaLock.classList.add('hidden');
                     if (dramaMask) dramaMask.classList.add('hidden');
                 } else {
-                    dramaCheckbox.checked = false;
                     dramaCheckbox.setAttribute('disabled', 'disabled');
                     if (dramaLock) dramaLock.classList.remove('hidden');
                     if (dramaMask) dramaMask.classList.remove('hidden');

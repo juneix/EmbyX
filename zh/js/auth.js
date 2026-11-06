@@ -107,8 +107,9 @@
 
             // 同步配置
             if (window.DonateManager && typeof window.DonateManager.syncFromServer === 'function') {
-                window.DonateManager.syncFromServer();
+                return window.DonateManager.syncFromServer();
             }
+            return false;
         }
 
         initFnosOAuth() {
@@ -254,69 +255,55 @@
 
             try {
                 const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                const isUnchangedPwd = /^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0;
-                if (isUnchangedPwd && app.config.token && app.config.server === server && app.config.user === user) {
-                    const fnOS = app.config.fnOS;
-                    this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS });
-                    if (typeof app.savePageConfig === 'function') app.savePageConfig();
+                const isUnchangedPwd = (/^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0) || (pwd === '' && pwdLen === 0);
+                const isSameLogin = isUnchangedPwd && app.config.token && app.config.server === server && app.config.user === user;
+                let sourceChanged = false;
 
+                if (!isSameLogin) {
+                    const auth = await EmbyXCommon.authenticate({
+                        server,
+                        user,
+                        pwd,
+                        deviceName: app.config.deviceName,
+                        deviceId: app.config.deviceId,
+                        appVersion: app.config.appVersion,
+                        isAutoFilled
+                    });
+
+                    const { data, userId, fnOS, serverType, finalServer } = auth;
+                    server = finalServer;
+                    const serverId = data.ServerId || (data.User && data.User.ServerId) || (data.SessionInfo && data.SessionInfo.ServerId) || (app.config.server === server ? app.config.serverId : '') || '';
+                    sourceChanged = app.config.server !== server || app.config.user !== user || app.config.userId !== userId || (app.config.serverId && app.config.serverId !== serverId);
+
+                    localStorage.setItem('emby_server_id', serverId);
+                    if (serverType) localStorage.setItem('embyx_server_type', serverType);
+                    localStorage.setItem('emby_server', server);
+                    localStorage.setItem('emby_user', user);
+                    localStorage.setItem('emby_token', data.AccessToken);
+                    localStorage.setItem('emby_uid', userId);
+
+                    // 账号删除权限：Emby/Jellyfin 取登录响应的 User.Policy，OpenList 反查 /api/me
+                    const canDelete = await this.resolveDeletePermission(serverType, data);
+                    localStorage.setItem('emby_can_delete', canDelete ? 'true' : 'false');
+                    app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, fnOS, canDelete };
+
+                    const newPwdLen = pwd.length;
+                    localStorage.setItem('emby_pwd_len', newPwdLen);
+                    app.dom.configPwd.value = newPwdLen > 0 ? '*'.repeat(newPwdLen) : '';
+                }
+
+                this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS: app.config.fnOS });
+                if (typeof app.savePageConfig === 'function') app.savePageConfig();
+                app.config = { ...app.config, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode };
+                this.syncDeleteBtnVisibility();
+
+                if (sourceChanged) {
                     localStorage.removeItem('emby_views_cache');
                     localStorage.removeItem('emby_favorites');
-                    location.reload();
-                    return;
+                    localStorage.removeItem(this.keyPrefix + '_lib_id');
+                    localStorage.removeItem(this.keyPrefix + '_lib_type');
                 }
-
-                const auth = await EmbyXCommon.authenticate({
-                    server,
-                    user,
-                    pwd,
-                    deviceName: app.config.deviceName,
-                    deviceId: app.config.deviceId,
-                    appVersion: app.config.appVersion,
-                    isAutoFilled
-                });
-
-                const { data, userId, fnOS, serverType, finalServer } = auth;
-                server = finalServer;
-
-                const serverId = data.ServerId || (data.User && data.User.ServerId) || (data.SessionInfo && data.SessionInfo.ServerId) || '';
-                if (serverId) {
-                    localStorage.setItem('emby_server_id', serverId);
-                }
-
-                if (serverType) {
-                    localStorage.setItem('embyx_server_type', serverType);
-                }
-
-                localStorage.setItem('emby_server', server);
-                localStorage.setItem('emby_user', user);
-                localStorage.setItem('emby_token', data.AccessToken);
-                localStorage.setItem('emby_uid', userId);
-
-                // 账号删除权限：Emby/Jellyfin 取登录响应的 User.Policy，OpenList 反查 /api/me
-                const canDelete = await this.resolveDeletePermission(serverType, data);
-                localStorage.setItem('emby_can_delete', canDelete ? 'true' : 'false');
-                app.config.canDelete = canDelete;
-
-                this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS });
-                if (typeof app.savePageConfig === 'function') app.savePageConfig();
-
-                app.config = { ...app.config, server, user, token: data.AccessToken, userId, serverId, serverType, playQuality, useStatic: isStatic, autoplay, shortDrama, deleteMode, fnOS, canDelete };
-
-                const pwdLen2 = pwd ? pwd.length : 0;
-                localStorage.setItem('emby_pwd_len', pwdLen2);
-                app.dom.configPwd.value = pwdLen2 > 0 ? '*'.repeat(pwdLen2) : '';
-                this.syncDeleteBtnVisibility();
-                if (app.dom.playModeBtn) {
-                    app.dom.playModeBtn.innerHTML = `<i data-lucide="${autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
-                    if (window.lucide) lucide.createIcons();
-                }
-
-                localStorage.removeItem('emby_views_cache');
-                localStorage.removeItem('emby_favorites');
-                localStorage.removeItem(this.keyPrefix + '_lib_id');
-                localStorage.removeItem(this.keyPrefix + '_lib_type');
-                location.reload();
+                return { sourceChanged };
             } catch (e) {
                 console.error('saveConfig error:', e);
                 const status = e?.status;
