@@ -1,0 +1,39 @@
+{
+  "_meta": {
+    "source": "zh/perf.html",
+    "target": "en/perf.html",
+    "updated": "2026-11-15"
+  },
+  "strings": {
+    "EmbyX - 播放性能参考": "EmbyX - Playback benchmark",
+    "播放性能参考": "Playback benchmark",
+    "播放预览": "Preview",
+    "在线测试片源，仅供参考": "Online test sources, for reference only",
+    "点播": "On-demand",
+    "直播": "Live",
+    "视频编码": "Video codecs",
+    "个人建议": "Suggestion",
+    "原生 HTML5 播放器，新设备体验最佳": "Native HTML5 player, best on modern devices",
+    "老设备需服务器转码，": "Older devices need server transcoding,",
+    "不如放到**上回收": "better off selling it on ** for recycling",
+    "(没打钱": "(no payment sent)",
+    "设备": "Device",
+    "HEVC 硬解": "HEVC HW",
+    "AV1 硬解": "AV1 HW",
+    "苹果": "Apple",
+    "安卓": "Android",
+    "千元机": "Budget",
+    "6～8 代酷睿·核显": "6th-8th Gen Core iGPU",
+    "11 代酷睿·核显": "11th Gen Core iGPU",
+    "运行环境": "Environment",
+    "浏览器": "Browser",
+    "渲染引擎": "Rendering engine",
+    "操作系统": "System",
+    "图形处理器": "GPU",
+    "未知": "Unknown",
+    "返回": "Back",
+    "播放模式": "Playback mode",
+    "网络错误": "Network error",
+    "其他": "Other"
+  }
+}

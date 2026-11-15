@@ -121,6 +121,10 @@
             const currentPage = Math.floor(startIndex / PAGE_SIZE) + 1;
             const totalPages = Math.max(1, Math.ceil(totalCount / PAGE_SIZE));
             const countStr = totalCount > 999 ? '999+' : String(totalCount);
+            const isRandomMode = app.state.playMode === 'random';
+            const canShuffle = isRandomMode && !app.drama?.isDramaMode() && !app.state.currentPerson && !app.state.searchTerm && !app.state.isFilteredByTag;
+            // Favorites can shuffle too (scope limited to favorites); search/person/tag keep their own result set
+            const shuffleLibArg = (!app.state.currentLibraryId || app.state.currentPerson || app.state.searchTerm) ? null : app.state.currentLibraryId;
 
             safeHeader.className = 'absolute top-0 left-0 right-0 z-20 bg-black/25 backdrop-blur-xl border-b border-white/10 flex flex-col transition-all';
             safeHeader.style.paddingTop = 'var(--safe-top)';
@@ -140,7 +144,7 @@
                 <span class="text-sm font-bold text-gray-200 truncate max-w-[40%] flex items-center">${libraryName}</span>
                 <span class="text-xs font-bold text-primary/70 tabular-nums flex items-center">
                     ${countStr}
-                    ${!app.drama?.isDramaMode() ? `
+                    ${canShuffle ? `
                     <span class="w-1.5"></span>
                     <button id="gridShuffleBtn" title="Shuffle" class="active:scale-90 transition-transform p-[2px] bg-white/10 rounded-full hover:bg-white/20 flex items-center justify-center">
                         <i data-lucide="sparkles" class="w-3.5 h-3.5 text-white"></i>
@@ -152,9 +156,11 @@
                     class="w-7 h-7 flex items-center justify-center rounded-full active:scale-90 transition-all ${isSearchActive ? 'text-primary bg-primary/20' : 'text-white hover:text-white/80'}">
                     <i data-lucide="folder-search" class="w-4 h-4"></i>
                 </button>
+                ${isRandomMode ? '' : `
                 <button id="gridPrevBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage <= 1 ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❮</button>
                 <span class="text-xs font-bold text-white tabular-nums flex items-center">${currentPage}<span class="px-0.5">/</span>${totalPages}</span>
                 <button id="gridNextBtn" class="px-1.5 py-0.5 rounded text-xs flex items-center justify-center ${currentPage >= totalPages ? 'text-gray-600 pointer-events-none' : 'text-gray-300 active:scale-90 hover:text-white transition-colors'}">❯</button>
+                `}
             `;
 
             safeHeader.innerHTML = '';
@@ -191,12 +197,10 @@
 
             const shuffleBtn = document.getElementById('gridShuffleBtn');
             if (shuffleBtn) {
-                const curLibId = app.state.currentLibraryId;
-                const libArg = (!curLibId || curLibId === 'favorites' || app.state.currentPerson || app.state.searchTerm) ? null : curLibId;
                 shuffleBtn.onclick = (e) => {
                     e.stopPropagation();
                     app.state.startIndex = 0;
-                    app.fetchVideos(libArg, null, false, true);
+                    app.fetchVideos(shuffleLibArg, null, false, true, false, '', true);
                 };
             }
 

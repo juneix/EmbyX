@@ -845,7 +845,7 @@
                                     </li>
                                     <li class="flex items-center">
                                         <span class="text-primary mr-1.5">🎬</span>
-                                        新设备体验最佳 -> &nbsp;<a href="./info.html" class="text-primary hover:underline">播放性能参考</a>
+                                        新设备体验最佳 -> &nbsp;<a href="./perf.html" class="text-primary hover:underline">播放性能参考</a>
                                     </li>
                                 </ul>
                                 <div class="bg-black/40 rounded-lg overflow-hidden border border-gray-700/50">
@@ -1036,7 +1036,6 @@
                     playSessionId: null,
                     playbackMethod: 'DirectPlay',
                     isStrmSource: false,
-                    originalVideos: [],  // 随机模式下Save原始顺序列表
                     _capabilitiesReported: false,
                     _hitokotoCache: null,
                     currentPerson: null,
@@ -1290,7 +1289,6 @@
                     this.state.searchTerm = '';
                     this.state.isFilteredByPerson = false;
                     this.state.isFilteredByTag = false;
-                    this.state.originalVideos = [];
                     this.state.currentIndex = 0;
                     this._isFirstLoad = false;
                     if (dramaMode) this.state.viewMode = 'grid';
@@ -1359,7 +1357,7 @@
             }
 
             // ═══ 核心播放逻辑 ═══
-            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false, searchTerm = '') {
+            async fetchVideos(parentId = null, ids = null, isLoadMore = false, isRandom = false, isAppend = false, searchTerm = '', isShuffleBatch = false, keepCurrent = false) {
                 this.toggleLoading(!isAppend); // 追加时不显示Fullscreen loading
                 try {
                     const { server, token, userId } = this.config;
@@ -1374,20 +1372,21 @@
 
                     const libraryId = parentId || this.state.currentLibraryId;
 
-                    // --- 分页参数 ---
-                    // PAGE_SIZE: 每页视频数，150 为体验甜点值
+                    // Videos per batch
                     const PAGE_SIZE = 150;
+
+                    let data;
+                    const isDramaMode = this.drama && this.drama.isDramaMode();
+                    if (isDramaMode) isRandom = false;
 
                     let fetchStartIndex = this.state.startIndex || 0;
                     if (isAppend) {
                         fetchStartIndex += this.state.videos.length;
                     }
-
-                    let data;
-                    const isDramaMode = this.drama && this.drama.isDramaMode();
-                    if (isDramaMode) isRandom = false;
                     const isFolderView = this.drama && this.drama.isFolderModeActive();
                     const isOpenList = EmbyXCommon.getServerType() === 'openlist';
+                    // Server-side random ignores sequential offset; OpenList keeps paging + local shuffle
+                    if (isRandom && !isOpenList) fetchStartIndex = 0;
                     if (isOpenList && window.OpenListManager) {
                         const targetOpenlistPath = (this.drama && this.drama.currentFolderId) ? this.drama.currentFolderId : ((libraryId && libraryId !== 'favorites') ? libraryId : (localStorage.getItem('openlist_base_path') || '/'));
                         const isFolderMode = !!(isFolderView && this.state.viewMode === 'grid');
@@ -1428,11 +1427,6 @@
                                 url += `&Person=${encodeURIComponent(this.state.currentPerson)}`;
                             } else if (ids) {
                                 url += `&Ids=${ids}`;
-                            } else if (isRandom) {
-                                // 换一批模式：服务端随机取 99 个（适用于所有模式）
-                                url += `&SortBy=Random`;
-                                if (libraryId && libraryId !== 'favorites') url += `&ParentId=${libraryId}`;
-                                if (libraryId === 'favorites') url += `&Filters=IsFavorite`;
                             } else if (libraryId === 'favorites') {
                                 url += `&SortBy=DateCreated&SortOrder=Descending&Filters=IsFavorite`;
                             } else if (libraryId) {
@@ -1444,13 +1438,17 @@
                             }
                         }
 
-                        const res = await fetch(url, {
-                            headers: this.getAuthHeaders(this.config.token)
-                        });
-                        if (!res.ok) {
-                            throw new Error(`服务器错误: ${res.status}`);
+                        if (isRandom) {
+                            data = await this.fetchRandomItems(libraryId, PAGE_SIZE, isShuffleBatch, this.state.currentTag, this.state.currentPerson, ids);
+                        } else {
+                            const res = await fetch(url, {
+                                headers: this.getAuthHeaders(this.config.token)
+                            });
+                            if (!res.ok) {
+                                throw new Error(`服务器错误: ${res.status}`);
+                            }
+                            data = await res.json();
                         }
-                        data = await res.json();
                     }
                     let items = data.Items || [];
                     // 严格过滤图片文件（图片由专门的 pic.html 负责展示，主视频页绝不混入图片）
@@ -1460,13 +1458,15 @@
                     }
 
                     if (isAppend) {
+                        if (isRandom) {
+                            // Random batches may repeat; dedupe by Id
+                            const seen = new Set(this.state.videos.map(v => String(v.Id)));
+                            items = items.filter(v => !seen.has(String(v.Id)));
+                            // Small library exhausted: stop appending to avoid empty requests
+                            this.state._randomAppendExhausted = items.length === 0;
+                        }
                         if (items.length > 0) {
                             this.state.videos.push(...items);
-                            if (this.state.playMode === 'random' && this.state.originalVideos) {
-                                this.state.originalVideos.push(...items);
-                            }
-                        } else {
-                            if (!isAppend) this.showToast('No more videos');
                         }
                         return;
                     }
@@ -1478,8 +1478,13 @@
                         return;
                     }
 
-                    this.state.videos = items;
-                    this.state.currentIndex = 0;
+                    this.state._randomAppendExhausted = false;
+                    if (keepCurrent && this.state.videos.length > 0) {
+                        this._applyQueueKeepingCurrent(items);
+                    } else {
+                        this.state.videos = items;
+                        this.state.currentIndex = 0;
+                    }
                     const fetchedTotal = data.TotalRecordCount || items.length;
                     this.state.totalCount = fetchedTotal;
                     if (searchTerm) {
@@ -1506,14 +1511,16 @@
                         }
                     }
 
-                    // 随机模式下加载完，直接原地洗牌（保持第一个视频在首位）
-                    if (this.state.playMode === 'random' && items.length > 0) {
-                        this.state.originalVideos = [...this.state.videos];
+                    // OpenList has no server-side random; only this path shuffles locally
+                    if (isOpenList && this.state.playMode === 'random' && items.length > 0) {
                         this._shuffleAroundCurrent();
                     }
 
                     if (this.state.viewMode === 'grid') {
                         this.renderGridView();
+                    } else if (keepCurrent && items.length > 0) {
+                        // Keep current video playing, refresh neighbors only
+                        this.renderBuffer();
                     } else {
                         if (items.length > 0) {
                             this.renderSlides();
@@ -1884,7 +1891,7 @@
                                 if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
                             }
                             this.state.startIndex = 0;
-                            this.fetchVideos(pl.Id);
+                            this.fetchVideos(pl.Id, null, false, this.state.playMode === 'random');
                             this.toggleModal('libraryModal', false);
                         };
                         list.appendChild(div);
@@ -1937,7 +1944,7 @@
                                 if (this.dom.videoContainer) this.dom.videoContainer.style.touchAction = 'auto';
                             }
                             this.state.startIndex = 0;
-                            this.fetchVideos(lib.Id);
+                            this.fetchVideos(lib.Id, null, false, this.state.playMode === 'random');
                             this.toggleModal('libraryModal', false);
                         };
                         list.appendChild(div);
@@ -2455,6 +2462,62 @@
                 }
             }
 
+            // Server-side random sampling: Emby samples whole library; grid shuffle biases older items
+            async fetchRandomItems(libraryId, limit, isShuffleBatch = false, tag = null, person = null, ids = null) {
+                const { server, token, userId } = this.config;
+                const headers = this.getAuthHeaders(token);
+                let scope = '';
+                if (tag) scope += `&Tags=${encodeURIComponent(tag)}`;
+                else if (person) scope += `&Person=${encodeURIComponent(person)}`;
+                else if (ids) scope += `&Ids=${ids}`;
+                else if (libraryId && libraryId !== 'favorites') scope += `&ParentId=${libraryId}`;
+                else if (libraryId === 'favorites') scope += `&Filters=IsFavorite`;
+                const base = `${server}/emby/Users/${userId}/Items?api_key=${token}&Recursive=true&IncludeItemTypes=Movie,Episode,Video,MusicVideo&Fields=Overview,Path,RunTimeTicks,MediaSources,Tags,TagItems,SeriesName,ParentIndexNumber,IndexNumber${scope}`;
+                const request = async (extra, count) => {
+                    const res = await fetch(`${base}${extra}&SortBy=Random&Limit=${count}`, { headers });
+                    if (!res.ok) throw new Error(`服务器错误: ${res.status}`);
+                    return res.json();
+                };
+
+                const fresh = await request('', limit);
+                // Older-item bias only on Emby: MaxDateCreated is unverified on Jellyfin
+                const canBiasOlder = isShuffleBatch && !tag && !person && !ids && EmbyXCommon.getServerType() === 'emby';
+                if (!canBiasOlder) return fresh;
+
+                const olderLimit = Math.min(50, limit);
+                const cutoff = new Date(Date.now() - 180 * 864e5).toISOString();
+                const older = await request(`&MaxDateCreated=${cutoff}`, olderLimit);
+                const seen = new Set();
+                const merged = [];
+                for (const item of [...(older.Items || []), ...(fresh.Items || [])]) {
+                    if (seen.has(item.Id)) continue;
+                    seen.add(item.Id);
+                    merged.push(item);
+                    if (merged.length >= limit) break;
+                }
+                for (let i = merged.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [merged[i], merged[j]] = [merged[j], merged[i]];
+                }
+                return { Items: merged, TotalRecordCount: fresh.TotalRecordCount };
+            }
+
+            // Replace the queue but keep currentIndex and the playing slot intact
+            _applyQueueKeepingCurrent(items) {
+                const idx = this.state.currentIndex;
+                const current = this.state.videos[idx];
+                if (!current) {
+                    this.state.videos = items;
+                    this.state.currentIndex = 0;
+                    return;
+                }
+                const prefix = this.state.videos.slice(0, idx);
+                const seen = new Set(prefix.map(v => String(v.Id)));
+                seen.add(String(current.Id));
+                const rest = items.filter(v => !seen.has(String(v.Id)));
+                this.state.videos = [...prefix, current, ...rest];
+            }
+
             // 随机模式：原地洗牌 videos 数组，保持 currentIndex 不变
             // 这样 +1 下一个就是随机视频，且三槽预缓冲完全生效
             _shuffleAroundCurrent() {
@@ -2470,7 +2533,7 @@
                 [this.state.videos[newPos], this.state.videos[idx]] = [this.state.videos[idx], this.state.videos[newPos]];
             }
 
-            togglePlayMode() {
+            async togglePlayMode() {
                 if (this.drama.isDramaMode()) {
                     this.showToast('ℹ️ Sequence play locked in Short Drama mode');
                     return;
@@ -2484,28 +2547,12 @@
                 lucide.createIcons();
 
                 if (isSeq) {
-                    // 切换随机：Save原始列表，就地洗牌
-                    // currentIndex/物理 slot 不变，当前视频完全不受干扰
-                    this.state.originalVideos = [...this.state.videos];
-                    this._shuffleAroundCurrent();
-                    // 刷新相邻插槽（当前插槽内容不变，两侧插槽更新为随机顺序）
-                    if (this.dom.slides) this.renderBuffer();
+                    // Switch to random: re-sample the library, keep current video playing
+                    await this.fetchVideos(this.state.currentLibraryId, null, false, true, false, '', false, true);
                     this.showToast('🔀 Shuffle mode');
                 } else {
-                    // 切回顺序：恢复原始列表，将当前视频对换到 currentIndex 位置
-                    // 确保物理 slot 不变、currentIndex 不变，当前播放零干扰
-                    const curId = this.state.videos[this.state.currentIndex]?.Id;
-                    this.state.videos = [...this.state.originalVideos];
-                    this.state.originalVideos = [];
-                    if (curId) {
-                        const origPos = this.state.videos.findIndex(v => String(v.Id) === String(curId));
-                        if (origPos >= 0 && origPos !== this.state.currentIndex) {
-                            [this.state.videos[origPos], this.state.videos[this.state.currentIndex]] =
-                                [this.state.videos[this.state.currentIndex], this.state.videos[origPos]];
-                        }
-                    }
-                    // 刷新相邻插槽
-                    if (this.dom.slides) this.renderBuffer();
+                    // Back to sequence: reload the latest list, keep current video playing
+                    await this.fetchVideos(this.state.currentLibraryId, null, false, false, false, '', false, true);
                     this.showToast('🔁 Sequence mode');
                 }
             }
@@ -2552,7 +2599,7 @@
 
                 const curLibId = this.state.currentLibraryId;
                 const libArg = curLibId === 'favorites' ? null : curLibId;
-                this.fetchVideos(libArg, null, false, false);
+                this.fetchVideos(libArg, null, false, this.state.playMode === 'random');
             }
 
             stopCurrentPlayback(saveProgress = true) {
@@ -2609,9 +2656,9 @@
                         }
                     }
 
-                    // 无限流切格子的神之一手：重算页码对齐
+                    // Infinite stream to grid: realign page (no pages in random mode)
                     const PAGE_SIZE = 150;
-                    if (this.state.videos.length > PAGE_SIZE) {
+                    if (this.state.playMode !== 'random' && this.state.videos.length > PAGE_SIZE) {
                         const pageIndex = Math.floor(this.state.currentIndex / PAGE_SIZE);
                         const start = pageIndex * PAGE_SIZE;
                         this.state.videos = this.state.videos.slice(start, start + PAGE_SIZE);

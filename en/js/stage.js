@@ -205,11 +205,15 @@
 
             this.app.state.currentIndex = newIndex;
 
-            // 预拉取更多
-            if (newIndex >= this.app.state.videos.length - 5 && this.app.state.videos.length < (this.app.state.totalCount || 999999)) {
+            // Prefetch more: random keeps drawing batches (stops once small library is exhausted), sequence stops at total count
+            const isRandom = this.app.state.playMode === 'random';
+            const canAppend = isRandom
+                ? !this.app.state._randomAppendExhausted
+                : this.app.state.videos.length < (this.app.state.totalCount || 999999);
+            if (newIndex >= this.app.state.videos.length - 5 && canAppend) {
                 if (!this._fetchingAppend) {
                     this._fetchingAppend = true;
-                    this.app.fetchVideos(null, null, false, this.app.state.playMode === 'random', true).finally(() => { this._fetchingAppend = false; });
+                    this.app.fetchVideos(null, null, false, isRandom, true).finally(() => { this._fetchingAppend = false; });
                 }
             }
 

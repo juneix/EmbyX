@@ -15,11 +15,12 @@ const ROOT = path.resolve(__dirname, '..');
 const I18N_DIR = path.join(ROOT, 'i18n');
 
 // 需要同步的文件映射
+const selectedFiles = process.argv.slice(3);
 const SYNC_FILES = [
   { zh: 'zh/index.html', en: 'en/index.html', i18n: 'index.json' },
   { zh: 'zh/pic.html', en: 'en/pic.html', i18n: 'pic.json' },
-  { zh: 'zh/info.html', en: 'en/info.html', i18n: 'info.json' },
-];
+  { zh: 'zh/perf.html', en: 'en/perf.html', i18n: 'perf.json' },
+].filter(file => selectedFiles.length === 0 || selectedFiles.includes(file.i18n));
 
 // ═══════════════════════════════════════
 // § 1. 文案提取
@@ -29,7 +30,7 @@ const SYNC_FILES = [
  * 从文件中提取包含中文的字符串
  * 返回 Map<原文, 出现次数>
  */
-function extractChineseStrings(content) {
+function extractChineseStrings(content, includeLiterals = false) {
   const strings = new Map();
 
   const patterns = [
@@ -56,6 +57,8 @@ function extractChineseStrings(content) {
     // console.warn/error('中文')
     /console\.\w+\s*\(\s*['"`]([^'"`]*[\u4e00-\u9fff][^'"`]*?)['"`]/g,
   ];
+
+  if (includeLiterals) patterns.push(/['"]([^'"\r\n]*[一-鿿][^'"\r\n]*)['"]/g);
 
   for (const pattern of patterns) {
     let match;
@@ -105,7 +108,7 @@ function cmdExtract() {
     }
 
     const content = fs.readFileSync(zhPath, 'utf-8');
-    const extracted = extractChineseStrings(content);
+    const extracted = extractChineseStrings(content, file.i18n === 'perf.json');
 
     const validStrings = new Map();
     for (const [str, count] of extracted) {
@@ -197,8 +200,8 @@ function cmdDiff() {
     const zhContent = fs.readFileSync(zhPath, 'utf-8');
     const enContent = fs.readFileSync(enPath, 'utf-8');
 
-    const zhStrings = extractChineseStrings(zhContent);
-    const enStrings = extractChineseStrings(enContent);
+    const zhStrings = extractChineseStrings(zhContent, file.i18n === 'perf.json');
+    const enStrings = extractChineseStrings(enContent, file.i18n === 'perf.json');
 
     const validZh = new Map();
     for (const [str, count] of zhStrings) {
@@ -380,7 +383,7 @@ function cmdCheck() {
     const i18n = JSON.parse(fs.readFileSync(i18nPath, 'utf-8'));
     const translations = i18n.strings || {};
 
-    const zhStrings = extractChineseStrings(content);
+    const zhStrings = extractChineseStrings(content, file.i18n === 'perf.json');
     const validZh = new Map();
     for (const [str, count] of zhStrings) {
       if (isValidString(str)) validZh.set(str, count);

@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <title>EmbyX - Playback benchmark</title>
+    <link rel="icon" type="image/png" href="icon.png">
+    <style>
+        :root { color-scheme: dark; --ink: #fff; --muted: #9ca3af; --green: #52B54B; }
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #000; color: var(--ink); font: 14px/1.4 "PingFang SC", "Helvetica Neue", Arial, sans-serif; }
+        #wallpaper { position: fixed; inset: 0; z-index: -1; background: #000 center/cover no-repeat; }
+        #wallpaper::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,.55); }
+        button { font: inherit; color: inherit; cursor: pointer; -webkit-tap-highlight-color: transparent; }
+        :focus-visible { outline: 2px solid var(--green); outline-offset: 3px; }
+        .page { max-width: 480px; margin: auto; padding: env(safe-area-inset-top) 16px max(20px, env(safe-area-inset-bottom)); }
+        header { display: flex; align-items: center; justify-content: space-between; height: 60px; }
+        h1 { font-size: 18px; margin: 0; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+        .back { display: grid; place-items: center; width: 44px; height: 44px; color: var(--ink); text-decoration: none; }
+        svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+        .brand { display: grid; place-items: center; width: 44px; height: 44px; }
+        .brand img { display: block; width: 28px; height: 28px; border-radius: 8px; }
+        .glass { background: rgba(255,255,255,.2); border: 1px solid rgba(255,255,255,.3); border-radius: 16px; box-shadow: 0 4px 30px rgba(0,0,0,.1); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); }
+        .preview { aspect-ratio: 16/9; overflow: hidden; }
+        video { display: block; width: 100%; height: 100%; object-fit: contain; }
+        .layout, .stage, .panel { min-width: 0; }
+        .quality { display: flex; gap: 4px; padding: 4px; margin-top: 12px; }
+        .quality .row { display: flex; flex: 1 1 0; gap: 4px; }
+        .quality .row[hidden] { display: none; }
+        .quality button { flex: 1 1 0; min-height: 40px; background: transparent; border: 1px solid transparent; border-radius: 8px; color: var(--ink); font-weight: 500; font-variant-numeric: tabular-nums; }
+        .quality button.selected { background: rgba(82,181,75,.15); border-color: rgba(82,181,75,.3); color: var(--green); }
+        section { margin-top: 20px; }
+        .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        h2 { margin: 0; font-size: 14px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+        .tag { color: var(--muted); font-size: 12px; text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+        .grid { display: grid; grid-template-columns: repeat(4,minmax(0,1fr)); gap: 8px; }
+        .tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-width: 0; min-height: 86px; padding: 12px 4px; }
+        .tile.selected { background: rgba(82,181,75,.1); border-color: rgba(82,181,75,.4); }
+        .tile strong { font-size: 14px; font-weight: 500; white-space: nowrap; }
+        .tile .sub { color: var(--muted); font-size: 11px; letter-spacing: .02em; }
+        .tile.selected strong { color: var(--green); }
+        .hls { flex-direction: row; justify-content: center; width: 100%; min-height: 54px; margin-top: 20px; padding: 12px 16px; }
+        .advice ul { margin: 0 0 10px; padding-left: 18px; color: var(--muted); font-size: 12px; }
+        .advice li + li { margin-top: 4px; }
+        .advice table { width: 100%; border-collapse: collapse; font-size: 11px; text-align: center; }
+        .advice th { padding: 7px 8px; color: var(--muted); font-weight: 500; }
+        .advice td { padding: 7px 8px; color: var(--muted); }
+        .advice th + th, .advice td + td { border-left: 1px solid rgba(255,255,255,.12); }
+        .advice tr + tr td { border-top: 1px solid rgba(255,255,255,.12); }
+        .advice td:first-child { color: var(--green); }
+        .environment-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+        .env-card { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 100px; padding: 12px; }
+        .env-icon { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: rgba(55,65,81,.3); }
+        .env-icon svg { width: 24px; height: 24px; }
+        .env-text { min-width: 0; }
+        .env-label { color: var(--ink); font-size: 11px; }
+        .env-name { margin: 4px 0 2px; font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .env-detail { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+        .ua-card { margin-top: 10px; padding: 10px 12px; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+        #toast { position: fixed; top: 18%; left: 50%; z-index: 100; width: max-content; max-width: 80vw; padding: 8px 16px; border-radius: 9999px; background: rgba(0,0,0,.25); border: 1px solid rgba(255,255,255,.1); box-shadow: inset 0 1px 1px rgba(255,255,255,.25), 0 8px 24px rgba(0,0,0,.3); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: #fff; font-size: 14px; text-align: center; white-space: normal; pointer-events: none; opacity: 0; transform: translateX(-50%); transition: opacity .3s; }
+        #toast.show { opacity: 1; }
+        @media (min-width: 640px) {
+            .page { max-width: 620px; }
+        }
+        @media (min-width: 1000px) {
+            .page { max-width: 1180px; }
+            .layout { display: grid; grid-template-columns: minmax(0, 1.65fr) minmax(360px, 1fr); gap: 24px; align-items: start; }
+            .stage { position: sticky; top: 16px; }
+            .panel > section:first-child { margin-top: 0; }
+        }
+        @media (max-width: 350px) {
+            .page { padding-left: 12px; padding-right: 12px; }
+            .grid { gap: 6px; }
+            .tile strong { font-size: 13px; }
+            .env-card { flex-direction: column; justify-content: center; text-align: center; padding: 12px 8px; }
+            .env-text { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+    <div id="wallpaper"></div>
+    <div id="toast" role="status" aria-live="polite"></div>
+    <div class="page">
+        <header>
+            <a class="back" href="./index.html" aria-label="Back"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg></a>
+            <h1>Playback benchmark</h1>
+            <span class="brand"><img src="icon.png" alt="EmbyX"></span>
+        </header>
+        <main class="layout">
+            <div class="stage">
+                <div class="section-head"><h2>Preview</h2><span class="tag">Online test sources, for reference only</span></div>
+                <div class="preview glass"><video id="video" controls muted playsinline preload="metadata" disablepictureinpicture></video></div>
+                <div class="quality glass" role="group" aria-label="Playback mode">
+                    <div class="row" id="resolutionRow">
+                        <button class="selected" type="button" data-quality="1080" aria-pressed="true">1080p</button>
+                        <button type="button" data-quality="2160" aria-pressed="false">2160p</button>
+                    </div>
+                    <div class="row" id="streamRow" hidden>
+                        <button type="button" data-stream="vod" aria-pressed="false">On-demand</button>
+                        <button type="button" data-stream="live" aria-pressed="false">Live</button>
+                    </div>
+                </div>
+            </div>
+            <div class="panel">
+                <section aria-labelledby="codecTitle">
+                    <div class="section-head"><h2 id="codecTitle">Video codecs</h2></div>
+                    <div class="grid">
+                        <button class="tile glass selected" type="button" data-codec="avc"><strong>H.264</strong><span class="sub">MP4</span></button>
+                        <button class="tile glass" type="button" data-codec="hevc"><strong>H.265</strong><span class="sub">MP4</span></button>
+                        <button class="tile glass" type="button" data-codec="vp9"><strong>VP9</strong><span class="sub">WebM</span></button>
+                        <button class="tile glass" type="button" data-codec="av1"><strong>AV1</strong><span class="sub">WebM</span></button>
+                    </div>
+                </section>
+                <button class="tile glass hls" id="hlsButton" type="button"><strong>HLS / m3u8</strong></button>
+                <section class="advice" aria-labelledby="adviceTitle">
+                    <div class="section-head"><h2 id="adviceTitle">Suggestion</h2></div>
+                    <ul>
+                        <li>Native HTML5 player, best on modern devices</li>
+                        <li>Older devices need server transcoding, <del>better off selling it on ** for recycling <span class="dim">(no payment sent)</span></del> 😂</li>
+                    </ul>
+                    <div class="glass" style="overflow:hidden">
+                        <table>
+                            <thead>
+                                <tr><th>Device</th><th>HEVC HW</th><th>AV1 HW</th></tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>Apple</td><td>A9 <span class="dim">(2015)</span> / M1</td><td>A17 Pro <span class="dim">(2023)</span> / M3</td></tr>
+                                <tr><td>Android</td><td>Budget <span class="dim">(2016)</span></td><td>Budget <span class="dim">(2024)</span></td></tr>
+                                <tr><td>PC</td><td>6th-8th Gen Core iGPU</td><td>11th Gen Core iGPU</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </section>
+                <section aria-labelledby="environmentTitle">
+                    <div class="section-head"><h2 id="environmentTitle">Environment</h2></div>
+                    <div class="environment-grid">
+                        <div class="env-card glass">
+                            <span class="env-icon" style="color:#52B54B"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="m16 8-3 5-5 3 3-5z"/></svg></span>
+                            <div class="env-text"><div class="env-label">Browser</div><div class="env-name" id="shell-name">—</div><div class="env-detail" id="shell-version">—</div></div>
+                        </div>
+                        <div class="env-card glass">
+                            <span class="env-icon" style="color:#3b82f6"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M9 3v3m6-3v3M9 18v3m6-3v3M3 9h3m-3 6h3m12-6h3m-3 6h3"/></svg></span>
+                            <div class="env-text"><div class="env-label">Rendering engine</div><div class="env-name" id="kernel-name">—</div><div class="env-detail" id="kernel-version">—</div></div>
+                        </div>
+                        <div class="env-card glass">
+                            <span class="env-icon" style="color:#a855f7">
+                                <svg id="os-icon-monitor" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>
+                                <svg id="os-icon-apple" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M12 6.528V3a1 1 0 0 1 1-1h0"/><path d="M18.237 21A15 15 0 0 0 22 11a6 6 0 0 0-10-4.472A6 6 0 0 0 2 11a15.1 15.1 0 0 0 3.763 10 3 3 0 0 0 3.648.648 5.5 5.5 0 0 1 5.178 0A3 3 0 0 0 18.237 21"/></svg>
+                                <svg id="os-icon-android" viewBox="0 0 24 24" aria-hidden="true" style="display:none"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+                            </span>
+                            <div class="env-text"><div class="env-label">System</div><div class="env-name" id="os-name">—</div><div class="env-detail" id="os-version">—</div></div>
+                        </div>
+                        <div class="env-card glass">
+                            <span class="env-icon" style="color:#f97316"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 17h18a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2H2"/><path d="M2 21V3"/><path d="M7 17v3a1 1 0 0 0 1 1h5a1 1 0 0 0 1-1v-3"/><circle cx="16" cy="11" r="2"/><circle cx="8" cy="11" r="2"/></svg></span>
+                            <div class="env-text"><div class="env-label">GPU</div><div class="env-name" id="device-name">—</div><div class="env-detail" id="device-info">—</div></div>
+                        </div>
+                    </div>
+                    <div class="ua-card glass" id="ua-string"></div>
+                </section>
+            </div>
+        </main>
+    </div>
+    <script src="./lib/hls.min.js"></script>
+    <script>
+    (() => {
+        const $ = id => document.getElementById(id);
+        const video = $('video');
+        const samples = {
+            'avc-1080': 'https://www.elecard.com/storage/video/TheaterSquare_1920x1080.mp4',
+            'hevc-1080': 'https://www.elecard.com/storage/video/TSU_1920x1080.mp4',
+            'av1-1080': 'https://www.elecard.com/storage/video/CityHall_1920x1080.webm',
+            'vp9-1080': 'https://www.elecard.com/storage/video/UshaikaRiverEmb_1920x1080.webm',
+            'avc-2160': 'https://www.elecard.com/storage/video/TheaterSquare_3840x2160.mp4',
+            'hevc-2160': 'https://www.elecard.com/storage/video/TSU_3840x2160.mp4',
+            'av1-2160': 'https://www.elecard.com/storage/video/CityHall_3840x2160.webm',
+            'vp9-2160': 'https://www.elecard.com/storage/video/UshaikaRiverEmb_3840x2160.webm'
+        };
+        const streams = {
+            vod: 'https://demo.unified-streaming.com/k8s/features/stable/video/tears-of-steel/tears-of-steel.ism/.m3u8',
+            live: 'https://demo.unified-streaming.com/k8s/live/stable/scte35.isml/.m3u8'
+        };
+        let selectedCodec = 'avc', selectedPreset = '1080', activeKey = null, activeStream = 'vod', hls = null, ignoreError = true;
+        const text = (id, value) => { $(id).textContent = value; };
+        let toastTimer = null;
+        function toast(message, duration = 3000) {
+            const el = $('toast');
+            clearTimeout(toastTimer);
+            el.textContent = message;
+            el.classList.add('show');
+            toastTimer = setTimeout(() => el.classList.remove('show'), duration);
+        }
+        function renderTiles() {
+            const hlsMode = activeKey === 'hls';
+            document.querySelectorAll('[data-codec]').forEach(button => {
+                const selected = activeKey === button.dataset.codec + '-' + selectedPreset;
+                button.classList.toggle('selected', selected);
+                button.setAttribute('aria-pressed', String(selected));
+            });
+            document.querySelectorAll('[data-quality]').forEach(button => {
+                const selected = !hlsMode && button.dataset.quality === selectedPreset;
+                button.classList.toggle('selected', selected);
+                button.setAttribute('aria-pressed', String(selected));
+            });
+            document.querySelectorAll('[data-stream]').forEach(button => {
+                const selected = hlsMode && activeStream === button.dataset.stream;
+                button.classList.toggle('selected', selected);
+                button.setAttribute('aria-pressed', String(selected));
+            });
+            $('resolutionRow').hidden = hlsMode;
+            $('streamRow').hidden = !hlsMode;
+            $('hlsButton').classList.toggle('selected', hlsMode);
+        }
+        function playHls(url, autoplay) {
+            if (window.Hls && Hls.isSupported()) {
+                hls = new Hls({ maxBufferLength: 8, maxMaxBufferLength: 12, backBufferLength: 0, capLevelToPlayerSize: false });
+                hls.on(Hls.Events.MANIFEST_PARSED, () => { if (autoplay) video.play().catch(() => {}); });
+                hls.on(Hls.Events.MEDIA_ATTACHED, () => hls.loadSource(url));
+                hls.on(Hls.Events.ERROR, (event, data) => {
+                    if (!data.fatal) return;
+                    if (data.type === Hls.ErrorTypes.NETWORK_ERROR) { toast('Network error'); hls.stopLoad(); }
+                });
+                hls.attachMedia(video);
+            } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+                ignoreError = false;
+                video.src = url;
+                if (autoplay) video.play().catch(() => {});
+            }
+        }
+        function select(key, autoplay = true) {
+            video.pause();
+            if (hls) { hls.destroy(); hls = null; }
+            ignoreError = true;
+            video.removeAttribute('src');
+            video.load();
+            if (key === 'hls') {
+                activeKey = 'hls';
+                renderTiles();
+                playHls(streams[activeStream], autoplay);
+                return;
+            }
+            if (key === 'vod' || key === 'live') {
+                activeStream = key;
+                activeKey = 'hls';
+                renderTiles();
+                playHls(streams[key], autoplay);
+                return;
+            }
+            [selectedCodec, selectedPreset] = key.split('-');
+            activeKey = key;
+            renderTiles();
+            ignoreError = false;
+            video.src = samples[key];
+            if (autoplay) video.play().catch(() => {});
+        }
+        function checkNetwork() {
+            const url = video.currentSrc || video.src;
+            if (!url) return;
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), 5000);
+            fetch(url, { headers: { Range: 'bytes=0-0' }, cache: 'no-store', signal: controller.signal })
+                .then(response => { if (!response.ok && response.status !== 206) toast('Network error'); })
+                .catch(() => toast('Network error'))
+                .finally(() => clearTimeout(timer));
+        }
+        video.addEventListener('error', () => {
+            if (ignoreError) return;
+            const error = video.error;
+            if (error && (error.code === 2 || error.code === 4)) checkNetwork();
+        });
+        document.querySelectorAll('[data-codec]').forEach(button => button.addEventListener('click', () => select(button.dataset.codec + '-' + selectedPreset)));
+        document.querySelectorAll('[data-quality]').forEach(button => button.addEventListener('click', () => select(selectedCodec + '-' + button.dataset.quality)));
+        document.querySelectorAll('[data-stream]').forEach(button => button.addEventListener('click', () => select(button.dataset.stream)));
+        $('hlsButton').addEventListener('click', () => select('hls'));
+        window.addEventListener('pagehide', () => { video.pause(); if (hls) hls.destroy(); });
+
+        async function detectEnvironment() {
+            const ua = navigator.userAgent;
+            text('ua-string', ua);
+            const ipad = /Macintosh/.test(ua) && navigator.maxTouchPoints > 1;
+            const match = pattern => { const value = ua.match(pattern); return value ? value[1] : '—'; };
+            let shell = 'Unknown', shellVersion = '—';
+            if (/Edg\//.test(ua)) { shell = 'Edge'; shellVersion = match(/Edg\/([\d.]+)/); }
+            else if (/Chrome\//.test(ua)) { shell = 'Chrome'; shellVersion = match(/Chrome\/([\d.]+)/); }
+            else if (/Safari\//.test(ua) && !/Chrome\//.test(ua)) { shell = 'Safari'; shellVersion = match(/Version\/([\d.]+)/); }
+            else if (/Firefox\//.test(ua)) { shell = 'Firefox'; shellVersion = match(/Firefox\/([\d.]+)/); }
+            text('shell-name', shell); text('shell-version', shellVersion);
+            let kernel = 'Unknown', kernelVersion = '—';
+            if (/Firefox\//.test(ua)) { kernel = 'Gecko'; kernelVersion = match(/rv:([\d.]+)/); }
+            else if (/Chrome|Chromium|Edg\//.test(ua)) { kernel = 'Blink'; kernelVersion = match(/(?:Chrome|Chromium)\/([\d.]+)/); }
+            else if (/AppleWebKit/.test(ua)) { kernel = 'WebKit'; kernelVersion = match(/AppleWebKit\/([\d.]+)/); }
+            text('kernel-name', kernel); text('kernel-version', kernelVersion);
+            let os = 'Unknown', osVersion = '—';
+            if (/iPhone|iPad|iPod/.test(ua) || ipad) { os = 'iOS'; osVersion = '—'; }
+            else if (/Macintosh|Mac OS X/.test(ua)) { os = 'macOS'; osVersion = '—'; }
+            else if (/Windows/.test(ua)) { os = 'Windows'; osVersion = match(/Windows NT ([\d.]+)/); }
+            else if (/Android/.test(ua)) { os = 'Android'; osVersion = match(/Android ([\d.]+)/); if (osVersion === '10') osVersion = '10+'; }
+            if (os === 'macOS' || os === 'iOS') {
+                const apple = ua.match(/Version\/([\d.]+)/);
+                osVersion = apple ? apple[1] : match(/(?:OS|Mac OS X) ([\d_.]+)/).replace(/_/g, '.');
+            }
+            text('os-name', os); text('os-version', osVersion);
+            const apple = os === 'iOS' || os === 'macOS';
+            const android = os === 'Android';
+            $('os-icon-monitor').style.display = apple || android ? 'none' : '';
+            $('os-icon-apple').style.display = apple ? '' : 'none';
+            $('os-icon-android').style.display = android ? '' : 'none';
+            let device = 'Unknown', detail = 'Unknown';
+            try {
+                const canvas = document.createElement('canvas');
+                const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+                const extension = gl && gl.getExtension('WEBGL_debug_renderer_info');
+                if (extension) {
+                    let gpu = gl.getParameter(extension.UNMASKED_RENDERER_WEBGL).replace(/^ANGLE\s*\(/i, '').replace(/\)$/, '');
+                    const parts = gpu.split(',');
+                    let name = parts[0].trim();
+                    if (parts.length > 1 && /^(intel|nvidia|amd|apple|qualcomm)$/i.test(parts[0].trim())) name = parts[1].trim();
+                    name = name.replace(/.*renderer\s*:\s*/i, '').split(/Direct3D|vs_|ps_|0x/i)[0].trim();
+                    name = name.replace(/\(R\)|\(TM\)|™|®/ig, '').replace(/\(/g, '').replace(/\)/g, '').replace(/\s+/g, ' ').trim();
+                    if (/Intel/i.test(name)) name = name.replace(/\s*Graphics\s*/i, ' ').replace(/\s+/g, ' ').trim();
+                    if (name) {
+                        device = name;
+                        if (/Apple/i.test(name)) detail = 'Apple';
+                        else if (/Adreno/i.test(name)) detail = 'Qualcomm';
+                        else if (/Mali|Immortalis/i.test(name)) detail = 'MediaTek';
+                        else if (/Xclipse/i.test(name)) detail = 'Samsung';
+                        else if (/GeForce|RTX|GTX|NVIDIA/i.test(name)) detail = 'NVIDIA';
+                        else if (/Radeon|AMD/i.test(name)) detail = 'AMD';
+                        else if (/Intel/i.test(name)) detail = 'Intel';
+                        else detail = 'Other';
+                        if (detail !== 'Other' && detail !== 'Unknown' && device.toLowerCase().startsWith(detail.toLowerCase())) {
+                            const rest = device.substring(detail.length).trim();
+                            if (rest && !/^(gpu|graphics|igpu)$/i.test(rest)) device = rest;
+                        }
+                    }
+                }
+                const lose = gl && gl.getExtension('WEBGL_lose_context');
+                if (lose) lose.loseContext();
+            } catch (error) { }
+            text('device-name', device); text('device-info', detail);
+        }
+        detectEnvironment();
+
+        const WALLPAPER_SOURCES = [
+            { url: 'https://bing.biturl.top/?resolution=1920&format=json&index=0&mkt=zh-CN', pick: data => data.url },
+            { url: 'https://bingw.jasonzeng.dev/?index=0&format=json', pick: data => data.url }
+        ];
+        const WALLPAPER_KEY = 'embyx-perf-wallpaper';
+        const today = () => new Date().toISOString().slice(0, 10);
+        function preload(url) {
+            return new Promise(resolve => {
+                const image = new Image();
+                image.onload = () => resolve(true);
+                image.onerror = () => resolve(false);
+                image.src = url;
+            });
+        }
+        function paint(url) {
+            $('wallpaper').style.backgroundImage = 'url("' + url + '")';
+        }
+        async function loadWallpaper() {
+            let cached = null;
+            try { cached = JSON.parse(localStorage.getItem(WALLPAPER_KEY) || 'null'); } catch (error) { }
+            if (cached && cached.date === today() && cached.url) {
+                if (await preload(cached.url)) { paint(cached.url); return; }
+            }
+            for (const source of WALLPAPER_SOURCES) {
+                try {
+                    const response = await fetch(source.url, { cache: 'no-store' });
+                    if (!response.ok) continue;
+                    const url = source.pick(await response.json());
+                    if (!url || !(await preload(url))) continue;
+                    paint(url);
+                    try { localStorage.setItem(WALLPAPER_KEY, JSON.stringify({ date: today(), url })); } catch (error) { }
+                    return;
+                } catch (error) { }
+            }
+        }
+        loadWallpaper();
+
+        select('avc-1080', false);
+    })();
+    </script>
+</body>
+</html>
