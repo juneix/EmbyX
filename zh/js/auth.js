@@ -78,10 +78,7 @@
             // 填充 UI
             if (app.dom.configServer) app.dom.configServer.value = app.config.server;
             if (app.dom.configUser) app.dom.configUser.value = app.config.user;
-            if (app.dom.configPwd && app.config.token) {
-                const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                app.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
-            }
+            this._syncPwdPlaceholder();
             if (app.dom.configPlayQuality) app.dom.configPlayQuality.value = app.config.playQuality;
             if (app.dom.configAutoplay) app.dom.configAutoplay.checked = app.config.autoplay;
             if (app.dom.configShortDrama) app.dom.configShortDrama.checked = app.config.shortDrama;
@@ -92,6 +89,8 @@
 
             // 基于配置同步 UI
             this.syncDeleteBtnVisibility();
+            // 删除开关打开时才回查一次账号权限（服务端授权可能晚于登录）
+            if (app.config.deleteMode) this.refreshDeletePermission();
             if (app.dom.playModeBtn) {
                 app.dom.playModeBtn.innerHTML = `<i data-lucide="${app.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                 if (window.lucide) lucide.createIcons();
@@ -110,6 +109,29 @@
                 return window.DonateManager.syncFromServer();
             }
             return false;
+        }
+
+        /**
+         * 密码框回显：已登录时用等长掩码占位，并标记 masked，
+         * 用户一旦输入就清除该标记，保存时据此判断「密码是否真的被改过」。
+         */
+        _syncPwdPlaceholder() {
+            const app = this.app;
+            const pwdEl = app && app.dom && app.dom.configPwd;
+            if (!pwdEl) return;
+            const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
+            if (app.config.token && pwdLen > 0) {
+                pwdEl.value = '*'.repeat(pwdLen);
+                pwdEl.dataset.masked = '1';
+            } else {
+                pwdEl.value = '';
+                delete pwdEl.dataset.masked;
+                if (!app.config.token) localStorage.removeItem('emby_pwd_len');
+            }
+            if (!pwdEl._maskBound) {
+                pwdEl.addEventListener('input', () => { delete pwdEl.dataset.masked; });
+                pwdEl._maskBound = true;
+            }
         }
 
         initFnosOAuth() {
@@ -177,11 +199,14 @@
             const height = 650;
             const left = Math.max(0, (window.screen.width - width) / 2);
             const top = Math.max(0, (window.screen.height - height) / 2);
-            return window.open(
+            const popup = window.open(
                 oauthUrl,
                 'fnos_oauth',
                 `width=${width},height=${height},top=${top},left=${left},menubar=no,toolbar=no,location=no,status=no,resizable=yes`
             );
+            // WebView 拦截弹窗时 window.open 返回 null，改为整页跳转，回调页会带 code 返回
+            if (!popup) window.location.href = oauthUrl;
+            return popup;
         }
 
         async handleFnosOAuthCode(code) {
@@ -238,7 +263,9 @@
 
             let server = app.dom.configServer.value.trim().replace(/\/$/, "");
             const user = app.dom.configUser.value.trim();
-            const pwd = app.dom.configPwd.value.trim();
+            // 密码首尾空格是合法字符，不做 trim
+            const pwdEl = app.dom.configPwd;
+            const pwd = pwdEl ? pwdEl.value : '';
 
             const playQuality = app.dom.configPlayQuality ? app.dom.configPlayQuality.value : 'direct';
             const isStatic = playQuality === 'direct';
@@ -250,13 +277,25 @@
 
             app.toggleLoading(true);
 
-            const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
+            const { server: normalizedServer, isAutoFilled, candidates } = EmbyXCommon.normalizeServerUrl(server);
             server = normalizedServer;
 
             try {
                 const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                const isUnchangedPwd = (/^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0) || (pwd === '' && pwdLen === 0);
-                const isSameLogin = isUnchangedPwd && app.config.token && app.config.server === server && app.config.user === user;
+                // 密码框仍是回显掩码（用户没动过）才视为「未修改密码」
+                const isMasked = !!(pwdEl && pwdEl.dataset.masked === '1' && /^\*+$/.test(pwd));
+                const isUnchangedPwd = isMasked || (pwd === '' && pwdLen === 0);
+                // 身份比较对尾斜杠不敏感，避免 OpenList 根路径 / 历史脏数据导致误判
+                const trimSlash = (s) => String(s || '').replace(/\/+$/, '');
+                const identityChanged = trimSlash(app.config.server) !== trimSlash(server) || app.config.user !== user;
+
+                // 掩码状态下不猜密码：身份已变或缺 Token 时要求重输，不发无效认证
+                if (isMasked && (identityChanged || !app.config.token)) {
+                    app.showToast('❌ 服务器或账号已变更，请重新输入密码');
+                    return null; // 页面据此判断「未保存」
+                }
+
+                const isSameLogin = isUnchangedPwd && app.config.token && !identityChanged;
                 let sourceChanged = false;
 
                 if (!isSameLogin) {
@@ -267,7 +306,8 @@
                         deviceName: app.config.deviceName,
                         deviceId: app.config.deviceId,
                         appVersion: app.config.appVersion,
-                        isAutoFilled
+                        isAutoFilled,
+                        candidates
                     });
 
                     const { data, userId, fnOS, serverType, finalServer } = auth;
@@ -289,7 +329,11 @@
 
                     const newPwdLen = pwd.length;
                     localStorage.setItem('emby_pwd_len', newPwdLen);
-                    app.dom.configPwd.value = newPwdLen > 0 ? '*'.repeat(newPwdLen) : '';
+                    if (pwdEl) {
+                        pwdEl.value = newPwdLen > 0 ? '*'.repeat(newPwdLen) : '';
+                        if (newPwdLen > 0) pwdEl.dataset.masked = '1';
+                        else delete pwdEl.dataset.masked;
+                    }
                 }
 
                 this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS: app.config.fnOS });
@@ -331,8 +375,21 @@
         }
 
         /**
+         * Emby / Jellyfin 删除能力判定（登录响应与 /Users/{id} 回查共用）。
+         * IsAdministrator 或 EnableContentDeletion 为真即可删；
+         * 仅配置了 EnableContentDeletionFromFolders（按媒体库授权）时同样视为可删，
+         * 具体哪个库受限由服务端在 DELETE 时执行。
+         */
+        _resolvePolicy(policy) {
+            if (!policy) return false;
+            const scoped = Array.isArray(policy.EnableContentDeletionFromFolders)
+                && policy.EnableContentDeletionFromFolders.length > 0;
+            return policy.IsAdministrator === true || policy.EnableContentDeletion === true || scoped;
+        }
+
+        /**
          * 解析账号删除权限并落库。
-         * Emby / Jellyfin：User.Policy.IsAdministrator 或 EnableContentDeletion 为真即可删。
+         * Emby / Jellyfin：User.Policy（见 _resolvePolicy）。
          * OpenList：/api/me 的 permission 第 7 位（128 = PermRemove）。
          */
         async resolveDeletePermission(serverType, data) {
@@ -347,10 +404,38 @@
             }
 
             const policy = data && data.User && data.User.Policy;
-            const canDelete = !!(policy && (policy.IsAdministrator === true || policy.EnableContentDeletion === true));
+            const canDelete = this._resolvePolicy(policy);
             localStorage.setItem('openlist_can_remove', 'false');
             this.app.config.openlistCanRemove = false;
             return canDelete;
+        }
+
+        /**
+         * 启动时回查账号删除权限：服务端授权可能晚于登录，本地缓存会过期。
+         * 仅在「允许删除媒体」开关打开且为 Emby/Jellyfin 时发一次只读请求，失败静默沿用缓存。
+         */
+        async refreshDeletePermission() {
+            const app = this.app;
+            if (!app || !window.EmbyXCommon) return;
+            const type = EmbyXCommon.getServerType();
+            if (type !== 'emby' && type !== 'jellyfin') return;
+            const { server, token, userId } = app.config;
+            if (!server || !token || !userId) return;
+
+            try {
+                const base = type === 'jellyfin' ? '' : '/emby';
+                const url = `${server}${base}/Users/${encodeURIComponent(userId)}?api_key=${token}`;
+                const res = await fetch(url, { headers: EmbyXCommon.getAuthHeaders({}, token) });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data || !data.Policy) return;
+                const canDelete = this._resolvePolicy(data.Policy);
+                app.config.canDelete = canDelete;
+                localStorage.setItem('emby_can_delete', canDelete ? 'true' : 'false');
+                this.syncDeleteBtnVisibility();
+            } catch (e) {
+                // 静默：网络或鉴权异常时沿用本地缓存
+            }
         }
 
         /**

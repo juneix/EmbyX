@@ -216,7 +216,8 @@
             }
 
             return {
-                server: origin + basePath,
+                // Root path yields no trailing slash so the same server has a single canonical form
+                server: basePath === '/' ? origin : origin + basePath,
                 user: this.user,
                 token: token || 'guest_token',
                 userId: 'openlist-user',

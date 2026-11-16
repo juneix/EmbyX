@@ -11,10 +11,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // Pass-through: handle network errors gracefully to prevent uncaught promise rejection
+    // Keep network failures as network errors; never fake an HTTP status
     event.respondWith(
-        fetch(event.request).catch(() => {
-            return new Response('', { status: 408, statusText: 'Request Timeout' });
-        })
+        fetch(event.request).catch(() => Response.error())
     );
 });

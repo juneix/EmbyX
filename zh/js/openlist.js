@@ -216,7 +216,8 @@
             }
 
             return {
-                server: origin + basePath,
+                // 根路径不产出尾斜杠，避免同一服务器两种写法导致登录态判定失效
+                server: basePath === '/' ? origin : origin + basePath,
                 user: this.user,
                 token: token || 'guest_token',
                 userId: 'openlist-user',

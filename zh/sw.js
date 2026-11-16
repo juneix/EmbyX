@@ -11,10 +11,8 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
-    // 默认直接透传，网络异常或被客户端拦截时优雅兜底，避免控制台未捕获 rejection
+    // 网络失败保持网络错误语义，不可伪造成 HTTP 状态码
     event.respondWith(
-        fetch(event.request).catch(() => {
-            return new Response('', { status: 408, statusText: 'Request Timeout' });
-        })
+        fetch(event.request).catch(() => Response.error())
     );
 });

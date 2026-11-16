@@ -179,24 +179,31 @@
     }
 
     // 4. Server URL auto-completion and normalization
+    // 裸 IP 未写端口时的明文候选顺序：Emby/Jellyfin 永远优先，OpenList 兜底。
+    const AUTO_PORTS = ['8096', '8090', '5244'];
+
     function normalizeServerUrl(rawServer) {
         let server = (rawServer || '').trim().replace(/\/+$/, '');
         let isAutoFilled = false;
+        let candidates = [];
         if (server && !server.startsWith('http')) {
             const host = server.split(':')[0];
             const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
+            const hasExplicitPort = server.includes(':');
 
             if (location.protocol === 'https:' && isIP) {
                 server = location.origin + '/app/juneix-embyx/proxy/8096';
                 isAutoFilled = true;
-            } else if (isIP && !server.includes(':')) {
-                server = `http://${server}:8096`;
+            } else if (isIP && !hasExplicitPort) {
+                candidates = AUTO_PORTS.map(port => `http://${host}:${port}`);
+                server = candidates[0];
                 isAutoFilled = true;
             } else {
+                // 域名按 HTTPS 默认 443；显式写了端口的原样保留，不猜
                 server = (isIP ? 'http://' : 'https://') + server;
             }
         }
-        return { server, isAutoFilled };
+        return { server, isAutoFilled, candidates };
     }
 
     // Build standard and Jellyfin 12 / Emby compatible Authorization header
@@ -227,7 +234,7 @@
     }
 
     // 5. Core authentication flow with fallback handling
-    async function authenticate({ server, user, pwd, deviceName, deviceId, appVersion, isAutoFilled }) {
+    async function authenticate({ server, user, pwd, deviceName, deviceId, appVersion, isAutoFilled, candidates }) {
         const performAuth = async (targetServer) => {
             const fnOS = await detectFnOS(targetServer);
 
@@ -332,30 +339,32 @@
             return { data, userId, serverType, fnOS: serverType === 'fnos' };
         };
 
-        try {
-            const auth = await performAuth(server);
-            return { ...auth, finalServer: auth.finalServer || server };
-        } catch (err) {
-            if (isAutoFilled && server.endsWith(':8096')) {
-                const fallbackServer = server.replace(/:8096$/, ':8090');
-                try {
-                    const auth = await performAuth(fallbackServer);
-                    return { ...auth, finalServer: fallbackServer };
-                } catch (fallbackErr) {
-                    throw err;
-                }
-            } else if (isAutoFilled && server.endsWith('/proxy/8096')) {
-                const fallbackServer = server.replace(/\/proxy\/8096$/, '');
-                try {
-                    const auth = await performAuth(fallbackServer);
-                    return { ...auth, finalServer: fallbackServer };
-                } catch (fallbackErr) {
-                    throw err;
-                }
-            } else {
-                throw err;
+        // 端口未命中才继续试下一个候选；凭据被拒（401/403/NO_TOKEN）立即停止，
+        // 绝不把密码重放给另一个端口上的其他服务。
+        const isPortMiss = (err) => {
+            const status = err && err.status;
+            if (status === 401 || status === 403 || status === 'NO_TOKEN') return false;
+            if (!status) return true;            // 网络不可达 / CORS / 连接被拒
+            return status === 404 || status >= 500; // 路由不存在 / 网关故障
+        };
+
+        const tryList = (Array.isArray(candidates) && candidates.length)
+            ? candidates
+            : (isAutoFilled && server.endsWith('/proxy/8096')
+                ? [server, server.replace(/\/proxy\/8096$/, '')]
+                : [server]);
+
+        let lastErr = null;
+        for (let i = 0; i < tryList.length; i++) {
+            try {
+                const auth = await performAuth(tryList[i]);
+                return { ...auth, finalServer: auth.finalServer || tryList[i] };
+            } catch (err) {
+                lastErr = err;
+                if (i === tryList.length - 1 || !isPortMiss(err)) throw err;
             }
         }
+        throw lastErr;
     }
 
     // 6. Media library Views and Playlists fetching
@@ -471,15 +480,15 @@
         return { ok: false, status: res.status, reason };
     }
 
-    // 8.1 当前账号是否具备删除权限
-    // Emby / Jellyfin：登录响应里的 User.Policy（IsAdministrator 或 EnableContentDeletion）
+    // 8.1 当前账号是否具备删除权限（账号级，与具体媒体库 / 文件夹无关）
+    // Emby / Jellyfin / fnOS：登录响应里的 User.Policy（见 AuthManager._resolvePolicy）
     // OpenList：/api/me 的 permission 第 7 位（128 = PermRemove）
+    // 具体哪个库受限由服务端在执行删除时裁决，前端不参与逐库判断。
     function canDeleteMedia(config = {}) {
         const type = config.serverType || getServerType();
         if (type === 'openlist') {
             return !!(config.openlistCanRemove);
         }
-        if (type === 'fnos') return false;
         return !!config.canDelete;
     }
 

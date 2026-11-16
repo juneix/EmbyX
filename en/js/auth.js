@@ -78,10 +78,7 @@
             // 填充 UI
             if (app.dom.configServer) app.dom.configServer.value = app.config.server;
             if (app.dom.configUser) app.dom.configUser.value = app.config.user;
-            if (app.dom.configPwd && app.config.token) {
-                const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                app.dom.configPwd.value = pwdLen > 0 ? '*'.repeat(pwdLen) : '';
-            }
+            this._syncPwdPlaceholder();
             if (app.dom.configPlayQuality) app.dom.configPlayQuality.value = app.config.playQuality;
             if (app.dom.configAutoplay) app.dom.configAutoplay.checked = app.config.autoplay;
             if (app.dom.configShortDrama) app.dom.configShortDrama.checked = app.config.shortDrama;
@@ -92,6 +89,8 @@
 
             // 基于配置同步 UI
             this.syncDeleteBtnVisibility();
+            // Only re-check the account permission when the delete switch is on
+            if (app.config.deleteMode) this.refreshDeletePermission();
             if (app.dom.playModeBtn) {
                 app.dom.playModeBtn.innerHTML = `<i data-lucide="${app.config.autoplay ? 'repeat' : 'repeat-1'}" class="stroke-current w-5 h-5"></i>`;
                 if (window.lucide) lucide.createIcons();
@@ -110,6 +109,30 @@
                 return window.DonateManager.syncFromServer();
             }
             return false;
+        }
+
+        /**
+         * Password field echo: show a same-length mask once logged in and flag it as masked.
+         * Any user input clears the flag, which is how saveConfig() tells whether
+         * the password was actually edited (mask length alone is not reliable).
+         */
+        _syncPwdPlaceholder() {
+            const app = this.app;
+            const pwdEl = app && app.dom && app.dom.configPwd;
+            if (!pwdEl) return;
+            const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
+            if (app.config.token && pwdLen > 0) {
+                pwdEl.value = '*'.repeat(pwdLen);
+                pwdEl.dataset.masked = '1';
+            } else {
+                pwdEl.value = '';
+                delete pwdEl.dataset.masked;
+                if (!app.config.token) localStorage.removeItem('emby_pwd_len');
+            }
+            if (!pwdEl._maskBound) {
+                pwdEl.addEventListener('input', () => { delete pwdEl.dataset.masked; });
+                pwdEl._maskBound = true;
+            }
         }
 
         initFnosOAuth() {
@@ -238,7 +261,9 @@
 
             let server = app.dom.configServer.value.trim().replace(/\/$/, "");
             const user = app.dom.configUser.value.trim();
-            const pwd = app.dom.configPwd.value.trim();
+            // Leading/trailing spaces are legal password characters — never trim.
+            const pwdEl = app.dom.configPwd;
+            const pwd = pwdEl ? pwdEl.value : '';
 
             const playQuality = app.dom.configPlayQuality ? app.dom.configPlayQuality.value : 'direct';
             const isStatic = playQuality === 'direct';
@@ -250,13 +275,25 @@
 
             app.toggleLoading(true);
 
-            const { server: normalizedServer, isAutoFilled } = EmbyXCommon.normalizeServerUrl(server);
+            const { server: normalizedServer, isAutoFilled, candidates } = EmbyXCommon.normalizeServerUrl(server);
             server = normalizedServer;
 
             try {
                 const pwdLen = parseInt(localStorage.getItem('emby_pwd_len') || '0');
-                const isUnchangedPwd = (/^\*+$/.test(pwd) && pwd.length === pwdLen && pwdLen > 0) || (pwd === '' && pwdLen === 0);
-                const isSameLogin = isUnchangedPwd && app.config.token && app.config.server === server && app.config.user === user;
+                // Untouched mask echo = password unchanged
+                const isMasked = !!(pwdEl && pwdEl.dataset.masked === '1' && /^\*+$/.test(pwd));
+                const isUnchangedPwd = isMasked || (pwd === '' && pwdLen === 0);
+                // Identity comparison ignores trailing slashes (OpenList root path / legacy values)
+                const trimSlash = (s) => String(s || '').replace(/\/+$/, '');
+                const identityChanged = trimSlash(app.config.server) !== trimSlash(server) || app.config.user !== user;
+
+                // Never guess the password from a mask: require re-entry when identity changed or the token is gone
+                if (isMasked && (identityChanged || !app.config.token)) {
+                    app.showToast('❌ Server or account changed, please re-enter the password');
+                    return null; // page treats null as "not saved"
+                }
+
+                const isSameLogin = isUnchangedPwd && app.config.token && !identityChanged;
                 let sourceChanged = false;
 
                 if (!isSameLogin) {
@@ -267,7 +304,8 @@
                         deviceName: app.config.deviceName,
                         deviceId: app.config.deviceId,
                         appVersion: app.config.appVersion,
-                        isAutoFilled
+                        isAutoFilled,
+                        candidates
                     });
 
                     const { data, userId, fnOS, serverType, finalServer } = auth;
@@ -289,7 +327,11 @@
 
                     const newPwdLen = pwd.length;
                     localStorage.setItem('emby_pwd_len', newPwdLen);
-                    app.dom.configPwd.value = newPwdLen > 0 ? '*'.repeat(newPwdLen) : '';
+                    if (pwdEl) {
+                        pwdEl.value = newPwdLen > 0 ? '*'.repeat(newPwdLen) : '';
+                        if (newPwdLen > 0) pwdEl.dataset.masked = '1';
+                        else delete pwdEl.dataset.masked;
+                    }
                 }
 
                 this.savePrefs({ playQuality, isStatic, autoplay, shortDrama, deleteMode, fnOS: app.config.fnOS });
@@ -332,8 +374,21 @@
 
         // Persist shared prefs; page-private keys are handled by the page's savePageConfig hook
         /**
+         * Emby / Jellyfin delete capability (shared by login response and the /Users/{id} re-check).
+         * IsAdministrator or EnableContentDeletion grants deletion; a non-empty
+         * EnableContentDeletionFromFolders (per-library grant) counts as deletable too —
+         * which libraries are restricted is enforced by the server on DELETE.
+         */
+        _resolvePolicy(policy) {
+            if (!policy) return false;
+            const scoped = Array.isArray(policy.EnableContentDeletionFromFolders)
+                && policy.EnableContentDeletionFromFolders.length > 0;
+            return policy.IsAdministrator === true || policy.EnableContentDeletion === true || scoped;
+        }
+
+        /**
          * Resolve and persist the account's delete permission.
-         * Emby / Jellyfin: User.Policy.IsAdministrator or EnableContentDeletion.
+         * Emby / Jellyfin: User.Policy (see _resolvePolicy).
          * OpenList: bit 7 (128 = PermRemove) of the permission mask from /api/me.
          */
         async resolveDeletePermission(serverType, data) {
@@ -348,10 +403,39 @@
             }
 
             const policy = data && data.User && data.User.Policy;
-            const canDelete = !!(policy && (policy.IsAdministrator === true || policy.EnableContentDeletion === true));
+            const canDelete = this._resolvePolicy(policy);
             localStorage.setItem('openlist_can_remove', 'false');
             this.app.config.openlistCanRemove = false;
             return canDelete;
+        }
+
+        /**
+         * Re-check delete permission on startup: server-side grants may come after login,
+         * so the cached value goes stale. Only fires for Emby/Jellyfin when the delete
+         * switch is on and silently keeps the cache on failure.
+         */
+        async refreshDeletePermission() {
+            const app = this.app;
+            if (!app || !window.EmbyXCommon) return;
+            const type = EmbyXCommon.getServerType();
+            if (type !== 'emby' && type !== 'jellyfin') return;
+            const { server, token, userId } = app.config;
+            if (!server || !token || !userId) return;
+
+            try {
+                const base = type === 'jellyfin' ? '' : '/emby';
+                const url = `${server}${base}/Users/${encodeURIComponent(userId)}?api_key=${token}`;
+                const res = await fetch(url, { headers: EmbyXCommon.getAuthHeaders({}, token) });
+                if (!res.ok) return;
+                const data = await res.json();
+                if (!data || !data.Policy) return;
+                const canDelete = this._resolvePolicy(data.Policy);
+                app.config.canDelete = canDelete;
+                localStorage.setItem('emby_can_delete', canDelete ? 'true' : 'false');
+                this.syncDeleteBtnVisibility();
+            } catch (e) {
+                // Silent: keep the cached value on network/auth errors
+            }
         }
 
         /**

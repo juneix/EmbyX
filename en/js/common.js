@@ -177,24 +177,31 @@
     }
 
     // 4. Server URL auto-completion and normalization
+    // Plaintext candidate ports for a bare IP without port: Emby/Jellyfin first, OpenList last.
+    const AUTO_PORTS = ['8096', '8090', '5244'];
+
     function normalizeServerUrl(rawServer) {
         let server = (rawServer || '').trim().replace(/\/+$/, '');
         let isAutoFilled = false;
+        let candidates = [];
         if (server && !server.startsWith('http')) {
             const host = server.split(':')[0];
             const isIP = /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(host) || host === 'localhost' || host === '127.0.0.1';
+            const hasExplicitPort = server.includes(':');
 
             if (location.protocol === 'https:' && isIP) {
                 server = location.origin + '/app/juneix-embyx/proxy/8096';
                 isAutoFilled = true;
-            } else if (isIP && !server.includes(':')) {
-                server = `http://${server}:8096`;
+            } else if (isIP && !hasExplicitPort) {
+                candidates = AUTO_PORTS.map(port => `http://${host}:${port}`);
+                server = candidates[0];
                 isAutoFilled = true;
             } else {
+                // Domains default to HTTPS/443; explicit ports are kept as-is, never guessed.
                 server = (isIP ? 'http://' : 'https://') + server;
             }
         }
-        return { server, isAutoFilled };
+        return { server, isAutoFilled, candidates };
     }
 
     // Build standard and Jellyfin 12 / Emby compatible Authorization header
@@ -225,7 +232,7 @@
     }
 
     // 5. Core authentication flow with fallback handling
-    async function authenticate({ server, user, pwd, deviceName, deviceId, appVersion, isAutoFilled }) {
+    async function authenticate({ server, user, pwd, deviceName, deviceId, appVersion, isAutoFilled, candidates }) {
         const performAuth = async (targetServer) => {
             const fnOS = await detectFnOS(targetServer);
 
@@ -330,30 +337,32 @@
             return { data, userId, serverType, fnOS: serverType === 'fnos' };
         };
 
-        try {
-            const auth = await performAuth(server);
-            return { ...auth, finalServer: auth.finalServer || server };
-        } catch (err) {
-            if (isAutoFilled && server.endsWith(':8096')) {
-                const fallbackServer = server.replace(/:8096$/, ':8090');
-                try {
-                    const auth = await performAuth(fallbackServer);
-                    return { ...auth, finalServer: fallbackServer };
-                } catch (fallbackErr) {
-                    throw err;
-                }
-            } else if (isAutoFilled && server.endsWith('/proxy/8096')) {
-                const fallbackServer = server.replace(/\/proxy\/8096$/, '');
-                try {
-                    const auth = await performAuth(fallbackServer);
-                    return { ...auth, finalServer: fallbackServer };
-                } catch (fallbackErr) {
-                    throw err;
-                }
-            } else {
-                throw err;
+        // Keep trying the next candidate only when the PORT missed.
+        // 401/403/NO_TOKEN stops immediately — never replay the password to another service.
+        const isPortMiss = (err) => {
+            const status = err && err.status;
+            if (status === 401 || status === 403 || status === 'NO_TOKEN') return false;
+            if (!status) return true;            // unreachable / CORS / connection refused
+            return status === 404 || status >= 500; // route missing / gateway error
+        };
+
+        const tryList = (Array.isArray(candidates) && candidates.length)
+            ? candidates
+            : (isAutoFilled && server.endsWith('/proxy/8096')
+                ? [server, server.replace(/\/proxy\/8096$/, '')]
+                : [server]);
+
+        let lastErr = null;
+        for (let i = 0; i < tryList.length; i++) {
+            try {
+                const auth = await performAuth(tryList[i]);
+                return { ...auth, finalServer: auth.finalServer || tryList[i] };
+            } catch (err) {
+                lastErr = err;
+                if (i === tryList.length - 1 || !isPortMiss(err)) throw err;
             }
         }
+        throw lastErr;
     }
 
     // 6. Media library Views and Playlists fetching
@@ -469,15 +478,15 @@
         return { ok: false, status: res.status, reason };
     }
 
-    // 8.1 Whether the current account may delete media
-    // Emby / Jellyfin: User.Policy from the login response (IsAdministrator or EnableContentDeletion)
+    // 8.1 Whether the current account may delete (account-level, independent of any library/folder)
+    // Emby / Jellyfin / fnOS: User.Policy from the login response (see AuthManager._resolvePolicy)
     // OpenList: bit 7 (128 = PermRemove) of the permission mask from /api/me
+    // Which library is restricted is decided by the server on DELETE; the client does not judge per library.
     function canDeleteMedia(config = {}) {
         const type = config.serverType || getServerType();
         if (type === 'openlist') {
             return !!(config.openlistCanRemove);
         }
-        if (type === 'fnos') return false;
         return !!config.canDelete;
     }
 

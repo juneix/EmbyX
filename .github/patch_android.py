@@ -17,19 +17,19 @@ ICON_SRC = f"{LANG}/icon.png"
 
 # ── 0. 从 HTML 徽章提取版本号 ─────────────────────────────────────────────────
 VERSION_SRC = "zh/index.html"
-version_name = "1.0"
-version_code = 100
+version_name = "2.0.0"
+version_code = 20000
 
 if os.path.exists(VERSION_SRC):
     with open(VERSION_SRC, "r", encoding="utf-8") as f:
         html = f.read()
-    # 匹配徽章文本，例如 ">v1.1<" 或 ">v2.0<"
+    # 徽章可写 v2.0 或 v2.0.0，一律归一为三位 X.Y.Z
     m = re.search(r">v(\d+)\.(\d+)(?:\.(\d+))?<", html)
     if m:
         major = int(m.group(1))
         minor = int(m.group(2))
         patch = int(m.group(3)) if m.group(3) else 0
-        version_name = f"{major}.{minor}" if patch == 0 else f"{major}.{minor}.{patch}"
+        version_name = f"{major}.{minor}.{patch}"
         # versionCode 规则：major×10000 + minor×100 + patch 保证覆盖安装递增
         version_code = major * 10000 + minor * 100 + patch
         print(f"  Detected version: v{version_name} → versionCode={version_code}")

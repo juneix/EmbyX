@@ -784,7 +784,7 @@
                                     <div style="display: flex; align-items: center; gap: 8px;">
                                         <h3 class="text-white font-bold text-2xl tracking-tight">EmbyX</h3>
                                         <span id="appVersionBadge"
-                                            class="px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v2.0</span>
+                                            class="px-2 py-0.5 bg-primary/20 text-primary text-xs font-bold rounded-full border border-primary/30">v2.0.0</span>
                                         <span id="playerOneBadge" onclick="window.DonateManager?.showDonateModal()" title="点击查看头号玩家通行证"
                                             class="hidden px-2.5 py-0.5 bg-amber-500/20 text-amber-300 text-xs font-bold rounded-full border border-amber-500/40 items-center gap-1 shadow-sm cursor-pointer active:scale-95 transition-transform">
                                             <i data-lucide="gem" class="w-3.5 h-3.5"></i>头号玩家
@@ -3034,7 +3034,8 @@
                 document.getElementById('saveConfigBtn').onclick = () => this.saveConfig();
                 const fnosOAuthBtn = document.getElementById('fnosOAuthBtn');
                 if (fnosOAuthBtn) fnosOAuthBtn.onclick = () => {
-                    if (this._fnosOAuthUrl) this.openFnosOAuth(this._fnosOAuthUrl);
+                    const oauthUrl = this.auth && this.auth._fnosOAuthUrl;
+                    if (oauthUrl) this.openFnosOAuth(oauthUrl);
                 };
                 document.getElementById('resetConfigBtn').onclick = () => this.resetConfig();
 
